@@ -4,7 +4,7 @@ import numpy as np
 import bpy
 from bpy.props import StringProperty, BoolProperty, CollectionProperty, IntProperty, EnumProperty, PointerProperty
 from bpy.types import (Armature, PropertyGroup, Operator, Panel, UIList, Object, ShapeKey, Mesh, ID, Bone, PoseBone,
-                       Context, Menu, UILayout, Scene, MeshUVLoopLayer)
+                       Context, Menu, UILayout, Scene, MeshUVLoopLayer, Modifier, ArmatureModifier)
 # Conflict with the bpy.props function of the same name
 from bpy.types import CollectionProperty as CollectionPropertyType
 
@@ -188,26 +188,31 @@ class SceneBuildSettingsControl(Operator):
     bl_idname = 'scene_build_settings_control'
     bl_label = "Build Settings Control"
 
+    command_items = (
+        ('ADD', "Add", "Add a new set of Build Settings"),
+        ('REMOVE', "Remove", "Remove the currently active Scene Settings"),
+        ('UP', "Move Up", "Move active Scene Settings up"),
+        ('DOWN', "Move Down", "Move active Scene Settings down"),
+        ('PURGE', "Purge", "Clear all orphaned Build Settings from all objects in the scene"),
+        ('TOP', "Move to top", "Move active Scene Settings to top"),
+        ('BOTTOM', "Move to bottom", "Move active Build Settings to bottom"),
+        # TODO: Implement and add a 'Fake User' BoolProperty to Object Settings that prevents purging
+        # TODO: By default we only show the object settings matching the scene settings, so is this necessary?
+        ('SYNC', "Sync", "Set the currently displayed settings of all objects in the scene to the currently active Build Settings"),
+    )
+
     command: EnumProperty(
-        items=[
-            ('ADD', "Add", "Add a new set of Build Settings"),
-            ('REMOVE', "Remove", "Remove the currently active Build Settings"),
-            # TODO: By default we only show the object settings matching the scene settings, so is this necessary?
-            ('SYNC', "Sync", "Set the currently displayed settings of all objects in the scene to the currently active Build Settings"),
-            ('UP', "Move Up", "Move active Build Settings up"),
-            ('DOWN', "Move Down", "Move active Build Settings down"),
-            ('TOP', "Move to top", "Move active Build Settings to top"),
-            ('BOTTOM', "Move to bottom", "Move active Build Settings to bottom"),
-            # TODO: Implement and add a 'Fake User' BoolProperty to Object Settings that prevents purging
-            ('PURGE', "Purge", "Clear all orphaned Build Settings from all objects in the scene"),
-        ],
+        items=command_items,
         default='ADD',
     )
 
-    # @classmethod
-    # def description(cls, context, properties):
-    #     command = properties.command
-    #     # see if we can get the description from the enum property
+    @classmethod
+    def description(cls, context, properties):
+        command = properties.command
+        for identifier, _, description in cls.command_items:
+            if identifier == command:
+                return description
+        return f"Error: enum value '{command}' not found"
 
     def execute(self, context: Context):
         scene_group = ScenePropertyGroup.get_group(context.scene)
@@ -268,24 +273,29 @@ class ObjectBuildSettingsControl(Operator):
     bl_idname = 'object_build_settings_control'
     bl_label = "Object Build Settings Control"
 
+    command_items = (
+        ('ADD', "Add", "Add a new set of build settings, defaults to the active build settings if they don't exist on this Object"),
+        ('REMOVE', "Remove", "Remove the currently active build settings"),
+        # Disabled if doesn't exist on the object
+        ('UP', "Move Up", "Move active build settings up"),
+        ('DOWN', "Move Down", "Move active build settings down"),
+        ('SYNC', "Sync", "Set the currently displayed settings of to the currently active build settings"),
+        ('TOP', "Move to top", "Move active build settings to top"),
+        ('BOTTOM', "Move to bottom", "Move active build settings to bottom"),
+    )
+
     command: EnumProperty(
-        items=[
-            ('ADD', "Add", "Add a new set of build settings, defaults to the active build settings if they don't exist on this Object"),
-            ('REMOVE', "Remove", "Remove the currently active build settings"),
-            # Disabled if doesn't exist on the object
-            ('SYNC', "Sync", "Set the currently displayed settings of to the currently active build settings"),
-            ('UP', "Move Up", "Move active build settings up"),
-            ('DOWN', "Move Down", "Move active build settings down"),
-            ('TOP', "Move to top", "Move active build settings to top"),
-            ('BOTTOM', "Move to bottom", "Move active build settings to bottom"),
-        ],
+        items=command_items,
         default='ADD',
     )
 
-    # @classmethod
-    # def description(cls, context, properties):
-    #     command = properties.command
-    #     # see if we can get the description from the enum property
+    @classmethod
+    def description(cls, context, properties):
+        command = properties.command
+        for identifier, _, description in cls.command_items:
+            if identifier == command:
+                return description
+        return f"Error: enum value '{command}' not found"
 
     def execute(self, context: Context):
         obj = context.object
@@ -391,6 +401,8 @@ class SceneBuildSettings(PropertyGroup):
     shape_keys_mesh_name: StringProperty(default="Body")
     no_shape_keys_mesh_name: StringProperty(default="MainBody")
     ignore_hidden_objects: BoolProperty(name="Ignore hidden objects", default=True)
+    # TODO: Needs UI and needs to actually be used
+    remove_settings_from_built_avatar: BoolProperty(name="Remove settings from built avatar", default=True)
 
 
 def object_build_settings_update_name(self: 'ObjectBuildSettings', context: Context):
@@ -411,10 +423,10 @@ class ObjectBuildSettings(PropertyGroup):
     # Could use a string type and match by name instead, TODO: in both cases, consider what happens or needs to happen if the BuildSettings are deleted or renamed
     #build_settings: bpy.props.PointerProperty(type=SceneBuildSettings)
     # General properties
-    target_mesh_name: StringProperty(
-        name="Built mesh name",
-        description="The name of the mesh once building is complete.\n"
-                    "All meshes with the same name will be joined together\n"
+    target_object_name: StringProperty(
+        name="Built name",
+        description="The name of the object once building is complete.\n"
+                    "All objects with the same name will be joined together (if they're the same type)\n"
                     "Leave blank to keep the current name"
     )
     include_in_build: BoolProperty(name="Include in build", default=True, description="Include these build settings. This lets you disable the export without deleting settings")
@@ -448,16 +460,20 @@ class ObjectBuildSettings(PropertyGroup):
             ('YES', "Enabled", ""),
             ('NO', "Disabled", ""),
         ],
-        description="Intended for use to override modifier settings when exporting for VRM which requires a T-Pose when"
-                    " a model has been created in an A-pose. Enabling Preserve Volume and changing the export pose to a"
-                    " T-Pose may produce better results exporting directly as T-Pose compared to setting T-Pose in"
-                    " Unity when normalizing for VRM."
+        description="Intended for use to override modifier settings when exporting for VRM, which requires a T-pose."
+                    "\n\nWhen a model has been exported in an A-pose, put into a T-pose in Unity and exported as a VRM,"
+                    " putting that VRM back into the original A-pose can result in a different appearance to how the"
+                    " model was original exported."
+                    "\n\nEnabling Preserve Volume and changing the pose to a T-pose before exporting may produce better"
+                    " results than when exporting in an A-pose."
     )
+
+    ignore_reduce_to_two_meshes: BoolProperty(default=False)
 
     # Mesh props
     # Keep/Merge(see below)/Apply Mix/Delete-All
     shape_keys_op: EnumProperty(
-        name="Operation",
+        name="EXtra Operation",
         items=[
             ('KEEP', "Keep", "Keep all the shape keys"),
             ('MERGE', "Merge", "Merge shape keys together, according to the rules below"),
@@ -537,7 +553,7 @@ class ObjectBuildSettings(PropertyGroup):
             ('NONE', "None", ""),
             ('APPLY_IF_POSSIBLE', "Apply if possible", "Apply all modifiers if possible, some modifiers can be applied even when a mesh has shape keys"),
             ('APPLY_FORCED', "Apply (forced)", "Apply modifiers, deleting all shape keys if necessary"),
-            ('APPLY_KEEP_SHAPES_ADDON', "(NYI)Apply with shapes", "Apply modifiers. Use an addon when the mesh has shape keys"),
+            ('APPLY_KEEP_SHAPES_GRET', "Apply with shapes (gret addon)", "Apply modifiers. Using the gret addon when the mesh has shape keys"),
         ],
         default='APPLY_IF_POSSIBLE',
     )
@@ -547,18 +563,27 @@ class ObjectBuildSettings(PropertyGroup):
     keep_only_uv_map: StringProperty(name="UV Map to keep", description="Name of the only UV map to keep on this mesh")
 
     # Clean up vertex groups that aren't used by the armature
-    remove_non_deform_vertex_groups: BoolProperty(name="Remove non-deform vg", description="Remove vertex groups that don't have an associated bone in the armature")
+    remove_non_deform_vertex_groups: BoolProperty(
+        name="Remove non-deform",
+        default=True,
+        description="Remove vertex groups that don't have an associated deform bone"
+    )
 
-    remove_vertex_colors: BoolProperty(name="Remove vertex colors", description="Remove all vertex colors")
+    remove_vertex_colors: BoolProperty(
+        name="Remove vertex colors",
+        default=True,
+        description="Remove all vertex colors"
+    )
 
     # TODO: Extend to being able to re-map materials from one to another
-    keep_only_material: StringProperty(name="Material to keep", description="Name of the only Material to keep on the mesh")
+    keep_only_material: StringProperty(
+        name="Material to keep",
+        description="Name of the only Material to keep on the mesh"
+    )
 
     # materials_remap
     remap_materials: BoolProperty(default=False)
     # materials_remap: CollectionProperty(type=<custom type needed?>)
-
-    ignore_reduce_to_two_meshes: BoolProperty(default=False)
 
 
 #############
@@ -587,43 +612,47 @@ class ScenePanel(Panel):
 
     def draw(self, context: Context):
         layout = self.layout
-        col = layout.column()
-        col.label(text="Scene Settings Groups")
         group = ScenePropertyGroup.get_group(context.scene)
-        row = col.row()
-        row.template_list(SceneBuildSettingsUIList.bl_idname, "", group, 'build_settings', group, 'build_settings_active_index')
-        vertical_buttons_col = row.column(align=True)
-        vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="ADD").command = 'ADD'
-        vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="REMOVE").command = 'REMOVE'
-        vertical_buttons_col.separator()
-        # vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="TRIA_UP_BAR").command = 'TOP'
-        vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="TRIA_UP").command = 'UP'
-        vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="TRIA_DOWN").command = 'DOWN'
-        # vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="TRIA_DOWN_BAR").command = 'BOTTOM'
-        # vertical_buttons_col.direction = 'VERTICAL'
-
-        buttons_col = col.column(align=True)
-        # TODO: Sync is only useful if forced sync is turned off, so only display it in those cases
-        row = buttons_col.row(align=True)
-        row.operator(SceneBuildSettingsControl.bl_idname, text="Sync").command = 'SYNC'
-        row.operator(SceneBuildSettingsControl.bl_idname, text="Purge").command = 'PURGE'
-
         col = layout.column()
-        scene_settings = group.get_active()
-        if scene_settings:
-            box = col.box()
-            sub = box.column()
-            sub.alignment = 'RIGHT'
-            sub.prop(scene_settings, 'reduce_to_two_meshes')
-            if scene_settings.reduce_to_two_meshes:
+        if group.is_export_scene:
+            col.label(text=f"{context.scene.name} Export Scene")
+            col.operator(DeleteExportScene.bl_idname, icon='TRASH')
+        else:
+            col.label(text="Scene Settings Groups")
+            row = col.row()
+            row.template_list(SceneBuildSettingsUIList.bl_idname, "", group, 'build_settings', group, 'build_settings_active_index')
+            vertical_buttons_col = row.column(align=True)
+            vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="ADD").command = 'ADD'
+            vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="REMOVE").command = 'REMOVE'
+            vertical_buttons_col.separator()
+            vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="TRIA_UP").command = 'UP'
+            vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="TRIA_DOWN").command = 'DOWN'
+
+            buttons_col = col.column(align=True)
+            # TODO: Sync is only useful if forced sync is turned off, so only display it in those cases
+            row = buttons_col.row(align=True)
+            row.operator(SceneBuildSettingsControl.bl_idname, text="Sync").command = 'SYNC'
+            row.operator(SceneBuildSettingsControl.bl_idname, text="Purge").command = 'PURGE'
+
+            col = layout.column()
+            scene_settings = group.get_active()
+            if scene_settings:
+                box = col.box()
                 sub = box.column()
-                sub.enabled = scene_settings.reduce_to_two_meshes
-                sub.use_property_split = True
-                sub.prop(scene_settings, 'shape_keys_mesh_name', icon="MESH_DATA", text="Shape keys")
-                sub.prop(scene_settings, 'no_shape_keys_mesh_name', icon="MESH_DATA", text="No shape keys")
-            sub.use_property_split = False
-            sub.prop(scene_settings, 'ignore_hidden_objects')
-            sub.operator(BuildAvatarOp.bl_idname)
+                sub.alignment = 'RIGHT'
+                sub.prop(scene_settings, 'reduce_to_two_meshes')
+                if scene_settings.reduce_to_two_meshes:
+                    sub = box.column()
+                    sub.enabled = scene_settings.reduce_to_two_meshes
+                    sub.use_property_split = True
+                    sub.alert = not scene_settings.shape_keys_mesh_name
+                    sub.prop(scene_settings, 'shape_keys_mesh_name', icon="MESH_DATA", text="Shape keys")
+                    sub.alert = not scene_settings.no_shape_keys_mesh_name
+                    sub.prop(scene_settings, 'no_shape_keys_mesh_name', icon="MESH_DATA", text="No shape keys")
+                    sub.alert = False
+                sub.use_property_split = False
+                sub.prop(scene_settings, 'ignore_hidden_objects')
+                sub.operator(BuildAvatarOp.bl_idname)
 
 
 
@@ -642,18 +671,20 @@ class ObjectBuildSettingsUIList(UIList):
         is_orphaned = index_in_scene_settings == -1
 
         row = layout.row(align=True)
+        #row.label(text="", icon="SETTINGS")
         if is_scene_active:
             row_icon = "SCENE_DATA"
         elif is_orphaned:
             #row_icon = "ORPHAN_DATA"
-            # row_icon = "LIBRARY_DATA_BROKEN"
-            # row_icon = "UNLINKED"
+            #row_icon = "LIBRARY_DATA_BROKEN"
+            #row_icon = "UNLINKED"
             row_icon = "GHOST_DISABLED"
+            row.alert = True
         else:
             row_icon = "BLANK1"
-        row.label(text="", icon="SETTINGS")
         # Display the prop of the scene settings if it exists, this simplifies renaming
         row.prop(item if is_orphaned else scene_settings[index_in_scene_settings], 'name_prop', text="", emboss=False, icon=row_icon)
+        row.alert = False
         row.prop(item, "include_in_build", text="")
         #row.alert = True
         #row.enabled = not is_scene_active
@@ -683,14 +714,14 @@ class ObjectPanel(Panel):
         object_settings = group.object_settings
 
         layout = self.layout
-        main_col = layout.column()
+        main_column = layout.column(align=True)
+        main_col = main_column.column()
         # Sync setting and anything else that should be before things
 
-        col = main_col.column()
-        # col.use_property_split = True
-        col.use_property_decorate = True
+        header_col = main_col.column()
+        header_col.use_property_decorate = True
 
-        row = col.row(align=True)
+        row = header_col.row(align=True)
         row.use_property_decorate = False
         row.prop(group, 'sync_active_with_scene', icon="SCENE_DATA", text="")
         row.prop(group, 'sync_active_with_scene', icon="OBJECT_DATA", text="", invert_checkbox=True)
@@ -701,6 +732,7 @@ class ObjectPanel(Panel):
             scene_group = ScenePropertyGroup.get_group(context.scene)
             active_build_settings = scene_group.get_active()
 
+            active_object_settings: Union[ObjectBuildSettings, None]
             if active_build_settings:
                 active_object_settings = object_settings.get(active_build_settings.name)
             else:
@@ -708,48 +740,28 @@ class ObjectPanel(Panel):
                 if scene_group.build_settings:
                     # Only happens if the active index is out of bounds for some reason, since we hide the panel
                     # when there are no Build Settings
-                    col.label(text="Active build settings is out of bounds, this shouldn't normally happen, select one in"
-                                   " the list in the 3D View and the active build settings index will update automatically")
+                    header_col.label(text="Active build settings is out of bounds, this shouldn't normally happen,"
+                                          " select one in the list in the 3D View and the active build settings index"
+                                          " will update automatically")
                     # TODO: Draw button to 'fix' out of bounds index
             if active_object_settings:
                 if active_build_settings:
                     row.separator()
                     row.label(text="", icon="SETTINGS")
                     row.prop(active_build_settings, "name_prop", icon="SCENE_DATA", emboss=False, text="")
+                    row.use_property_split = True
                     row.prop(active_object_settings, "include_in_build", text="")
             else:
                 row.operator(ObjectBuildSettingsControl.bl_idname, text="Add to Avatar Builder", icon="ADD").command = 'ADD'
         else:
             list_row = row.row(align=False)
-            list_row.template_list(ObjectBuildSettingsUIList.bl_idname, "", group, 'object_settings', group, 'object_settings_active_index', rows=3)
+            list_row.template_list(ObjectBuildSettingsUIList.bl_idname, "", group, 'object_settings', group,'object_settings_active_index', rows=3)
             vertical_buttons_col = row.column(align=True)
             vertical_buttons_col.operator(ObjectBuildSettingsControl.bl_idname, text="", icon="ADD").command = 'ADD'
             vertical_buttons_col.operator(ObjectBuildSettingsControl.bl_idname, text="", icon="REMOVE").command = 'REMOVE'
             vertical_buttons_col.separator()
-            # vertical_buttons_col.operator(ObjectBuildSettingsControl.bl_idname, text="", icon="UV_SYNC_SELECT").command = 'SYNC'
-            # vertical_buttons_col.operator(ObjectBuildSettingsControl.bl_idname, text="", icon="TRIA_UP_BAR").command = 'TOP'
             vertical_buttons_col.operator(ObjectBuildSettingsControl.bl_idname, text="", icon="TRIA_UP").command = 'UP'
             vertical_buttons_col.operator(ObjectBuildSettingsControl.bl_idname, text="", icon="TRIA_DOWN").command = 'DOWN'
-            # vertical_buttons_col.operator(ObjectBuildSettingsControl.bl_idname, text="", icon="TRIA_DOWN_BAR").command = 'BOTTOM'
-            # sub_col_no_decorate = col.column(align=True)
-            # sub_col_no_decorate.use_property_split = False
-            #
-            # # TODO: Needs its own UIList class that highlights the currently active build settings, if it exists in the
-            # #  list
-            # sub_col_no_decorate.template_list(ObjectBuildSettingsUIList.bl_idname, "", group, 'object_settings', group, 'object_settings_active_index', rows=3)
-            # buttons_col = col.column(align=True)
-            # row = buttons_col.row(align=True)
-            # row.operator(ObjectBuildSettingsControl.bl_idname, text="Add").command = 'ADD'
-            # row.operator(ObjectBuildSettingsControl.bl_idname, text="Remove").command = 'REMOVE'
-            # row = buttons_col.row(align=True)
-            # row.operator(ObjectBuildSettingsControl.bl_idname, text="Up").command = 'UP'
-            # row.operator(ObjectBuildSettingsControl.bl_idname, text="Down").command = 'DOWN'
-            # row = buttons_col.row(align=True)
-            # row.operator(ObjectBuildSettingsControl.bl_idname, text="Top").command = 'TOP'
-            # row.operator(ObjectBuildSettingsControl.bl_idname, text="Bottom").command = 'BOTTOM'
-            # TODO: Sync is only useful if forced sync is turned off, so only display it in those cases
-            # row = buttons_col.row(align=True)
-            # row.operator(ObjectBuildSettingsControl.bl_idname, text="Sync").command = 'SYNC'
 
             object_settings_active_index = group.object_settings_active_index
             num_object_settings = len(object_settings)
@@ -758,15 +770,32 @@ class ObjectPanel(Panel):
             else:
                 active_object_settings = None
 
-        # TODO: Now display props for active_object_settings
         if active_object_settings:
-            enabled = active_object_settings.include_in_build
-            properties_col = layout.column(align=True)
+            # Extra col for label when disabled
+            if not active_object_settings.include_in_build:
+                disabled_label_col = main_col.column()
+                disabled_label_col.alignment = 'RIGHT'
+                disabled_label_col.use_property_split = True
+                disabled_label_col.use_property_decorate = True
+                disabled_label_col.label(text="Disabled. Won't be included in build")
+
+            # Display the properties for the active settings
+            settings_enabled = active_object_settings.include_in_build
+            properties_col = main_column.column(align=True)
             properties_col.use_property_split = True
             properties_col.use_property_decorate = False
+            properties_col.enabled = settings_enabled
+
+            ################
+            # General Object
+            ################
+            object_box = properties_col.box()
+            object_box_col = object_box.column()
+            object_box_col.label(text="Object", icon="OBJECT_DATA")
+            object_box_col.prop(active_object_settings, 'target_object_name')
+
             if obj.type == 'ARMATURE':
                 armature_box = properties_col.box()
-                armature_box.enabled = enabled
                 armature_box_col = armature_box.column()
                 armature_box_col.label(text="Pose", icon="ARMATURE_DATA")
 
@@ -797,19 +826,23 @@ class ObjectPanel(Panel):
                         'armature_export_pose_library_marker', icon="DOT")
 
             elif obj.type == 'MESH':
-                mesh_general_box = properties_col.box()
-                mesh_general_box.enabled = enabled
+                ###############
+                # Vertex Groups
+                ###############
+                if obj.vertex_groups:
+                    vertex_groups_box = properties_col.box()
 
-                mesh_general_box_col = mesh_general_box.column()
-                mesh_general_box_col.label(text="Mesh", icon="OBJECT_DATA")
-                mesh_general_box_col.prop(active_object_settings, 'target_mesh_name')
-                non_deform_vertex_group_clear_row = mesh_general_box_col.row()
-                non_deform_vertex_group_clear_row.prop(active_object_settings, 'remove_non_deform_vertex_groups')
-                non_deform_vertex_group_clear_row.label(icon="GROUP_VERTEX")
+                    vertex_groups_box_col = vertex_groups_box.column()
+                    vertex_groups_box_col.label(text="Vertex Groups", icon="GROUP_VERTEX")
+                    vertex_groups_box_col.prop(active_object_settings, 'remove_non_deform_vertex_groups')
+                    # TODO: Remove empty vertex groups? Probably not very important, since it won't result in much
+                    #  extra data, assuming they even get exported at all
 
+                ############
+                # Shape keys
+                ############
                 if obj.data.shape_keys and len(obj.data.shape_keys.key_blocks) > 1:
                     shape_keys_box = properties_col.box()
-                    shape_keys_box.enabled = enabled
                     shape_keys_box_col = shape_keys_box.column()
                     shape_keys_box_col.label(text="Shape keys", icon="SHAPEKEY_DATA")
                     # ------------------------
@@ -833,31 +866,50 @@ class ObjectPanel(Panel):
                     else:  # merge_setting == 'COMMON_BEFORE_LAST' or merge_setting == 'COMMON_AFTER_FIRST':
                         text_label = "Merge Delimiter"
 
+                    merge_col.alert = merge_col.enabled and not active_object_settings.merge_shape_keys_prefix_suffix
                     merge_col.prop(active_object_settings, 'merge_shape_keys_prefix_suffix', text=text_label)
+                    merge_col.alert = False
                     merge_col.prop(active_object_settings, 'merge_shape_keys_pattern')
                     merge_col.prop(active_object_settings, 'merge_shape_keys_ignore_prefix')
                     # ------------------------
 
+                ################
+                # Mesh Modifiers
+                ################
+                mesh_modifiers_box = properties_col.box()
+                mesh_modifiers_box_col = mesh_modifiers_box.column(align=True)
+                mesh_modifiers_box_col.label(text="Modifiers", icon="MODIFIER_DATA")
+                if active_object_settings.apply_non_armature_modifiers == 'APPLY_KEEP_SHAPES_GRET':
+                    gret_available = check_gret_shape_key_apply_modifiers()
+                    mesh_modifiers_box_col.alert = not gret_available
+                    mesh_modifiers_box_col.prop(active_object_settings, 'apply_non_armature_modifiers')
+
+                    if not gret_available:
+                        if gret_available is None:
+                            mesh_modifiers_box_col.label("Gret addon operator not found")
+                        else:
+                            mesh_modifiers_box_col.label("Unsupported version of Gret")
+                    mesh_modifiers_box_col.alert = False
+                else:
+                    mesh_modifiers_box_col.prop(active_object_settings, 'apply_non_armature_modifiers')
+
+                ################
+                # Mesh UV Layers
+                ################
                 if obj.data.uv_layers:
                     uv_layers_box = properties_col.box()
                     uv_layers_box_col = uv_layers_box.column()
                     uv_layers_box_col.label(text="UV Layers", icon="GROUP_UVS")
                     uv_layers_box_col.prop_search(active_object_settings, 'keep_only_uv_map', obj.data, 'uv_layers', icon="GROUP_UVS")
 
+                ################
+                # Mesh Materials
+                ################
                 if obj.data.materials:
                     materials_box = properties_col.box()
                     materials_box_col = materials_box.column()
                     materials_box_col.label(text="Materials", icon="MATERIAL_DATA")
                     materials_box_col.prop_search(active_object_settings, 'keep_only_material', obj.data, 'materials')
-
-                ################
-                # Mesh Modifiers
-                ################
-                mesh_modifiers_box = properties_col.box()
-                mesh_modifiers_box.enabled = enabled
-                mesh_modifiers_box_col = mesh_modifiers_box.column(align=True)
-                mesh_modifiers_box_col.label(text="Modifiers", icon="MODIFIER_DATA")
-                mesh_modifiers_box_col.prop(active_object_settings, 'apply_non_armature_modifiers')
 
             # all_icons = ['NONE', 'QUESTION', 'ERROR', 'CANCEL', 'TRIA_RIGHT', 'TRIA_DOWN', 'TRIA_LEFT', 'TRIA_UP', 'ARROW_LEFTRIGHT', 'PLUS', 'DISCLOSURE_TRI_RIGHT', 'DISCLOSURE_TRI_DOWN', 'RADIOBUT_OFF', 'RADIOBUT_ON', 'MENU_PANEL', 'BLENDER', 'GRIP', 'DOT', 'COLLAPSEMENU', 'X', 'DUPLICATE', 'TRASH', 'COLLECTION_NEW', 'OPTIONS', 'NODE', 'NODE_SEL', 'WINDOW', 'WORKSPACE', 'RIGHTARROW_THIN', 'BORDERMOVE', 'VIEWZOOM', 'ADD', 'REMOVE', 'PANEL_CLOSE', 'COPY_ID', 'EYEDROPPER', 'CHECKMARK', 'AUTO', 'CHECKBOX_DEHLT', 'CHECKBOX_HLT', 'UNLOCKED', 'LOCKED', 'UNPINNED', 'PINNED', 'SCREEN_BACK', 'RIGHTARROW', 'DOWNARROW_HLT', 'FCURVE_SNAPSHOT', 'OBJECT_HIDDEN', 'TOPBAR', 'STATUSBAR', 'PLUGIN', 'HELP', 'GHOST_ENABLED', 'COLOR', 'UNLINKED', 'LINKED', 'HAND', 'ZOOM_ALL', 'ZOOM_SELECTED', 'ZOOM_PREVIOUS', 'ZOOM_IN', 'ZOOM_OUT', 'DRIVER_DISTANCE', 'DRIVER_ROTATIONAL_DIFFERENCE', 'DRIVER_TRANSFORM', 'FREEZE', 'STYLUS_PRESSURE', 'GHOST_DISABLED', 'FILE_NEW', 'FILE_TICK', 'QUIT', 'URL', 'RECOVER_LAST', 'THREE_DOTS', 'FULLSCREEN_ENTER', 'FULLSCREEN_EXIT', 'BRUSHES_ALL', 'LIGHT', 'MATERIAL', 'TEXTURE', 'ANIM', 'WORLD', 'SCENE', 'OUTPUT', 'SCRIPT', 'PARTICLES', 'PHYSICS', 'SPEAKER', 'TOOL_SETTINGS', 'SHADERFX', 'MODIFIER', 'BLANK1', 'FAKE_USER_OFF', 'FAKE_USER_ON', 'VIEW3D', 'GRAPH', 'OUTLINER', 'PROPERTIES', 'FILEBROWSER', 'IMAGE', 'INFO', 'SEQUENCE', 'TEXT', 'SPREADSHEET', 'SOUND', 'ACTION', 'NLA', 'PREFERENCES', 'TIME', 'NODETREE', 'CONSOLE', 'TRACKER', 'ASSET_MANAGER', 'NODE_COMPOSITING', 'NODE_TEXTURE', 'NODE_MATERIAL', 'UV', 'OBJECT_DATAMODE', 'EDITMODE_HLT', 'UV_DATA', 'VPAINT_HLT', 'TPAINT_HLT', 'WPAINT_HLT', 'SCULPTMODE_HLT', 'POSE_HLT', 'PARTICLEMODE', 'TRACKING', 'TRACKING_BACKWARDS', 'TRACKING_FORWARDS', 'TRACKING_BACKWARDS_SINGLE', 'TRACKING_FORWARDS_SINGLE', 'TRACKING_CLEAR_BACKWARDS', 'TRACKING_CLEAR_FORWARDS', 'TRACKING_REFINE_BACKWARDS', 'TRACKING_REFINE_FORWARDS', 'SCENE_DATA', 'RENDERLAYERS', 'WORLD_DATA', 'OBJECT_DATA', 'MESH_DATA', 'CURVE_DATA', 'META_DATA', 'LATTICE_DATA', 'LIGHT_DATA', 'MATERIAL_DATA', 'TEXTURE_DATA', 'ANIM_DATA', 'CAMERA_DATA', 'PARTICLE_DATA', 'LIBRARY_DATA_DIRECT', 'GROUP', 'ARMATURE_DATA', 'COMMUNITY', 'BONE_DATA', 'CONSTRAINT', 'SHAPEKEY_DATA', 'CONSTRAINT_BONE', 'CAMERA_STEREO', 'PACKAGE', 'UGLYPACKAGE', 'EXPERIMENTAL', 'BRUSH_DATA', 'IMAGE_DATA', 'FILE', 'FCURVE', 'FONT_DATA', 'RENDER_RESULT', 'SURFACE_DATA', 'EMPTY_DATA', 'PRESET', 'RENDER_ANIMATION', 'RENDER_STILL', 'LIBRARY_DATA_BROKEN', 'BOIDS', 'STRANDS', 'GREASEPENCIL', 'LINE_DATA', 'LIBRARY_DATA_OVERRIDE', 'GROUP_BONE', 'GROUP_VERTEX', 'GROUP_VCOL', 'GROUP_UVS', 'FACE_MAPS', 'RNA', 'RNA_ADD', 'MOUSE_LMB', 'MOUSE_MMB', 'MOUSE_RMB', 'MOUSE_MOVE', 'MOUSE_LMB_DRAG', 'MOUSE_MMB_DRAG', 'MOUSE_RMB_DRAG', 'MEMORY', 'PRESET_NEW', 'DECORATE', 'DECORATE_KEYFRAME', 'DECORATE_ANIMATE', 'DECORATE_DRIVER', 'DECORATE_LINKED', 'DECORATE_LIBRARY_OVERRIDE', 'DECORATE_UNLOCKED', 'DECORATE_LOCKED', 'DECORATE_OVERRIDE', 'FUND', 'TRACKER_DATA', 'HEART', 'ORPHAN_DATA', 'USER', 'SYSTEM', 'SETTINGS', 'OUTLINER_OB_EMPTY', 'OUTLINER_OB_MESH', 'OUTLINER_OB_CURVE', 'OUTLINER_OB_LATTICE', 'OUTLINER_OB_META', 'OUTLINER_OB_LIGHT', 'OUTLINER_OB_CAMERA', 'OUTLINER_OB_ARMATURE', 'OUTLINER_OB_FONT', 'OUTLINER_OB_SURFACE', 'OUTLINER_OB_SPEAKER', 'OUTLINER_OB_FORCE_FIELD', 'OUTLINER_OB_GROUP_INSTANCE', 'OUTLINER_OB_GREASEPENCIL', 'OUTLINER_OB_LIGHTPROBE', 'OUTLINER_OB_IMAGE', 'OUTLINER_COLLECTION', 'RESTRICT_COLOR_OFF', 'RESTRICT_COLOR_ON', 'HIDE_ON', 'HIDE_OFF', 'RESTRICT_SELECT_ON', 'RESTRICT_SELECT_OFF', 'RESTRICT_RENDER_ON', 'RESTRICT_RENDER_OFF', 'RESTRICT_INSTANCED_OFF', 'OUTLINER_DATA_EMPTY', 'OUTLINER_DATA_MESH', 'OUTLINER_DATA_CURVE', 'OUTLINER_DATA_LATTICE', 'OUTLINER_DATA_META', 'OUTLINER_DATA_LIGHT', 'OUTLINER_DATA_CAMERA', 'OUTLINER_DATA_ARMATURE', 'OUTLINER_DATA_FONT', 'OUTLINER_DATA_SURFACE', 'OUTLINER_DATA_SPEAKER', 'OUTLINER_DATA_LIGHTPROBE', 'OUTLINER_DATA_GP_LAYER', 'OUTLINER_DATA_GREASEPENCIL', 'GP_SELECT_POINTS', 'GP_SELECT_STROKES', 'GP_MULTIFRAME_EDITING', 'GP_ONLY_SELECTED', 'GP_SELECT_BETWEEN_STROKES', 'MODIFIER_OFF', 'MODIFIER_ON', 'ONIONSKIN_OFF', 'ONIONSKIN_ON', 'RESTRICT_VIEW_ON', 'RESTRICT_VIEW_OFF', 'RESTRICT_INSTANCED_ON', 'MESH_PLANE', 'MESH_CUBE', 'MESH_CIRCLE', 'MESH_UVSPHERE', 'MESH_ICOSPHERE', 'MESH_GRID', 'MESH_MONKEY', 'MESH_CYLINDER', 'MESH_TORUS', 'MESH_CONE', 'MESH_CAPSULE', 'EMPTY_SINGLE_ARROW', 'LIGHT_POINT', 'LIGHT_SUN', 'LIGHT_SPOT', 'LIGHT_HEMI', 'LIGHT_AREA', 'CUBE', 'SPHERE', 'CONE', 'META_PLANE', 'META_CUBE', 'META_BALL', 'META_ELLIPSOID', 'META_CAPSULE', 'SURFACE_NCURVE', 'SURFACE_NCIRCLE', 'SURFACE_NSURFACE', 'SURFACE_NCYLINDER', 'SURFACE_NSPHERE', 'SURFACE_NTORUS', 'EMPTY_AXIS', 'STROKE', 'EMPTY_ARROWS', 'CURVE_BEZCURVE', 'CURVE_BEZCIRCLE', 'CURVE_NCURVE', 'CURVE_NCIRCLE', 'CURVE_PATH', 'LIGHTPROBE_CUBEMAP', 'LIGHTPROBE_PLANAR', 'LIGHTPROBE_GRID', 'COLOR_RED', 'COLOR_GREEN', 'COLOR_BLUE', 'TRIA_RIGHT_BAR', 'TRIA_DOWN_BAR', 'TRIA_LEFT_BAR', 'TRIA_UP_BAR', 'FORCE_FORCE', 'FORCE_WIND', 'FORCE_VORTEX', 'FORCE_MAGNETIC', 'FORCE_HARMONIC', 'FORCE_CHARGE', 'FORCE_LENNARDJONES', 'FORCE_TEXTURE', 'FORCE_CURVE', 'FORCE_BOID', 'FORCE_TURBULENCE', 'FORCE_DRAG', 'FORCE_FLUIDFLOW', 'RIGID_BODY', 'RIGID_BODY_CONSTRAINT', 'IMAGE_PLANE', 'IMAGE_BACKGROUND', 'IMAGE_REFERENCE', 'NODE_INSERT_ON', 'NODE_INSERT_OFF', 'NODE_TOP', 'NODE_SIDE', 'NODE_CORNER', 'ANCHOR_TOP', 'ANCHOR_BOTTOM', 'ANCHOR_LEFT', 'ANCHOR_RIGHT', 'ANCHOR_CENTER', 'SELECT_SET', 'SELECT_EXTEND', 'SELECT_SUBTRACT', 'SELECT_INTERSECT', 'SELECT_DIFFERENCE', 'ALIGN_LEFT', 'ALIGN_CENTER', 'ALIGN_RIGHT', 'ALIGN_JUSTIFY', 'ALIGN_FLUSH', 'ALIGN_TOP', 'ALIGN_MIDDLE', 'ALIGN_BOTTOM', 'BOLD', 'ITALIC', 'UNDERLINE', 'SMALL_CAPS', 'CON_ACTION', 'MOD_LENGTH', 'MOD_DASH', 'MOD_LINEART', 'HOLDOUT_OFF', 'HOLDOUT_ON', 'INDIRECT_ONLY_OFF', 'INDIRECT_ONLY_ON', 'CON_CAMERASOLVER', 'CON_FOLLOWTRACK', 'CON_OBJECTSOLVER', 'CON_LOCLIKE', 'CON_ROTLIKE', 'CON_SIZELIKE', 'CON_TRANSLIKE', 'CON_DISTLIMIT', 'CON_LOCLIMIT', 'CON_ROTLIMIT', 'CON_SIZELIMIT', 'CON_SAMEVOL', 'CON_TRANSFORM', 'CON_TRANSFORM_CACHE', 'CON_CLAMPTO', 'CON_KINEMATIC', 'CON_LOCKTRACK', 'CON_SPLINEIK', 'CON_STRETCHTO', 'CON_TRACKTO', 'CON_ARMATURE', 'CON_CHILDOF', 'CON_FLOOR', 'CON_FOLLOWPATH', 'CON_PIVOT', 'CON_SHRINKWRAP', 'MODIFIER_DATA', 'MOD_WAVE', 'MOD_BUILD', 'MOD_DECIM', 'MOD_MIRROR', 'MOD_SOFT', 'MOD_SUBSURF', 'HOOK', 'MOD_PHYSICS', 'MOD_PARTICLES', 'MOD_BOOLEAN', 'MOD_EDGESPLIT', 'MOD_ARRAY', 'MOD_UVPROJECT', 'MOD_DISPLACE', 'MOD_CURVE', 'MOD_LATTICE', 'MOD_TINT', 'MOD_ARMATURE', 'MOD_SHRINKWRAP', 'MOD_CAST', 'MOD_MESHDEFORM', 'MOD_BEVEL', 'MOD_SMOOTH', 'MOD_SIMPLEDEFORM', 'MOD_MASK', 'MOD_CLOTH', 'MOD_EXPLODE', 'MOD_FLUIDSIM', 'MOD_MULTIRES', 'MOD_FLUID', 'MOD_SOLIDIFY', 'MOD_SCREW', 'MOD_VERTEX_WEIGHT', 'MOD_DYNAMICPAINT', 'MOD_REMESH', 'MOD_OCEAN', 'MOD_WARP', 'MOD_SKIN', 'MOD_TRIANGULATE', 'MOD_WIREFRAME', 'MOD_DATA_TRANSFER', 'MOD_NORMALEDIT', 'MOD_PARTICLE_INSTANCE', 'MOD_HUE_SATURATION', 'MOD_NOISE', 'MOD_OFFSET', 'MOD_SIMPLIFY', 'MOD_THICKNESS', 'MOD_INSTANCE', 'MOD_TIME', 'MOD_OPACITY', 'REC', 'PLAY', 'FF', 'REW', 'PAUSE', 'PREV_KEYFRAME', 'NEXT_KEYFRAME', 'PLAY_SOUND', 'PLAY_REVERSE', 'PREVIEW_RANGE', 'ACTION_TWEAK', 'PMARKER_ACT', 'PMARKER_SEL', 'PMARKER', 'MARKER_HLT', 'MARKER', 'KEYFRAME_HLT', 'KEYFRAME', 'KEYINGSET', 'KEY_DEHLT', 'KEY_HLT', 'MUTE_IPO_OFF', 'MUTE_IPO_ON', 'DRIVER', 'SOLO_OFF', 'SOLO_ON', 'FRAME_PREV', 'FRAME_NEXT', 'NLA_PUSHDOWN', 'IPO_CONSTANT', 'IPO_LINEAR', 'IPO_BEZIER', 'IPO_SINE', 'IPO_QUAD', 'IPO_CUBIC', 'IPO_QUART', 'IPO_QUINT', 'IPO_EXPO', 'IPO_CIRC', 'IPO_BOUNCE', 'IPO_ELASTIC', 'IPO_BACK', 'IPO_EASE_IN', 'IPO_EASE_OUT', 'IPO_EASE_IN_OUT', 'NORMALIZE_FCURVES', 'VERTEXSEL', 'EDGESEL', 'FACESEL', 'CURSOR', 'PIVOT_BOUNDBOX', 'PIVOT_CURSOR', 'PIVOT_INDIVIDUAL', 'PIVOT_MEDIAN', 'PIVOT_ACTIVE', 'CENTER_ONLY', 'ROOTCURVE', 'SMOOTHCURVE', 'SPHERECURVE', 'INVERSESQUARECURVE', 'SHARPCURVE', 'LINCURVE', 'NOCURVE', 'RNDCURVE', 'PROP_OFF', 'PROP_ON', 'PROP_CON', 'PROP_PROJECTED', 'PARTICLE_POINT', 'PARTICLE_TIP', 'PARTICLE_PATH', 'SNAP_FACE_CENTER', 'SNAP_PERPENDICULAR', 'SNAP_MIDPOINT', 'SNAP_OFF', 'SNAP_ON', 'SNAP_NORMAL', 'SNAP_GRID', 'SNAP_VERTEX', 'SNAP_EDGE', 'SNAP_FACE', 'SNAP_VOLUME', 'SNAP_INCREMENT', 'STICKY_UVS_LOC', 'STICKY_UVS_DISABLE', 'STICKY_UVS_VERT', 'CLIPUV_DEHLT', 'CLIPUV_HLT', 'SNAP_PEEL_OBJECT', 'GRID', 'OBJECT_ORIGIN', 'ORIENTATION_GLOBAL', 'ORIENTATION_GIMBAL', 'ORIENTATION_LOCAL', 'ORIENTATION_NORMAL', 'ORIENTATION_VIEW', 'COPYDOWN', 'PASTEDOWN', 'PASTEFLIPUP', 'PASTEFLIPDOWN', 'VIS_SEL_11', 'VIS_SEL_10', 'VIS_SEL_01', 'VIS_SEL_00', 'AUTOMERGE_OFF', 'AUTOMERGE_ON', 'UV_VERTEXSEL', 'UV_EDGESEL', 'UV_FACESEL', 'UV_ISLANDSEL', 'UV_SYNC_SELECT', 'GP_CAPS_FLAT', 'GP_CAPS_ROUND', 'FIXED_SIZE', 'TRANSFORM_ORIGINS', 'GIZMO', 'ORIENTATION_CURSOR', 'NORMALS_VERTEX', 'NORMALS_FACE', 'NORMALS_VERTEX_FACE', 'SHADING_BBOX', 'SHADING_WIRE', 'SHADING_SOLID', 'SHADING_RENDERED', 'SHADING_TEXTURE', 'OVERLAY', 'XRAY', 'LOCKVIEW_OFF', 'LOCKVIEW_ON', 'AXIS_SIDE', 'AXIS_FRONT', 'AXIS_TOP', 'LAYER_USED', 'LAYER_ACTIVE', 'OUTLINER_OB_CURVES', 'OUTLINER_DATA_CURVES', 'CURVES_DATA', 'OUTLINER_OB_POINTCLOUD', 'OUTLINER_DATA_POINTCLOUD', 'POINTCLOUD_DATA', 'OUTLINER_OB_VOLUME', 'OUTLINER_DATA_VOLUME', 'VOLUME_DATA', 'CURRENT_FILE', 'HOME', 'DOCUMENTS', 'TEMP', 'SORTALPHA', 'SORTBYEXT', 'SORTTIME', 'SORTSIZE', 'SHORTDISPLAY', 'LONGDISPLAY', 'IMGDISPLAY', 'BOOKMARKS', 'FONTPREVIEW', 'FILTER', 'NEWFOLDER', 'FOLDER_REDIRECT', 'FILE_PARENT', 'FILE_REFRESH', 'FILE_FOLDER', 'FILE_BLANK', 'FILE_BLEND', 'FILE_IMAGE', 'FILE_MOVIE', 'FILE_SCRIPT', 'FILE_SOUND', 'FILE_FONT', 'FILE_TEXT', 'SORT_DESC', 'SORT_ASC', 'LINK_BLEND', 'APPEND_BLEND', 'IMPORT', 'EXPORT', 'LOOP_BACK', 'LOOP_FORWARDS', 'BACK', 'FORWARD', 'FILE_ARCHIVE', 'FILE_CACHE', 'FILE_VOLUME', 'FILE_3D', 'FILE_HIDDEN', 'FILE_BACKUP', 'DISK_DRIVE', 'MATPLANE', 'MATSPHERE', 'MATCUBE', 'MONKEY', 'CURVES', 'ALIASED', 'ANTIALIASED', 'MAT_SPHERE_SKY', 'MATSHADERBALL', 'MATCLOTH', 'MATFLUID', 'WORDWRAP_OFF', 'WORDWRAP_ON', 'SYNTAX_OFF', 'SYNTAX_ON', 'LINENUMBERS_OFF', 'LINENUMBERS_ON', 'SCRIPTPLUGINS', 'DISC', 'DESKTOP', 'EXTERNAL_DRIVE', 'NETWORK_DRIVE', 'SEQ_SEQUENCER', 'SEQ_PREVIEW', 'SEQ_LUMA_WAVEFORM', 'SEQ_CHROMA_SCOPE', 'SEQ_HISTOGRAM', 'SEQ_SPLITVIEW', 'SEQ_STRIP_META', 'SEQ_STRIP_DUPLICATE', 'IMAGE_RGB', 'IMAGE_RGB_ALPHA', 'IMAGE_ALPHA', 'IMAGE_ZDEPTH', 'HANDLE_AUTOCLAMPED', 'HANDLE_AUTO', 'HANDLE_ALIGNED', 'HANDLE_VECTOR', 'HANDLE_FREE', 'VIEW_PERSPECTIVE', 'VIEW_ORTHO', 'VIEW_CAMERA', 'VIEW_PAN', 'VIEW_ZOOM', 'BRUSH_BLOB', 'BRUSH_BLUR', 'BRUSH_CLAY', 'BRUSH_CLAY_STRIPS', 'BRUSH_CLONE', 'BRUSH_CREASE', 'BRUSH_FILL', 'BRUSH_FLATTEN', 'BRUSH_GRAB', 'BRUSH_INFLATE', 'BRUSH_LAYER', 'BRUSH_MASK', 'BRUSH_MIX', 'BRUSH_NUDGE', 'BRUSH_PINCH', 'BRUSH_SCRAPE', 'BRUSH_SCULPT_DRAW', 'BRUSH_SMEAR', 'BRUSH_SMOOTH', 'BRUSH_SNAKE_HOOK', 'BRUSH_SOFTEN', 'BRUSH_TEXDRAW', 'BRUSH_TEXFILL', 'BRUSH_TEXMASK', 'BRUSH_THUMB', 'BRUSH_ROTATE', 'GPBRUSH_SMOOTH', 'GPBRUSH_THICKNESS', 'GPBRUSH_STRENGTH', 'GPBRUSH_GRAB', 'GPBRUSH_PUSH', 'GPBRUSH_TWIST', 'GPBRUSH_PINCH', 'GPBRUSH_RANDOMIZE', 'GPBRUSH_CLONE', 'GPBRUSH_WEIGHT', 'GPBRUSH_PENCIL', 'GPBRUSH_PEN', 'GPBRUSH_INK', 'GPBRUSH_INKNOISE', 'GPBRUSH_BLOCK', 'GPBRUSH_MARKER', 'GPBRUSH_FILL', 'GPBRUSH_AIRBRUSH', 'GPBRUSH_CHISEL', 'GPBRUSH_ERASE_SOFT', 'GPBRUSH_ERASE_HARD', 'GPBRUSH_ERASE_STROKE', 'KEYTYPE_KEYFRAME_VEC', 'KEYTYPE_BREAKDOWN_VEC', 'KEYTYPE_EXTREME_VEC', 'KEYTYPE_JITTER_VEC', 'KEYTYPE_MOVING_HOLD_VEC', 'HANDLETYPE_FREE_VEC', 'HANDLETYPE_ALIGNED_VEC', 'HANDLETYPE_VECTOR_VEC', 'HANDLETYPE_AUTO_VEC', 'HANDLETYPE_AUTO_CLAMP_VEC', 'COLORSET_01_VEC', 'COLORSET_02_VEC', 'COLORSET_03_VEC', 'COLORSET_04_VEC', 'COLORSET_05_VEC', 'COLORSET_06_VEC', 'COLORSET_07_VEC', 'COLORSET_08_VEC', 'COLORSET_09_VEC', 'COLORSET_10_VEC', 'COLORSET_11_VEC', 'COLORSET_12_VEC', 'COLORSET_13_VEC', 'COLORSET_14_VEC', 'COLORSET_15_VEC', 'COLORSET_16_VEC', 'COLORSET_17_VEC', 'COLORSET_18_VEC', 'COLORSET_19_VEC', 'COLORSET_20_VEC', 'COLLECTION_COLOR_01', 'COLLECTION_COLOR_02', 'COLLECTION_COLOR_03', 'COLLECTION_COLOR_04', 'COLLECTION_COLOR_05', 'COLLECTION_COLOR_06', 'COLLECTION_COLOR_07', 'COLLECTION_COLOR_08', 'SEQUENCE_COLOR_01', 'SEQUENCE_COLOR_02', 'SEQUENCE_COLOR_03', 'SEQUENCE_COLOR_04', 'SEQUENCE_COLOR_05', 'SEQUENCE_COLOR_06', 'SEQUENCE_COLOR_07', 'SEQUENCE_COLOR_08', 'SEQUENCE_COLOR_09', 'LIBRARY_DATA_INDIRECT', 'LIBRARY_DATA_OVERRIDE_NONEDITABLE', 'EVENT_A', 'EVENT_B', 'EVENT_C', 'EVENT_D', 'EVENT_E', 'EVENT_F', 'EVENT_G', 'EVENT_H', 'EVENT_I', 'EVENT_J', 'EVENT_K', 'EVENT_L', 'EVENT_M', 'EVENT_N', 'EVENT_O', 'EVENT_P', 'EVENT_Q', 'EVENT_R', 'EVENT_S', 'EVENT_T', 'EVENT_U', 'EVENT_V', 'EVENT_W', 'EVENT_X', 'EVENT_Y', 'EVENT_Z', 'EVENT_SHIFT', 'EVENT_CTRL', 'EVENT_ALT', 'EVENT_OS', 'EVENT_F1', 'EVENT_F2', 'EVENT_F3', 'EVENT_F4', 'EVENT_F5', 'EVENT_F6', 'EVENT_F7', 'EVENT_F8', 'EVENT_F9', 'EVENT_F10', 'EVENT_F11', 'EVENT_F12', 'EVENT_ESC', 'EVENT_TAB', 'EVENT_PAGEUP', 'EVENT_PAGEDOWN', 'EVENT_RETURN', 'EVENT_SPACEKEY']
             # for icon in all_icons:
@@ -868,7 +920,9 @@ class ObjectPanel(Panel):
 
             if is_synced:
                 #final_col = layout.column()
-                properties_col.operator(ObjectBuildSettingsControl.bl_idname, text="Remove from Avatar Builder", icon="TRASH").command = 'REMOVE'
+                #properties_col.enabled = True
+                final_col = main_column.column(align=True)
+                final_col.operator(ObjectBuildSettingsControl.bl_idname, text="Remove from Avatar Builder", icon="TRASH").command = 'REMOVE'
 
 
 ##################
@@ -923,7 +977,7 @@ class ObjectPropertyGroup(PropertyGroupBase, PropertyGroup):
 
     object_settings: CollectionProperty(type=ObjectBuildSettings)
     object_settings_active_index: IntProperty()
-    sync_active_with_scene: BoolProperty(name="Sync with scene", default=True)
+    sync_active_with_scene: BoolProperty(name="Toggle scene sync", default=True)
 
     def get_active(self) -> Union[ObjectBuildSettings, None]:
         settings = self.object_settings
@@ -1048,6 +1102,8 @@ def remove_all_uv_layers_except(mesh_obj: Object, *uv_layers: Union[str, MeshUVL
 
 # All modifier types that are eModifierTypeType_NonGeometrical
 # Only these can be applied to meshes with shape keys
+# We should also be able to easily apply any modifiers which are BKE_modifier_is_same_topology too
+# Modifiers that are geometrical, but same topology are the ones that can be applied as shape keys
 _modifiers_eModifierTypeType_NonGeometrical = {
     'DATA_TRANSFER',
     'UV_PROJECT',
@@ -1104,7 +1160,7 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
                                    f" '{obj.name}'")
 
             for key_name in keys_to_delete:
-                obj.shape_key_remove(key_blocks[key_name])
+                obj.shape_key_remove(key_name)
 
             if shape_keys_op == 'APPLY_MIX':
                 # Delete all remaining shape keys, setting the mesh vertices to the current mix of all shape keys
@@ -1290,13 +1346,11 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
         if shape_keys and not can_apply_all_with_shapes:
             if apply_modifiers == 'APPLY_FORCED':
                 # Sync vertices to reference key
-                reference_key_co = np.empty(3 * len(obj.data.vertices), dtype=np.single)
-                obj.data.shape_keys.reference_key.data.foreach_get('co', reference_key_co)
-                obj.data.vertices.foreach_set('co', reference_key_co)
+                reference_key_co = np.empty(3 * len(me.vertices), dtype=np.single)
+                me.shape_keys.reference_key.data.foreach_get('co', reference_key_co)
+                me.vertices.foreach_set('co', reference_key_co)
                 # Delete all shape keys
                 obj.shape_key_clear()
-            elif apply_modifiers == 'APPLY_KEEP_SHAPES_ADDON':
-                raise RuntimeError("Apply with shapes is not yet implemented")
             elif apply_modifiers == 'APPLY_IF_POSSIBLE':
                 print("filtering")
                 # Create a filter to remove all those which can't be applied
@@ -1306,9 +1360,14 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
         # object to the original (and active) scene
         original_scene.collection.objects.link(obj)
         try:
-            for mod_name, _ in mod_name_and_applicable_with_shapes:
-                print(f"Applying modifier {mod_name} to {repr(obj)}")
-                bpy.ops.object.modifier_apply(context_override, modifier=mod_name)
+            if apply_modifiers == 'APPLY_KEEP_SHAPES_GRET':
+                print("Applying modifiers with Gret")
+                run_gret_shape_key_apply_modifiers(obj, {mod_name for mod_name, _ in mod_name_and_applicable_with_shapes})
+                print("Applied modifiers with Gret")
+            else:
+                for mod_name, _ in mod_name_and_applicable_with_shapes:
+                    print(f"Applying modifier {mod_name} to {repr(obj)}")
+                    bpy.ops.object.modifier_apply(context_override, modifier=mod_name)
         finally:
             # Unlink from the collection again
             original_scene.collection.objects.unlink(obj)
@@ -1335,20 +1394,20 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
     # Remove vertex colors
     if settings.remove_vertex_colors:
         # TODO: Support for newer vertex colors via mesh attributes or whatever they're called
-        for vc in obj.data.vertex_colors:
-            obj.data.vertex_colors.remove(vc)
+        for vc in me.vertex_colors:
+            me.vertex_colors.remove(vc)
 
     # Remove all but one material
     if settings.keep_only_material:
         only_material_name = settings.keep_only_material
-        materials = obj.data.materials
+        materials = me.materials
         if only_material_name not in materials:
             raise ValueError(f"Could not find '{only_material_name}' in {repr(materials)}")
         # Iterate in reverse so that indices remain the same for materials we're yet to check
         for idx in reversed(range(len(materials))):
             material = materials[idx]
             if material.name != only_material_name:
-                materials.pop(idx)
+                materials.pop(index=idx)
 
     # TODO: Remap materials
     pass
@@ -1379,9 +1438,102 @@ def build_armature(obj: Object, armature: Armature, settings: ObjectBuildSetting
         # Iterate through all the copy objects, setting preserve_volume on all armature modifiers that use this
         # armature
         for copy_object in copy_objects:
+            mod: Modifier
             for mod in copy_object.modifiers:
-                if mod.type == 'ARMATURE' and mod.object == obj:
+                if isinstance(mod, ArmatureModifier) and mod.object == obj:
                     mod.use_deform_preserve_volume = True
+
+
+class DeleteExportScene(Operator):
+    bl_idname = "delete_export_scene"
+    bl_label = "Delete Export Scene"
+
+    @classmethod
+    def poll(cls, context) -> bool:
+        return ScenePropertyGroup.get_group(context.scene).is_export_scene
+
+    def execute(self, context: Context) -> str:
+        export_scene = context.scene
+        for obj in export_scene.objects:
+            # Deleting data also deletes any objects using that data when do_unlink=True (default value)
+            if obj.type == 'MESH':
+                bpy.data.meshes.remove(obj.data)
+            elif obj.type == 'ARMATURE':
+                bpy.data.armatures.remove(obj.data)
+            else:
+                bpy.data.objects.remove(obj)
+        group = ScenePropertyGroup.get_group(export_scene)
+        original_scene = bpy.data.scenes.get(group.export_scene_source_scene)
+        if original_scene:
+            # Swap to the original scene if it exists
+            context.window.scene = original_scene
+            bpy.data.scenes.remove(export_scene)
+        else:
+            # Otherwise get the first scene that isn't the export scene
+            export_scene_name = export_scene.name
+            first_other_scene = next((s for s in bpy.data.scenes if s.name != export_scene_name), None)
+            if first_other_scene:
+                context.window.scene = first_other_scene
+                bpy.data.scenes.remove(export_scene)
+            else:
+                self.report({'INFO'}, "Could not delete export scene as there are no other scenes!")
+        return {'FINISHED'}
+
+
+def check_gret_shape_key_apply_modifiers():
+    """Returns a truthy value when valid.
+     Returns None when not detected.
+     Returns False when detected, but the version could not be determined."""
+    if hasattr(bpy.ops, 'gret') and hasattr(bpy.ops.gret, 'shape_key_apply_modifiers'):
+        operator = bpy.ops.gret.shape_key_apply_modifiers
+        for prop in operator.get_rna_type().properties:
+            identifier = prop.identifier
+            if identifier == 'modifier_mask':
+                # Not yet implemented
+                # return identifier
+                return False
+            elif identifier == 'keep_modifiers':
+                return identifier
+        return False
+    return None
+
+
+def run_gret_shape_key_apply_modifiers(obj: Object, modifier_names_to_apply: set[str]):
+    gret_check = check_gret_shape_key_apply_modifiers()
+    if gret_check == 'keep_modifiers':
+        # Older version, applies all non-disabled modifiers and modifiers not in our list
+        # Temporarily disable all other modifiers, run the operator and then restore the modifiers that were temporarily
+        # disabled
+        mods_to_enable = []
+        mod: Modifier
+        try:
+            for mod in obj.modifiers:
+                if mod.name in modifier_names_to_apply:
+                    # Normally we're only applying enabled modifiers, but this should make the code more robust
+                    mod.show_viewport = True
+                elif mod.show_viewport:
+                    # Record that this modifier needs to be re-enabled
+                    mods_to_enable.append(mod.name)
+                    # Disable the modifier so that it doesn't get applied
+                    mod.show_viewport = False
+            # Apply all non-disabled modifiers
+            bpy.ops.gret.shape_key_apply_modifiers({'object': obj})
+        finally:
+            # Restore modifiers that were temporarily disabled
+            modifiers = obj.modifiers
+            # The operator isn't our code, so don't assume that all the modifiers we expect to still exist actually do
+            expected_modifier_not_found = []
+            for mod_name in mods_to_enable:
+                mod = modifiers.get(mod_name)
+                if mod:
+                    mod.show_viewport = True
+                else:
+                    expected_modifier_not_found.append(mod_name)
+    elif gret_check == 'modifier_mask':
+        # Newer version, only supports up to 32 modifiers, uses a mask to decide which modifiers to apply
+        raise RuntimeError("Noy yet implemented")
+    else:
+        raise RuntimeError("Gret addon not found or version incompatible")
 
 
 class BuildAvatarOp(Operator):
@@ -1391,7 +1543,12 @@ class BuildAvatarOp(Operator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        return ScenePropertyGroup.get_group(context.scene).get_active() is not None
+        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        if active is None:
+            return False
+        if active.reduce_to_two_meshes and (not active.shape_keys_mesh_name or not active.no_shape_keys_mesh_name):
+            return False
+        return True
 
     def execute(self, context) -> str:
         scene = context.scene
@@ -1434,18 +1591,31 @@ class BuildAvatarOp(Operator):
 
         # Operations within this loop must not cause Object ID blocks to be recreated
         for copy_obj, object_settings in orig_object_to_copy.values():
+            # TODO: Add a setting for whether to parent all meshes to the armature or not
+            first_armature_copy = None
+
             # Set armature modifier objects to the copies
             for mod in copy_obj.modifiers:
                 if mod.type == 'ARMATURE':
                     mod_object = mod.object
                     if mod_object and mod_object in orig_object_to_copy:
-                        mod.object = orig_object_to_copy[mod_object][0]
+                        armature_copy = orig_object_to_copy[mod_object][0]
+                        mod.object = armature_copy
+                        if first_armature_copy is None:
+                            first_armature_copy = armature_copy
 
-            # Swap parents to copy objects
+            # Swap parents to armature or copy object parent if no armature
             orig_parent = copy_obj.parent
             if orig_parent:
                 if orig_parent in orig_object_to_copy:
-                    copy_obj.parent = orig_object_to_copy[orig_parent]
+                    parent_copy = orig_object_to_copy[orig_parent]
+                    if parent_copy == first_armature_copy or first_armature_copy is None:
+                        copy_obj.parent = parent_copy
+                    else:
+                        # Transform must change to remain in the same place, run the operator to reparent and keep
+                        # transforms
+                        override = {'object': first_armature_copy, 'selected_editable_objects': [first_armature_copy, copy_obj]}
+                        bpy.ops.object.parent_set(override, type='OBJECT', keep_transform=True)
                 else:
                     # Not actually sure what the FBX exporter does when the parent object isn't in the current scene
                     # If we can't just leave it alone, we could unparent (if we can use the operator, unparent with
@@ -1461,14 +1631,16 @@ class BuildAvatarOp(Operator):
 
         # TODO: Join meshes by desired name and rename the combined mesh
         join_meshes = defaultdict(list)
+        armatures = []
         # Find the meshes for each name
         for orig_object, (copy_obj, object_settings) in orig_object_to_copy.items():
-            if object_settings.target_mesh_name:
-                name = object_settings.target_mesh_name
-            else:
-                # Otherwise, set to the original name
-                name = orig_object.name
-            join_meshes[name].append((copy_obj, object_settings))
+            if copy_obj.type == 'MESH':
+                if object_settings.target_object_name:
+                    name = object_settings.target_object_name
+                else:
+                    # Otherwise, set to the original name
+                    name = orig_object.name
+                join_meshes[name].append((copy_obj, object_settings))
 
         meshes_after_joining = []
         for name, objects_and_settings in join_meshes.items():
@@ -1481,9 +1653,19 @@ class BuildAvatarOp(Operator):
                 # TODO: Are there other things that we should ensure are set a specific way on the combined mesh?
                 joined_mesh_autosmooth = any(o.data.use_auto_smooth for o in objects)
                 combined_object = objects[0]
+                # The meshes of the objects that join the combined object get left behind, we'll delete them and do so
+                # safely in-case Blender decides to delete them in the future
+                mesh_names_to_delete = [o.data.name for o in objects[1:]]
                 bpy.ops.object.join({'selected_editable_objects': objects, 'active_object': combined_object,
                                      'scene': export_scene})
+                # Delete meshes of objects that have been joined into combined_object
+                for mesh_name in mesh_names_to_delete:
+                    mesh_to_delete = bpy.data.meshes.get(mesh_name)
+                    if mesh_to_delete:
+                        bpy.data.meshes.remove(mesh_to_delete)
+                # Set mesh autosmooth if any of the joined meshes used it
                 combined_object.data.use_auto_smooth = joined_mesh_autosmooth
+                # Append the combined object to the list and whether it should ignore the 'reduce to two' setting
                 meshes_after_joining.append((combined_object, joined_mesh_ignores_reduce_to_two))
             else:
                 # There's only one object, so just get it
@@ -1491,7 +1673,7 @@ class BuildAvatarOp(Operator):
                 meshes_after_joining.append((combined_object, objects_and_settings[0][1].ignore_reduce_to_two_meshes))
 
             # Since we're going to rename the joined copy objects, if an object with the corresponding name already exists,
-            # and it doesn't have a target_mesh_name set, we need to set it to its current name because its name is about to
+            # and it doesn't have a target_object_name set, we need to set it to its current name because its name is about to
             # change
             existing_object: Object
             existing_object = bpy.data.objects.get(name)
@@ -1512,8 +1694,8 @@ class BuildAvatarOp(Operator):
                     existing_object_settings_for_scene.name = active_scene_settings.name
 
                 # Set the target mesh name to its original name
-                if not existing_object_settings_for_scene.target_mesh_name:
-                    existing_object_settings_for_scene.target_mesh_name = name
+                if not existing_object_settings_for_scene.target_object_name:
+                    existing_object_settings_for_scene.target_object_name = name
 
         # Join meshes based on whether they have shape keys
         # The ignore_reduce_to_two_meshes setting will need to only be True if it was True for all the joined meshes
@@ -1534,7 +1716,7 @@ class BuildAvatarOp(Operator):
 
             # TODO: Join the meshes and rename the resulting mesh according to the scene settings.
             #  If an object already exists with the target name, set that object's
-            #  existing_object_settings_for_scene.target_mesh_name to the target name if it hasn't been set to something
+            #  existing_object_settings_for_scene.target_object_name to the target name if it hasn't been set to something
 
         # Swap to the export scene
         context.window.scene = export_scene
@@ -1570,12 +1752,13 @@ bl_classes = [
     SceneBuildSettings,
     ScenePropertyGroup,
     ScenePanel,
+    BuildAvatarOp,
+    DeleteExportScene,
     ObjectBuildSettingsControl,
     ObjectBuildSettingsUIList,
     ObjectBuildSettings,
     ObjectPropertyGroup,
     ObjectPanel,
-    BuildAvatarOp,
 ]
 
 prefix_classes(bl_classes)
@@ -1629,8 +1812,9 @@ def register(is_test=False):
             # noinspection PyBroadException
             try:
                 bpy.types.WindowManager.mysteryem_test_unregister(is_test=True)
-            except Exception:
+            except Exception as e:
                 print("unregistering previous version failed, continuing")
+                print(e)
         # Set unregister function on WindowManager
         # TODO: Make sure this isn't saved in blend files or otherwise persisted
         bpy.types.WindowManager.mysteryem_test_unregister = unregister
@@ -1639,7 +1823,7 @@ def register(is_test=False):
     _register_props()
 
 
-def unregister(is_test=True):
+def unregister(is_test=False):
     if is_test:
         # noinspection PyUnresolvedReferences
         del bpy.types.WindowManager.mysteryem_test_unregister
