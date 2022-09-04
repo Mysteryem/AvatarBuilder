@@ -1812,7 +1812,18 @@ class BuildAvatarOp(Operator):
             if orig_parent:
                 if orig_parent in orig_object_to_helper:
                     parent_copy = orig_object_to_helper[orig_parent].copy_object
-                    copy_obj.parent = parent_copy
+                    # TODO: Why doesn't this work?
+                    # copy_obj.parent = parent_copy
+                    override = {
+                        'object': parent_copy,
+                        # Not sure if the list needs to contain the new parent too, but it would usually be selected
+                        # when re-parenting through the UI
+                        'selected_editable_objects': [parent_copy, copy_obj],
+                        # TODO: Not sure if scene is required, we'll include it anyway
+                        'scene': export_scene,
+                    }
+                    bpy.ops.object.parent_set(override, type='OBJECT', keep_transform=True)
+                    print(f"Swapped parent of copy of {helper.orig_object.name} to copy of {orig_parent.name}")
                 else:
                     # Look for a recursive parent that does have a copy object and reparent to that
                     recursive_parent = orig_parent.parent
@@ -1833,6 +1844,7 @@ class BuildAvatarOp(Operator):
                             'scene': export_scene,
                         }
                         bpy.ops.object.parent_set(override, type='OBJECT', keep_transform=True)
+                        print(f"Swapped parent of copy of {helper.orig_object.name} to copy of its recursive parent {recursive_parent.name}")
                     else:
                         # No recursive parent has a copy object, so clear parent, but keep transforms
                         # Context override to act on only the copy object
@@ -1842,6 +1854,7 @@ class BuildAvatarOp(Operator):
                             'scene': export_scene,
                         }
                         bpy.ops.object.parent_clear(override, type='CLEAR_KEEP_TRANSFORM')
+                        print(f"Remove parent of copy of {helper.orig_object.name}, none of its recursive parents have copy objects")
             else:
                 # No parent to start with, so the copy will remain with no parent
                 pass
