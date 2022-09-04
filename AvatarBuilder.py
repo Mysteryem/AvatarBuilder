@@ -1656,9 +1656,9 @@ class BuildAvatarOp(Operator):
             raise ValueError("Active build settings' name must not be empty")
 
         if active_scene_settings.ignore_hidden_objects:
-            scene_objects_gen = scene.objects
-        else:
             scene_objects_gen = [o for o in scene.objects if not o.hide and not o.hide_viewport]
+        else:
+            scene_objects_gen = scene.objects
 
         # Annotated variables to assist with typing Object.data
         mesh_data: Mesh
