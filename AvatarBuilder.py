@@ -1533,9 +1533,13 @@ class DeleteExportScene(Operator):
 
     def execute(self, context: Context) -> str:
         export_scene = context.scene
+        obj: Object
         for obj in export_scene.objects:
             # Deleting data also deletes any objects using that data when do_unlink=True (default value)
             if obj.type == 'MESH':
+                shape_keys = obj.data.shape_keys
+                if shape_keys:
+                    obj.shape_key_clear()
                 bpy.data.meshes.remove(obj.data)
             elif obj.type == 'ARMATURE':
                 bpy.data.armatures.remove(obj.data)
