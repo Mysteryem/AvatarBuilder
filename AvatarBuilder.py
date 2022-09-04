@@ -1489,9 +1489,7 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
     # There probably shouldn't be an option to turn this off
     # Set custom split normals (so that the current normals are kept when joining other meshes)
     # TODO: We might need to do something when use_auto_smooth is False
-    if me.use_auto_smooth and not me.has_custom_normals:
-        # All zero results in setting automatically from the current auto_smooth settings
-        me.normals_split_custom_set([[0.0, 0.0, 0.0]] * len(me.loops))
+    bpy.ops.mesh.customdata_custom_splitnormals_add({'mesh': me})
 
 
 def build_armature(obj: Object, armature: Armature, settings: ObjectBuildSettings, copy_objects: set[Object]):
