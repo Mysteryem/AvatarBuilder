@@ -1475,6 +1475,14 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
     # TODO: Remap materials
     pass
 
+    # This could be done just prior to joining meshes together, but I think it's ok to do here
+    # There probably shouldn't be an option to turn this off
+    # Set custom split normals (so that the current normals are kept when joining other meshes)
+    # TODO: We might need to do something when use_auto_smooth is False
+    if me.use_auto_smooth and not me.has_custom_normals:
+        # All zero results in setting automatically from the current auto_smooth settings
+        me.normals_split_custom_set([[0.0, 0.0, 0.0]] * len(me.loops))
+
 
 def build_armature(obj: Object, armature: Armature, settings: ObjectBuildSettings, copy_objects: set[Object]):
     export_pose = settings.armature_export_pose
