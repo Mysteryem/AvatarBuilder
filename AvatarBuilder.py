@@ -1,4 +1,5 @@
-from typing import Type, Any, Union, TypeVar, Callable, Annotated
+from typing import Type, Any, Union, TypeVar, Callable
+from dataclasses import dataclass
 from collections import defaultdict
 import numpy as np
 import bpy
@@ -470,6 +471,14 @@ class ObjectBuildSettings(PropertyGroup):
 
     ignore_reduce_to_two_meshes: BoolProperty(default=False)
 
+    # TODO: If the shape key operations were put into a PropertyGroup, we could then have a CollectionProperty where we
+    #  can add as many operations as we want.
+    #  e.g.
+    #  - Add an operation to delete all shape keys before/after <shape key name>
+    #  - Add an operation to delete all shape keys between <shape key 1> <shape key 2>
+    #  - Add an operation to apply one of the different merge operations
+    #  And maybe in the future:
+    #  - Add a special mmd convert, translate and rename conflicts operation
     # Mesh props
     # Keep/Merge(see below)/Apply Mix/Delete-All
     shape_keys_op: EnumProperty(
@@ -701,6 +710,22 @@ class ObjectPanel(Panel):
 
     @classmethod
     def poll(cls, context: Context):
+        # guaranteed to be SpaceProperties by the bl_space_type
+        # noinspection PyTypeChecker
+        space_data: bpy.types.SpaceProperties = context.space_data
+        pin_id = space_data.pin_id
+        if pin_id is not None:
+            # pin object is guaranteed to be an Object because of the bl_context = "object" which says this Panel is
+            # only displayed in the Object Properties tab. The Object Properties tab is not available if Object Data is
+            # pinned
+            obj = pin_id
+        else:
+            obj = context.object
+
+        # TODO: Currently, we're only building these types, should we be including any others?
+        # TODO: Make the set a global variable and uses it elsewhere too
+        if not obj or obj.type not in {'MESH', 'ARMATURE'}:
+            return False
         scene = context.scene
         # Build settings must be non-empty
         # TODO: Should add a 'clean' or 'purge' button to Scene panel that purges non-existent build settings from all
@@ -709,7 +734,14 @@ class ObjectPanel(Panel):
         return ScenePropertyGroup.get_group(scene).build_settings
 
     def draw(self, context: Context):
-        obj = context.object
+        # noinspection PyTypeChecker
+        space_data: bpy.types.SpaceProperties = context.space_data
+        pin_id = space_data.pin_id
+        if pin_id:
+            # poll function has already checked that there's either no pin or that it's an object
+            obj = pin_id
+        else:
+            obj = context.object
         group = ObjectPropertyGroup.get_group(obj)
         object_settings = group.object_settings
 
@@ -979,7 +1011,7 @@ class ObjectPropertyGroup(PropertyGroupBase, PropertyGroup):
     object_settings_active_index: IntProperty()
     sync_active_with_scene: BoolProperty(name="Toggle scene sync", default=True)
 
-    def get_active(self) -> Union[ObjectBuildSettings, None]:
+    def get_active_settings(self) -> Union[ObjectBuildSettings, None]:
         settings = self.object_settings
         active_index = self.object_settings_active_index
         if settings:
@@ -988,7 +1020,7 @@ class ObjectPropertyGroup(PropertyGroupBase, PropertyGroup):
         else:
             return None
 
-    def get_synced(self, scene: Scene) -> Union[ObjectBuildSettings, None]:
+    def get_synced_settings(self, scene: Scene) -> Union[ObjectBuildSettings, None]:
         active_build_settings = ScenePropertyGroup.get_group(scene).get_active()
         if active_build_settings and active_build_settings.name in self.object_settings:
             return self.object_settings[active_build_settings.name]
@@ -1413,7 +1445,7 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
     pass
 
 
-def build_armature(obj: Object, armature: Armature, settings: ObjectBuildSettings, copy_objects: list[Object]):
+def build_armature(obj: Object, armature: Armature, settings: ObjectBuildSettings, copy_objects: set[Object]):
     export_pose = settings.armature_export_pose
     if export_pose == "REST":
         armature.pose_position = 'REST'
@@ -1453,6 +1485,7 @@ class DeleteExportScene(Operator):
         return ScenePropertyGroup.get_group(context.scene).is_export_scene
 
     def execute(self, context: Context) -> str:
+        print("DEBUG 1")
         export_scene = context.scene
         for obj in export_scene.objects:
             # Deleting data also deletes any objects using that data when do_unlink=True (default value)
@@ -1462,21 +1495,41 @@ class DeleteExportScene(Operator):
                 bpy.data.armatures.remove(obj.data)
             else:
                 bpy.data.objects.remove(obj)
+        print("DEBUG 2")
         group = ScenePropertyGroup.get_group(export_scene)
+        print("DEBUG 3")
         original_scene = bpy.data.scenes.get(group.export_scene_source_scene)
+        print("DEBUG 4")
         if original_scene:
+            print("DEBUG 5")
             # Swap to the original scene if it exists
-            context.window.scene = original_scene
+            debug_w = context.window
+            print("DEBUG 5.5")
+            # FIXME: Could it be loading something from the scene causes the crash? Should try without other addons
+            #  enabled
+            debug_w.scene = original_scene
+            print("DEBUG 6")
+            # TODO: Maybe this isn't safe to do when it's the active scene
             bpy.data.scenes.remove(export_scene)
+            print("DEBUG 7")
         else:
+            print("DEBUG 8")
             # Otherwise get the first scene that isn't the export scene
             export_scene_name = export_scene.name
+            print("DEBUG 9")
             first_other_scene = next((s for s in bpy.data.scenes if s.name != export_scene_name), None)
+            print("DEBUG 10")
             if first_other_scene:
+                print("DEBUG 11")
                 context.window.scene = first_other_scene
+                print("DEBUG 12")
                 bpy.data.scenes.remove(export_scene)
             else:
+                print("DEBUG 13")
                 self.report({'INFO'}, "Could not delete export scene as there are no other scenes!")
+                print("DEBUG 14")
+            print("DEBUG 15")
+        print("DEBUG 16")
         return {'FINISHED'}
 
 
@@ -1536,6 +1589,21 @@ def run_gret_shape_key_apply_modifiers(obj: Object, modifier_names_to_apply: set
         raise RuntimeError("Gret addon not found or version incompatible")
 
 
+# TODO: Rename this function to be shorter
+def set_build_name_for_existing_object_about_to_be_renamed(name: str):
+    existing_object: Object = bpy.data.objects.get(name)
+    if existing_object:
+        existing_object_group = ObjectPropertyGroup.get_group(existing_object)
+        existing_object_settings = existing_object_group.object_settings
+        # Iterate through all the build settings on this object, if they don't have a target object name set, then they
+        # would have been using the object's name instead. Since the object's name is about to be changed, the target
+        # object name must be set in order for build behaviour to remain the same.
+        object_build_settings: ObjectBuildSettings
+        for object_build_settings in existing_object_settings:
+            if not object_build_settings.target_object_name:
+                object_build_settings.target_object_name = name
+
+
 class BuildAvatarOp(Operator):
     bl_idname = "build_avatar"
     bl_label = "Build Avatar"
@@ -1555,42 +1623,152 @@ class BuildAvatarOp(Operator):
         active_scene_settings = ScenePropertyGroup.get_group(context.scene).get_active()
 
         export_scene_name = active_scene_settings.name
+        if not export_scene_name:
+            raise ValueError("Active build settings' name must not be empty")
+
+        if active_scene_settings.ignore_hidden_objects:
+            scene_objects_gen = scene.objects
+        else:
+            scene_objects_gen = [o for o in scene.objects if not o.hide and not o.hide_viewport]
+
+        # Annotated variables to assist with typing Object.data
+        mesh_data: Mesh
+        armature_data: Armature
+
+        # Helper class
+        @dataclass
+        class ObjectHelper:
+            orig_object: Object
+            settings: ObjectBuildSettings
+            desired_name: str
+            copy_object: Union[Object, None] = None
+            joined_settings_ignore_reduce_to_two_meshes: Union[bool, None] = None
+
+        objects_for_build: list[ObjectHelper] = []
+
+        allowed_object_types = {'MESH', 'ARMATURE'}
+        for obj in scene_objects_gen:
+            if obj.type in allowed_object_types:
+                group = ObjectPropertyGroup.get_group(obj)
+                object_settings = group.get_synced_settings(scene)
+                if object_settings and object_settings.include_in_build:
+                    desired_name = object_settings.target_object_name
+                    if not desired_name:
+                        desired_name = obj.name
+                    helper_tuple = ObjectHelper(obj, object_settings, desired_name)
+                    objects_for_build.append(helper_tuple)
+
+        # Get desired object names and validate that there won't be any attempt to join Objects of different types
+        desired_name_meshes: dict[str, list[ObjectHelper]] = defaultdict(list)
+        desired_name_armatures: dict[str, list[ObjectHelper]] = defaultdict(list)
+        for helper in objects_for_build:
+            obj = helper.orig_object
+            data = obj.data
+            if isinstance(data, Mesh):
+                name_dict = desired_name_meshes
+            elif isinstance(data, Armature):
+                name_dict = desired_name_armatures
+            else:
+                raise RuntimeError(f"Unexpected data type '{type(data)}' for object '{repr(obj)}' with type"
+                                   f" '{obj.type}'")
+
+            name_dict[helper.desired_name].append(helper)
+
+        name_conflicts = set(desired_name_meshes.keys())
+        name_conflicts.intersection_update(desired_name_armatures.keys())
+        if name_conflicts:
+            conflict_lines: list[str] = []
+            for name in name_conflicts:
+                meshes = [helper.orig_object for helper in desired_name_meshes[name]]
+                armatures = [helper.orig_object for helper in desired_name_armatures[name]]
+                conflict_lines.append(f"Name conflict '{name}':\n\tMeshes: {meshes}\n\tArmatures: {armatures}")
+            conflicts_str = "\n".join(conflict_lines)
+            raise RuntimeError(f"Some meshes and armatures have the same build name, but only objects of the same type"
+                               f" can be combined together. Please change the build name for all objects in one"
+                               f" of the lists for each name conflict:\n{conflicts_str}")
+
+        shape_keys_mesh_name = active_scene_settings.shape_keys_mesh_name
+        no_shape_keys_mesh_name = active_scene_settings.no_shape_keys_mesh_name
+        if active_scene_settings.reduce_to_two_meshes:
+            if not shape_keys_mesh_name:
+                raise ValueError("When reduce to two meshes is enabled, the shape keys mesh name must not be empty")
+            if not no_shape_keys_mesh_name:
+                raise ValueError("When reduce to two meshes is enabled, the no shape keys mesh must not be empty")
+
+            # There may be no name conflicts with the objects being joined, but if we're reducing to two meshes, it's
+            # possible that a mesh that ignores reduce_to_two_meshes has the same name as either the shapekey mesh
+            # or the non-shapekey mesh, which would be another conflict.
+            disallowed_names = {shape_keys_mesh_name, no_shape_keys_mesh_name}
+
+            for disallowed_name in disallowed_names:
+                # Since armatures are unaffected by reduce_to_two_meshes, if there are any with the same name, we have
+                # a conflict
+                if disallowed_name in desired_name_armatures:
+                    armature_helpers = desired_name_armatures[disallowed_name]
+                    armature_object_names = ", ".join(h.orig_object.name for h in armature_helpers)
+                    raise RuntimeError(f"Naming conflict. The armatures [{armature_object_names}] have the build name"
+                                       f" '{disallowed_name}', but it is reserved by one of the meshes used in the"
+                                       f" 'Reduce to two meshes' option."
+                                       f"\nEither change the build name of the armatures or change the mesh name used"
+                                       f" by the 'Reduce to two meshes' option.")
+                # Meshes will be joined into one of the two meshes, unless they have the option enabled that makes them
+                # ignore the reduce operation. We only need to check meshes that ignore that reduce operation.
+                # Note that when meshes are joined by name, if any of them ignore the reduce operation, the joined mesh
+                # will also ignore the reduce operation
+                if disallowed_name in desired_name_meshes:
+                    mesh_helpers = desired_name_meshes[disallowed_name]
+                    # We only need to check meshes which ignore the reduce_to_two option, since other meshes will be
+                    # joined together into one of the reduced meshes
+                    ignoring_mesh_helpers = [h.orig_object.name for h in mesh_helpers if h.settings.ignore_reduce_to_two_meshes]
+                    if ignoring_mesh_helpers:
+                        ignoring_mesh_object_names = ", ".join(ignoring_mesh_helpers)
+                        raise RuntimeError(f"Naming conflict. The meshes [{ignoring_mesh_object_names}] are ignoring"
+                                           f" the 'Reduce to two meshes' option, but have the build name"
+                                           f" '{disallowed_name}'. '{disallowed_name}' is reserved by one of the"
+                                           f" meshes used in the 'Reduce to two meshes' option."
+                                           f"\nEither change the build name of the meshes or change the mesh name used"
+                                           f" by the 'Reduce to two meshes' option.")
+
+        # Creation and modification can now commence as all checks have passed
         export_scene = bpy.data.scenes.new(export_scene_name)
         export_scene_group = ScenePropertyGroup.get_group(export_scene)
         export_scene_group.is_export_scene = True
         export_scene_group.export_scene_source_scene = scene.name
 
-        orig_object_to_copy = {}
-        #old_object_to_copy_names = {}
-        copy_objects = []
-        if active_scene_settings.ignore_hidden_objects:
-            objects_gen = scene.objects
-        else:
-            objects_gen = (o for o in scene.objects if not o.hide and not o.hide_viewport)
+        orig_object_to_helper: dict[Object, ObjectHelper] = {}
+        # TODO: Change to store helpers?
+        copy_objects: set[Object] = set()
+        for helper in objects_for_build:
+            obj = helper.orig_object
+            # Copy object
+            copy_obj = obj.copy()
+            helper.copy_object = copy_obj
+            copy_objects.add(copy_obj)
 
-        for obj in objects_gen:
-            object_settings = ObjectPropertyGroup.get_group(obj).get_synced(scene)
-            if object_settings and object_settings.include_in_build:
-                # Copy object
-                copy_obj = obj.copy()
-                copy_objects.append(copy_obj)
+            # Store mapping from original object to helper for easier access
+            orig_object_to_helper[obj] = helper
+            # TODO: Do we need this?
+            # And the reverse mapping without the data
+            #copy_to_orig_object[copy_obj] = obj
 
-                # Store mapping from old to copy for easier access
-                orig_object_to_copy[obj] = (copy_obj, object_settings)
+            # Copy data (also will make single user any linked data)
+            copy_obj.data = obj.data.copy()
+            # Note that multiple objects can share the same data so there isn't guaranteed to be a 1-1 mapping from
+            # old data to copy data.
+            # i.e., one original data can be used by multiple objects, so that one original data can end up having
+            # multiple copies since we ensure each copied object gets its own data.
 
-                # Copy data (also will make single user any linked data)
-                copy_obj.data = obj.data.copy()
-                # Note that multiple objects can share the same data so there isn't guaranteed to be a 1-1 mapping from
-                # old data to copy data
+            # Add the copy object to the export scene (needed in order to join meshes)
+            export_scene.collection.objects.link(copy_obj)
 
-                # Add the object to the export scene (needed in order to join meshes)
-                export_scene.collection.objects.link(copy_obj)
-
-                # Currently, we don't copy Materials or any other data
-                # We don't do anything else yet to ensure that we fully populate the dictionary before continuing
+            # Currently, we don't copy Materials or any other data
+            # We don't do anything else to each copy object yet to ensure that we fully populate the dictionary before
+            # continuing as some operations will need to get the copy obj of an original object that they are related to
 
         # Operations within this loop must not cause Object ID blocks to be recreated
-        for copy_obj, object_settings in orig_object_to_copy.values():
+        for helper in orig_object_to_helper.values():
+            copy_obj = helper.copy_object
+            object_settings = helper.settings
             # TODO: Add a setting for whether to parent all meshes to the armature or not
             first_armature_copy = None
 
@@ -1598,121 +1776,200 @@ class BuildAvatarOp(Operator):
             for mod in copy_obj.modifiers:
                 if mod.type == 'ARMATURE':
                     mod_object = mod.object
-                    if mod_object and mod_object in orig_object_to_copy:
-                        armature_copy = orig_object_to_copy[mod_object][0]
+                    if mod_object and mod_object in orig_object_to_helper:
+                        armature_copy = orig_object_to_helper[mod_object].copy_object
                         mod.object = armature_copy
                         if first_armature_copy is None:
                             first_armature_copy = armature_copy
 
-            # Swap parents to armature or copy object parent if no armature
+            # TODO: Maybe we should give an option to re-parent to first armature?
+            # Swap parents to copy object parent
             orig_parent = copy_obj.parent
             if orig_parent:
-                if orig_parent in orig_object_to_copy:
-                    parent_copy = orig_object_to_copy[orig_parent]
-                    if parent_copy == first_armature_copy or first_armature_copy is None:
-                        copy_obj.parent = parent_copy
-                    else:
+                if orig_parent in orig_object_to_helper:
+                    parent_copy = orig_object_to_helper[orig_parent].copy_object
+                    copy_obj.parent = parent_copy
+                else:
+                    # Look for a recursive parent that does have a copy object and reparent to that
+                    recursive_parent = orig_parent.parent
+                    while recursive_parent and recursive_parent not in orig_object_to_helper:
+                        orig_parent = orig_parent.parent
+                    if recursive_parent:
+                        # Re-parent to the found recursive parent
+                        orig_recursive_parent_copy = orig_object_to_helper[recursive_parent].copy_object
                         # Transform must change to remain in the same place, run the operator to reparent and keep
                         # transforms
-                        override = {'object': first_armature_copy, 'selected_editable_objects': [first_armature_copy, copy_obj]}
+                        # Context override to act on the objects we want and not the current context
+                        override = {
+                            'object': orig_recursive_parent_copy,
+                            # Not sure if the list needs to contain the new parent too, but it would usually be selected
+                            # when re-parenting through the UI
+                            'selected_editable_objects': [orig_recursive_parent_copy, copy_obj],
+                            # TODO: Not sure if scene is required, we'll include it anyway
+                            'scene': export_scene,
+                        }
                         bpy.ops.object.parent_set(override, type='OBJECT', keep_transform=True)
-                else:
-                    # Not actually sure what the FBX exporter does when the parent object isn't in the current scene
-                    # If we can't just leave it alone, we could unparent (if we can use the operator, unparent with
-                    # keep_transforms=True), otherwise we can raise an error
-                    # TODO: If we need to do this, check the parents before creating any copy objects
-                    raise ValueError(f"{copy_obj} is parented to {orig_parent} which isn't included in the avatar build")
-
-            # Run build based on Object type
-            if copy_obj.type == 'ARMATURE':
-                build_armature(copy_obj, copy_obj.data, object_settings, copy_objects)
-            elif copy_obj.type == 'MESH':
-                build_mesh(scene, copy_obj, copy_obj.data, object_settings)
-
-        # TODO: Join meshes by desired name and rename the combined mesh
-        join_meshes = defaultdict(list)
-        armatures = []
-        # Find the meshes for each name
-        for orig_object, (copy_obj, object_settings) in orig_object_to_copy.items():
-            if copy_obj.type == 'MESH':
-                if object_settings.target_object_name:
-                    name = object_settings.target_object_name
-                else:
-                    # Otherwise, set to the original name
-                    name = orig_object.name
-                join_meshes[name].append((copy_obj, object_settings))
-
-        meshes_after_joining = []
-        for name, objects_and_settings in join_meshes.items():
-            objects = [o for o, s in objects_and_settings]
-            if len(objects_and_settings) > 1:
-                # Join the objects together
-                # If any of the objects being joined were set to ignore
-                joined_mesh_ignores_reduce_to_two = any(s.ignore_reduce_to_two_meshes for o, s in objects_and_settings)
-                # TODO: Clean up all these comprehensions
-                # TODO: Are there other things that we should ensure are set a specific way on the combined mesh?
-                joined_mesh_autosmooth = any(o.data.use_auto_smooth for o in objects)
-                combined_object = objects[0]
-                # The meshes of the objects that join the combined object get left behind, we'll delete them and do so
-                # safely in-case Blender decides to delete them in the future
-                mesh_names_to_delete = [o.data.name for o in objects[1:]]
-                bpy.ops.object.join({'selected_editable_objects': objects, 'active_object': combined_object,
-                                     'scene': export_scene})
-                # Delete meshes of objects that have been joined into combined_object
-                for mesh_name in mesh_names_to_delete:
-                    mesh_to_delete = bpy.data.meshes.get(mesh_name)
-                    if mesh_to_delete:
-                        bpy.data.meshes.remove(mesh_to_delete)
-                # Set mesh autosmooth if any of the joined meshes used it
-                combined_object.data.use_auto_smooth = joined_mesh_autosmooth
-                # Append the combined object to the list and whether it should ignore the 'reduce to two' setting
-                meshes_after_joining.append((combined_object, joined_mesh_ignores_reduce_to_two))
+                    else:
+                        # No recursive parent has a copy object, so clear parent, but keep transforms
+                        # Context override to act on only the copy object
+                        override = {
+                            'selected_editable_objects': [copy_obj],
+                            # Scene isn't required, but it could be good to include in-case it does become one
+                            'scene': export_scene,
+                        }
+                        bpy.ops.object.parent_clear(override, type='CLEAR_KEEP_TRANSFORM')
             else:
-                # There's only one object, so just get it
-                combined_object = objects[0]
-                meshes_after_joining.append((combined_object, objects_and_settings[0][1].ignore_reduce_to_two_meshes))
+                # No parent to start with, so the copy will remain with no parent
+                pass
 
-            # Since we're going to rename the joined copy objects, if an object with the corresponding name already exists,
-            # and it doesn't have a target_object_name set, we need to set it to its current name because its name is about to
-            # change
-            existing_object: Object
-            existing_object = bpy.data.objects.get(name)
+            # Run build based on Object data type
+            data = copy_obj.data
+            if isinstance(data, Armature):
+                build_armature(copy_obj, data, object_settings, copy_objects)
+            elif isinstance(data, Mesh):
+                build_mesh(scene, copy_obj, data, object_settings)
 
-            # Rename the combined mesh
-            combined_object.name = name
+        # Join meshes and armatures by desired names and rename the combined objects to those desired names
 
-            if existing_object:
-                existing_object_group = ObjectPropertyGroup.get_group(existing_object)
-                existing_object_settings = existing_object_group.object_settings
-                # Get the object settings for the settings we're building with or create them if they don't exist
-                existing_object_settings_for_scene: ObjectBuildSettings
-                if active_scene_settings.name in existing_object_settings:
-                    existing_object_settings_for_scene = existing_object_settings[active_scene_settings.name]
+        # Mesh and armature objects will only ever be attempted to join objects of the same type due to our initial
+        # checks
+        meshes_after_joining: list[ObjectHelper] = []
+        armatures_after_joining: list[ObjectHelper] = []
+
+        # meshes_tuple: tuple[str, defa]
+        meshes_tuple = (
+            'MESH',
+            desired_name_meshes,
+            meshes_after_joining,
+            bpy.data.meshes.get,
+            bpy.data.meshes.remove,
+        )
+        armatures_tuple = (
+            'ARMATURE',
+            desired_name_armatures,
+            armatures_after_joining,
+            bpy.data.armatures.get,
+            bpy.data.armatures.remove,
+        )
+
+        for object_type, join_dict, after_joining_list, get_func, remove_func in (meshes_tuple, armatures_tuple):
+            names_to_remove: list[str] = []
+            for name, object_helpers in join_dict.items():
+                objects = [helper.copy_object for helper in object_helpers]
+                combined_object_helper = object_helpers[0]
+                combined_object = combined_object_helper.copy_object
+                context_override = {
+                    'selected_editable_objects': objects,
+                    'active_object': combined_object,
+                    'scene': export_scene
+                }
+                if len(object_helpers) > 1:
+                    # The data of the objects that join the combined object get left behind, we'll delete them and do so
+                    # safely in-case Blender decides to delete them in the future
+                    names_to_remove.extend(o.data.name for o in objects[1:])
+
+                    if object_type == 'MESH':
+                        # If any of the objects being joined were set to ignore, the combined mesh will be too
+                        ignore_reduce_to_two = any(h.settings.ignore_reduce_to_two_meshes for h in object_helpers)
+                        combined_object_helper.joined_settings_ignore_reduce_to_two_meshes = ignore_reduce_to_two
+
+                        # TODO: Clean up all these comprehensions
+                        # TODO: Are there other things that we should ensure are set a specific way on the combined mesh?
+                        # noinspection PyUnresolvedReferences
+                        joined_mesh_autosmooth = any(o.data.use_auto_smooth for o in objects)
+
+                        # Set mesh autosmooth if any of the joined meshes used it
+                        combined_object.data.use_auto_smooth = joined_mesh_autosmooth
+
+                    # Join the objects
+                    bpy.ops.object.join(context_override)
+
                 else:
-                    # Add the settings to the existing object
-                    existing_object_settings_for_scene = existing_object_settings.add()
-                    existing_object_settings_for_scene.name = active_scene_settings.name
+                    # There's only one object, there's nothing to join
+                    pass
 
-                # Set the target mesh name to its original name
-                if not existing_object_settings_for_scene.target_object_name:
-                    existing_object_settings_for_scene.target_object_name = name
+                # Append the ObjectHelper for the Object that remains after joining
+                after_joining_list.append(combined_object_helper)
+
+                # Since we're going to rename the joined copy objects, if an object with the corresponding name already
+                # exists, and it doesn't have a target_object_name set, we need to set it to its current name because
+                # its name is about to change
+                set_build_name_for_existing_object_about_to_be_renamed(name)
+
+                # Rename the combined mesh
+                combined_object.name = name
+
+            # Delete data of objects that have been joined into combined objects
+            for name in names_to_remove:
+                data_by_name = get_func(name)
+                if data_by_name:
+                    remove_func(data_by_name)
+
+        # After performing deletions, these structures are no good anymore because some objects may be deleted
+        del orig_object_to_helper, copy_objects
 
         # Join meshes based on whether they have shape keys
         # The ignore_reduce_to_two_meshes setting will need to only be True if it was True for all the joined meshes
         if active_scene_settings.reduce_to_two_meshes:
             shape_key_meshes = []
             # TODO: autosmooth settings
-            shape_key_meshes_autosmooth = False
-            non_shape_key_meshes = []
-            non_shape_key_meshes_autosmooth = False
+            shape_key_meshes_auto_smooth = False
+            no_shape_key_meshes = []
+            no_shape_key_meshes_auto_smooth = False
 
-            for mesh_obj, ignore_reduce_to_two in meshes_after_joining:
-                # Individual meshes can exclude themselves from this operation
+            for helper in meshes_after_joining:
+                mesh_obj = helper.copy_object
+                # Individual mesh objects can exclude themselves from this operation
+                # If mesh objects have been combined, whether the combined mesh object should ignore is stored in
+                # a separate attribute of the helper
+                ignore_reduce_to_two = helper.joined_settings_ignore_reduce_to_two_meshes
+                # If the separate attribute of the helper hasn't been set, it will be None
+                if ignore_reduce_to_two is None:
+                    # If no mesh objects were combined into this one, get whether to ignore from its own settings
+                    ignore_reduce_to_two = helper.settings.ignore_reduce_to_two_meshes
                 if not ignore_reduce_to_two:
-                    if mesh_obj.data.shape_keys:
+                    # noinspection PyTypeChecker
+                    mesh_data = mesh_obj.data
+                    if mesh_data.shape_keys:
                         shape_key_meshes.append(mesh_obj)
+                        shape_key_meshes_auto_smooth |= mesh_data.use_auto_smooth
                     else:
-                        non_shape_key_meshes.append(mesh_obj)
+                        no_shape_key_meshes.append(mesh_obj)
+                        no_shape_key_meshes_auto_smooth |= mesh_data.use_auto_smooth
+
+            shape_keys_tuple = (shape_keys_mesh_name, shape_key_meshes, shape_key_meshes_auto_smooth)
+            no_shape_keys_tuple = (no_shape_keys_mesh_name, no_shape_key_meshes, no_shape_key_meshes_auto_smooth)
+
+            for name, mesh_objects, auto_smooth in (shape_keys_tuple, no_shape_keys_tuple):
+                if mesh_objects:
+                    mesh_names_to_remove = [m.data.name for m in mesh_objects[1:]]
+
+                    combined_object = mesh_objects[0]
+                    # noinspection PyTypeChecker
+                    mesh_data = combined_object.data
+                    # Set mesh autosmooth if any of the joined meshes used it
+                    mesh_data.use_auto_smooth = auto_smooth
+
+                    context_override = {
+                        'selected_editable_objects': mesh_objects,
+                        'active_object': combined_object,
+                        'scene': export_scene
+                    }
+
+                    # Join the objects
+                    bpy.ops.object.join(context_override)
+
+                    # Since we're about to rename the combined object, if there is an existing object with that name, the
+                    # existing object will have its name changed. If that object were to not have
+                    set_build_name_for_existing_object_about_to_be_renamed(name)
+
+                    # Rename the combined object
+                    combined_object.name = name
+
+                    for to_remove_name in mesh_names_to_remove:
+                        to_remove = bpy.data.meshes.get(to_remove_name)
+                        if to_remove:
+                            bpy.data.meshes.remove(to_remove)
 
             # TODO: Join the meshes and rename the resulting mesh according to the scene settings.
             #  If an object already exists with the target name, set that object's
