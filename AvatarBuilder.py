@@ -1430,34 +1430,9 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
         obj.show_only_shape_key = False
         try:
             if apply_modifiers == 'APPLY_KEEP_SHAPES_GRET':
-                # Apply modifiers in order, applying any that we can without gret the normal way
-                accumulate_list: list[str] = []
-                last_was_applicable_with_shapes = True
-                full_apply_list: list[tuple[bool, list[str]]] = [(last_was_applicable_with_shapes, accumulate_list)]
-                for mod_name, applicable_with_shapes in mod_name_and_applicable_with_shapes:
-                    if applicable_with_shapes != last_was_applicable_with_shapes:
-                        accumulate_list = []
-                        full_apply_list.append((applicable_with_shapes, accumulate_list))
-                        last_was_applicable_with_shapes = applicable_with_shapes
-                    accumulate_list.append(mod_name)
-
-                for applicable_with_shapes, mod_names in full_apply_list:
-                    if applicable_with_shapes:
-                        for mod_name in mod_names:
-                            print(f"Applying modifier {mod_name} to {repr(obj)}")
-                            apply_result = bpy.ops.object.modifier_apply(context_override, modifier=mod_name)
-                            if 'FINISHED' not in apply_result:
-                                raise RuntimeError(f"bpy.ops.object.modifier_apply failed for {mod_name} on {repr(obj)}")
-                    else:
-                        print(f"Applying modifiers {mod_names} with Gret to {obj.name}")
-                        apply_result = run_gret_shape_key_apply_modifiers(obj, set(mod_names))
-                        if 'FINISHED' not in apply_result:
-                            raise RuntimeError(f"Failed to apply modifiers with gret for {mod_names} on {repr(obj)}")
-                        print("Applied modifiers with Gret")
-                # print("Applying modifiers with Gret")
-                # run_gret_shape_key_apply_modifiers(obj, {mod_name for mod_name, _ in mod_name_and_applicable_with_shapes})
-                # print("Applied modifiers with Gret")
-
+                print("Applying modifiers with Gret")
+                run_gret_shape_key_apply_modifiers(obj, {mod_name for mod_name, _ in mod_name_and_applicable_with_shapes})
+                print("Applied modifiers with Gret")
             else:
                 for mod_name, _ in mod_name_and_applicable_with_shapes:
                     print(f"Applying modifier {mod_name} to {repr(obj)}")
