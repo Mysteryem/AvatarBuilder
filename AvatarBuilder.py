@@ -185,10 +185,15 @@ def scene_build_settings_update_name(self: 'SceneBuildSettings', context: Contex
                 object_settings[old_name].name_prop = new_name
 
 
+# TODO: Split into different operators so that we can use different poll functions, e.g. disable move ops and remove op
+#  when there aren't any settings in the array
 class SceneBuildSettingsControl(Operator):
     bl_idname = 'scene_build_settings_control'
     bl_label = "Build Settings Control"
 
+    # TODO: Add a DUPLICATE command that duplicates the current SceneBuildSettings and also duplicates the
+    #  ObjectBuildSettings for all Objects in the scene if that Object has ObjectBuildSettings that correspond to the
+    #  SceneBuildSettings being duplicated
     command_items = (
         ('ADD', "Add", "Add a new set of Build Settings"),
         ('REMOVE', "Remove", "Remove the currently active Scene Settings"),
@@ -244,17 +249,19 @@ class SceneBuildSettingsControl(Operator):
         elif command == 'REMOVE':
             # TODO: Also remove from objects in the scene! (maybe optionally)
             build_settings.remove(active_index)
-            scene_group.build_settings_active_index = active_index - 1
+            was_last_index = active_index >= len(build_settings)
+            if was_last_index:
+                scene_group.build_settings_active_index = max(0, active_index - 1)
         elif command == 'SYNC':
             self.report({'INFO'}, "Sync is not implemented yet")
         elif command == 'UP':
-            # TODO: Wrap around when at top already
-            new_index = max(0, active_index - 1)
+            # Previous index, with wrap around to the bottom
+            new_index = (active_index - 1) % len(build_settings)
             build_settings.move(active_index, new_index)
             scene_group.build_settings_active_index = new_index
         elif command == 'DOWN':
-            # TODO: Wrap around when at bottom already
-            new_index = min(len(build_settings) - 1, active_index + 1)
+            # Next index, with wrap around to the top
+            new_index = (active_index + 1) % len(build_settings)
             build_settings.move(active_index, new_index)
             scene_group.build_settings_active_index = new_index
         elif command == 'TOP':
@@ -268,8 +275,8 @@ class SceneBuildSettingsControl(Operator):
         return {'FINISHED'}
 
 
-# TODO: Duplicate and Delete ops that take an index argument so we can have a button displayed for each element in the
-#  list
+# TODO: Split into different operators so that we can use different poll functions, e.g. disable move ops and remove op
+#  when there aren't any settings in the array
 class ObjectBuildSettingsControl(Operator):
     bl_idname = 'object_build_settings_control'
     bl_label = "Object Build Settings Control"
@@ -326,8 +333,9 @@ class ObjectBuildSettingsControl(Operator):
                     index = object_build_settings.find(active_build_settings.name)
                     if index != -1:
                         object_build_settings.remove(index)
-                        if active_index >= len(object_build_settings):
-                            object_group.object_settings_active_index = active_index - 1
+                        was_last_index = active_index >= len(object_build_settings)
+                        if was_last_index:
+                            object_group.object_settings_active_index = max(0, active_index - 1)
                         return {'FINISHED'}
                     else:
                         return {'CANCELLED'}
@@ -369,13 +377,13 @@ class ObjectBuildSettingsControl(Operator):
                         return {'FINISHED'}
                 return {'CANCELLED'}
             elif command == 'UP':
-                # TODO: Wrap around when at top already
-                new_index = max(0, active_index - 1)
+                # Previous index, with wrap around to the bottom
+                new_index = (active_index - 1) % len(object_build_settings)
                 object_build_settings.move(active_index, new_index)
                 object_group.object_settings_active_index = new_index
             elif command == 'DOWN':
-                # TODO: Wrap around when at bottom already
-                new_index = min(len(object_build_settings) - 1, active_index + 1)
+                # Next index, with wrap around to the top
+                new_index = (active_index + 1) % len(object_build_settings)
                 object_build_settings.move(active_index, new_index)
                 object_group.object_settings_active_index = new_index
             elif command == 'TOP':
@@ -404,6 +412,26 @@ class SceneBuildSettings(PropertyGroup):
     ignore_hidden_objects: BoolProperty(name="Ignore hidden objects", default=True)
     # TODO: Needs UI and needs to actually be used
     remove_settings_from_built_avatar: BoolProperty(name="Remove settings from built avatar", default=True)
+    # TODO: Add the option below to join mesh UVMaps by index instead of name
+    # uv_map_joining: EnumProperty(
+    #     items=[
+    #         (
+    #             'NAME',
+    #             "By name",
+    #             "Join UV Maps by name, this is the default Blender behaviour when joining meshes"
+    #         ),
+    #         (
+    #             'INDEX',
+    #             "By index",
+    #             "Join UV Maps by index. This will results in all UV Maps being renamed according to their index"
+    #         ),
+    #         # TODO: Add a 'FIRST_BY_INDEX_OTHERS_BY_NAME' option, basically, just rename the first UVMap of every mesh to
+    #         #  "UVMap" before any joining happens
+    #     ],
+    #     name="Join UV Maps",
+    #     default='INDEX',
+    #     description="Specify how UV Maps of meshes should be combined when meshes are joined together",
+    # )
 
 
 def object_build_settings_update_name(self: 'ObjectBuildSettings', context: Context):
@@ -1035,12 +1063,12 @@ def merge_shapes_into_first(mesh_obj: Object, shapes_to_merge: list[tuple[ShapeK
     shape_cos_dict = {}
 
     def get_shape_cos(shape):
-        shape_cos = shape_cos_dict.get(shape.name)
-        if shape_cos is None:
-            shape_cos = np.empty(len(shape.data), dtype=np.single)
-            shape.data.foreach_get('co', shape_cos)
-            shape_cos_dict[shape.name] = shape_cos
-        return shape_cos
+        cos = shape_cos_dict.get(shape.name)
+        if cos is None:
+            cos = np.empty(3 * len(shape.data), dtype=np.single)
+            shape.data.foreach_get('co', cos)
+            shape_cos_dict[shape.name] = cos
+        return cos
 
     shape_updates = {}
     main_shapes = set()
@@ -1357,6 +1385,9 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
                 obj.shape_key_clear()
                 del reference_key_co
 
+    # Update shape keys reference in-case it has changed (happens when removing all shape keys)
+    shape_keys = me.shape_keys
+
     # Apply modifiers
     apply_modifiers = settings.apply_non_armature_modifiers
     if apply_modifiers != 'NONE' and not (apply_modifiers == 'APPLY_IF_NO_SHAPES' and shape_keys):
@@ -1482,10 +1513,9 @@ class DeleteExportScene(Operator):
 
     @classmethod
     def poll(cls, context) -> bool:
-        return ScenePropertyGroup.get_group(context.scene).is_export_scene
+        return bpy.ops.scene.delete.poll() and ScenePropertyGroup.get_group(context.scene).is_export_scene
 
     def execute(self, context: Context) -> str:
-        print("DEBUG 1")
         export_scene = context.scene
         for obj in export_scene.objects:
             # Deleting data also deletes any objects using that data when do_unlink=True (default value)
@@ -1495,41 +1525,20 @@ class DeleteExportScene(Operator):
                 bpy.data.armatures.remove(obj.data)
             else:
                 bpy.data.objects.remove(obj)
-        print("DEBUG 2")
         group = ScenePropertyGroup.get_group(export_scene)
-        print("DEBUG 3")
-        original_scene = bpy.data.scenes.get(group.export_scene_source_scene)
-        print("DEBUG 4")
-        if original_scene:
-            print("DEBUG 5")
-            # Swap to the original scene if it exists
-            debug_w = context.window
-            print("DEBUG 5.5")
-            # FIXME: Could it be loading something from the scene causes the crash? Should try without other addons
-            #  enabled
-            debug_w.scene = original_scene
-            print("DEBUG 6")
-            # TODO: Maybe this isn't safe to do when it's the active scene
-            bpy.data.scenes.remove(export_scene)
-            print("DEBUG 7")
-        else:
-            print("DEBUG 8")
-            # Otherwise get the first scene that isn't the export scene
-            export_scene_name = export_scene.name
-            print("DEBUG 9")
-            first_other_scene = next((s for s in bpy.data.scenes if s.name != export_scene_name), None)
-            print("DEBUG 10")
-            if first_other_scene:
-                print("DEBUG 11")
-                context.window.scene = first_other_scene
-                print("DEBUG 12")
-                bpy.data.scenes.remove(export_scene)
-            else:
-                print("DEBUG 13")
-                self.report({'INFO'}, "Could not delete export scene as there are no other scenes!")
-                print("DEBUG 14")
-            print("DEBUG 15")
-        print("DEBUG 16")
+        original_scene_name = group.export_scene_source_scene
+
+        # Switching the scene to the original scene before deleting seems to crash blender sometimes????
+        # Another workaround seems to be to  delete the objects after the scene has been deleted instead of before
+
+        # If this is somehow the only scene, deleting isn't possible
+        if bpy.ops.scene.delete.poll():
+            bpy.ops.scene.delete()
+
+        if original_scene_name:
+            original_scene = bpy.data.scenes.get(original_scene_name)
+            if original_scene:
+                context.window.scene = original_scene
         return {'FINISHED'}
 
 
@@ -1730,7 +1739,7 @@ class BuildAvatarOp(Operator):
                                            f" by the 'Reduce to two meshes' option.")
 
         # Creation and modification can now commence as all checks have passed
-        export_scene = bpy.data.scenes.new(export_scene_name)
+        export_scene = bpy.data.scenes.new(export_scene_name + " Export Scene")
         export_scene_group = ScenePropertyGroup.get_group(export_scene)
         export_scene_group.is_export_scene = True
         export_scene_group.export_scene_source_scene = scene.name
@@ -1747,16 +1756,9 @@ class BuildAvatarOp(Operator):
 
             # Store mapping from original object to helper for easier access
             orig_object_to_helper[obj] = helper
-            # TODO: Do we need this?
-            # And the reverse mapping without the data
-            #copy_to_orig_object[copy_obj] = obj
 
             # Copy data (also will make single user any linked data)
             copy_obj.data = obj.data.copy()
-            # Note that multiple objects can share the same data so there isn't guaranteed to be a 1-1 mapping from
-            # old data to copy data.
-            # i.e., one original data can be used by multiple objects, so that one original data can end up having
-            # multiple copies since we ensure each copied object gets its own data.
 
             # Add the copy object to the export scene (needed in order to join meshes)
             export_scene.collection.objects.link(copy_obj)
@@ -1769,7 +1771,9 @@ class BuildAvatarOp(Operator):
         for helper in orig_object_to_helper.values():
             copy_obj = helper.copy_object
             object_settings = helper.settings
-            # TODO: Add a setting for whether to parent all meshes to the armature or not
+            # TODO: Add a setting for whether to parent all meshes to the armature or not OR a setting for parenting
+            #  objects without a parent (either because their parent isn't in the build or because they didn't have one
+            #  to start with) to the first found armature for that object
             first_armature_copy = None
 
             # Set armature modifier objects to the copies
