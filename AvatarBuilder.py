@@ -1431,7 +1431,11 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
         try:
             if apply_modifiers == 'APPLY_KEEP_SHAPES_GRET':
                 print("Applying modifiers with Gret")
-                run_gret_shape_key_apply_modifiers(obj, {mod_name for mod_name, _ in mod_name_and_applicable_with_shapes})
+                result = run_gret_shape_key_apply_modifiers(obj, {mod_name for mod_name, _ in mod_name_and_applicable_with_shapes})
+                if 'FINISHED' not in result:
+                    raise RuntimeError(f"Applying modifiers with gret failed for"
+                                       f" {[mod_name for mod_name, _ in mod_name_and_applicable_with_shapes]} on"
+                                       f" {repr(obj)}")
                 print("Applied modifiers with Gret")
             else:
                 for mod_name, _ in mod_name_and_applicable_with_shapes:
@@ -1491,6 +1495,10 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
     # TODO: We might need to do something when use_auto_smooth is False
     bpy.ops.mesh.customdata_custom_splitnormals_add({'mesh': me})
 
+    # TODO: Add option to apply all transforms
+    # bpy.ops.object.transform_apply({'selected_editable_objects': [obj]}, location=True, rotation=True, scale=True)
+    pass
+
 
 def build_armature(obj: Object, armature: Armature, settings: ObjectBuildSettings, copy_objects: set[Object]):
     export_pose = settings.armature_export_pose
@@ -1521,6 +1529,9 @@ def build_armature(obj: Object, armature: Armature, settings: ObjectBuildSetting
             for mod in copy_object.modifiers:
                 if isinstance(mod, ArmatureModifier) and mod.object == obj:
                     mod.use_deform_preserve_volume = True
+
+    # TODO: Add option to apply all transforms
+    # bpy.ops.object.transform_apply({'selected_editable_objects': [obj]}, location=True, rotation=True, scale=True)
 
 
 class DeleteExportScene(Operator):
@@ -1599,7 +1610,7 @@ def run_gret_shape_key_apply_modifiers(obj: Object, modifier_names_to_apply: set
                     # Disable the modifier so that it doesn't get applied
                     mod.show_viewport = False
             # Apply all non-disabled modifiers
-            bpy.ops.gret.shape_key_apply_modifiers({'object': obj})
+            return bpy.ops.gret.shape_key_apply_modifiers({'object': obj})
         finally:
             # Restore modifiers that were temporarily disabled
             modifiers = obj.modifiers
@@ -1859,6 +1870,7 @@ class BuildAvatarOp(Operator):
                 # No parent to start with, so the copy will remain with no parent
                 pass
 
+            # TODO: Should we run build first (and apply all transforms) before re-parenting?
             # Run build based on Object data type
             data = copy_obj.data
             if isinstance(data, Armature):
