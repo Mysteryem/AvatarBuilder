@@ -1402,7 +1402,6 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
         for mod in obj.modifiers:
             if mod.type != 'ARMATURE' and mod.show_viewport:
                 can_apply_with_shapes = mod.type in _modifiers_eModifierTypeType_NonGeometrical
-                print(f"{mod.type} can be applied with shapes?: {can_apply_with_shapes}")
                 can_apply_all_with_shapes &= can_apply_with_shapes
                 mod_name_and_applicable_with_shapes.append((mod.name, can_apply_with_shapes))
 
@@ -1415,23 +1414,58 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
                 # Delete all shape keys
                 obj.shape_key_clear()
             elif apply_modifiers == 'APPLY_IF_POSSIBLE':
-                print("filtering")
                 # Create a filter to remove all those which can't be applied
                 mod_name_and_applicable_with_shapes = filter(lambda t: t[1], mod_name_and_applicable_with_shapes)
 
         # For data transfer modifiers to work (and possibly some other modifiers), we must temporarily add the copied
         # object to the original (and active) scene
         original_scene.collection.objects.link(obj)
+        # Again for data transfer modifiers to work, the active shape key has to be set to the reference key because,
+        # for some reason. This isn't normal behaviour of applying th modifier gets applied almost as if the active shape key has a value of 1.0, despite the
+        # fact this is not the normal behaviour in any way. I honestly don't know why this happens
+        orig_active_shape_key_index = obj.active_shape_key_index
+        obj.active_shape_key_index = 0
+        # gret might also be turning this off, we'll follow suit
+        orig_show_only_shape_key = obj.show_only_shape_key
+        obj.show_only_shape_key = False
         try:
             if apply_modifiers == 'APPLY_KEEP_SHAPES_GRET':
-                print("Applying modifiers with Gret")
-                run_gret_shape_key_apply_modifiers(obj, {mod_name for mod_name, _ in mod_name_and_applicable_with_shapes})
-                print("Applied modifiers with Gret")
+                # Apply modifiers in order, applying any that we can without gret the normal way
+                accumulate_list: list[str] = []
+                last_was_applicable_with_shapes = True
+                full_apply_list: list[tuple[bool, list[str]]] = [(last_was_applicable_with_shapes, accumulate_list)]
+                for mod_name, applicable_with_shapes in mod_name_and_applicable_with_shapes:
+                    if applicable_with_shapes != last_was_applicable_with_shapes:
+                        accumulate_list = []
+                        full_apply_list.append((applicable_with_shapes, accumulate_list))
+                        last_was_applicable_with_shapes = applicable_with_shapes
+                    accumulate_list.append(mod_name)
+
+                for applicable_with_shapes, mod_names in full_apply_list:
+                    if applicable_with_shapes:
+                        for mod_name in mod_names:
+                            print(f"Applying modifier {mod_name} to {repr(obj)}")
+                            apply_result = bpy.ops.object.modifier_apply(context_override, modifier=mod_name)
+                            if 'FINISHED' not in apply_result:
+                                raise RuntimeError(f"bpy.ops.object.modifier_apply failed for {mod_name} on {repr(obj)}")
+                    else:
+                        print(f"Applying modifiers {mod_names} with Gret to {obj.name}")
+                        apply_result = run_gret_shape_key_apply_modifiers(obj, set(mod_names))
+                        if 'FINISHED' not in apply_result:
+                            raise RuntimeError(f"Failed to apply modifiers with gret for {mod_names} on {repr(obj)}")
+                        print("Applied modifiers with Gret")
+                # print("Applying modifiers with Gret")
+                # run_gret_shape_key_apply_modifiers(obj, {mod_name for mod_name, _ in mod_name_and_applicable_with_shapes})
+                # print("Applied modifiers with Gret")
+
             else:
                 for mod_name, _ in mod_name_and_applicable_with_shapes:
                     print(f"Applying modifier {mod_name} to {repr(obj)}")
-                    bpy.ops.object.modifier_apply(context_override, modifier=mod_name)
+                    if 'FINISHED' not in bpy.ops.object.modifier_apply(context_override, modifier=mod_name):
+                        raise RuntimeError(f"bpy.ops.object.modifier_apply failed for {mod_name} on {repr(obj)}")
         finally:
+            obj.show_only_shape_key = orig_show_only_shape_key
+            obj.active_shape_key_index = orig_active_shape_key_index
             # Unlink from the collection again
             original_scene.collection.objects.unlink(obj)
 
@@ -1440,6 +1474,7 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
         remove_all_uv_layers_except(obj, settings.keep_only_uv_map)
 
     # Remove non-deform vertex groups
+    # Must be done after applying modifiers, as modifiers may use vertex groups to affect their behaviour
     if settings.remove_non_deform_vertex_groups:
         # TODO: Not sure how FBX and unity handle multiple armatures
         deform_bones_names = set()
