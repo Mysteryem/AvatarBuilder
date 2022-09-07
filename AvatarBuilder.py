@@ -510,7 +510,7 @@ class ObjectBuildSettings(PropertyGroup):
     # Mesh props
     # Keep/Merge(see below)/Apply Mix/Delete-All
     shape_keys_op: EnumProperty(
-        name="EXtra Operation",
+        name="Extra Operation",
         items=[
             ('KEEP', "Keep", "Keep all the shape keys"),
             ('MERGE', "Merge", "Merge shape keys together, according to the rules below"),
@@ -617,6 +617,9 @@ class ObjectBuildSettings(PropertyGroup):
         name="Material to keep",
         description="Name of the only Material to keep on the mesh"
     )
+
+    remove_disabled_modifiers: BoolProperty(
+        name="Remove disabled modifiers", default=True, description="Remove all modifiers which are disabled in the viewport")
 
     # materials_remap
     remap_materials: BoolProperty(default=False)
@@ -1387,6 +1390,14 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
 
     # Update shape keys reference in-case it has changed (happens when removing all shape keys)
     shape_keys = me.shape_keys
+
+    # Optionally remove disabled modifiers
+    if settings.remove_disabled_modifiers:
+        modifiers = obj.modifiers
+        mod: Modifier
+        for mod in obj.modifiers:
+            if not mod.show_viewport:
+                modifiers.remove(mod)
 
     # Apply modifiers
     apply_modifiers = settings.apply_non_armature_modifiers
