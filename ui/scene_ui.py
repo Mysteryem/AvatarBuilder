@@ -3,7 +3,7 @@ from bpy.types import UIList, Context, UILayout, Menu, Panel, Operator, Object, 
 from bpy.props import EnumProperty
 
 from ..registration import register_module_classes_factory
-from ..types import ScenePropertyGroup
+from ..extensions import ScenePropertyGroup
 from ..ops.build_avatar import BuildAvatarOp
 
 

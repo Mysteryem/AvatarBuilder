@@ -4,7 +4,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 import bpy
 from bpy.types import Object, ShapeKey, Mesh, Operator, Modifier, MeshUVLoopLayer, Scene, Armature, ArmatureModifier
-from ..types import ObjectBuildSettings, ObjectPropertyGroup, ScenePropertyGroup
+from ..extensions import ObjectBuildSettings, ObjectPropertyGroup, ScenePropertyGroup
 from ..integration import check_gret_shape_key_apply_modifiers
 from ..registration import register_module_classes_factory
 
@@ -457,8 +457,8 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
         # TODO: Not sure how FBX and unity handle multiple armatures
         deform_bones_names = set()
         for mod in obj.modifiers:
-            if mod.type == 'ARMATURE' and mod.use_vertex_groups:
-                if mod.object:
+            if isinstance(mod, ArmatureModifier) and mod.use_vertex_groups:
+                if mod.object and isinstance(mod.object.data, Armature):
                     armature = mod.object.data
                     for bone in armature.bones:
                         if bone.use_deform:

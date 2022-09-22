@@ -3,7 +3,7 @@ from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operato
 from bpy.props import EnumProperty
 
 from ..registration import register_module_classes_factory
-from ..types import ScenePropertyGroup, ObjectPropertyGroup, ObjectBuildSettings
+from ..extensions import ScenePropertyGroup, ObjectPropertyGroup, ObjectBuildSettings
 from ..integration import check_gret_shape_key_apply_modifiers
 
 
