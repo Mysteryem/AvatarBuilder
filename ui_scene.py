@@ -2,10 +2,10 @@ import bpy
 from bpy.types import UIList, Context, UILayout, Menu, Panel, Operator, Object, Mesh
 from bpy.props import EnumProperty
 
-from ..registration import register_module_classes_factory
-from ..extensions import ScenePropertyGroup, ObjectPropertyGroup
-from ..ops.build_avatar import BuildAvatarOp
-from .object_ui import ObjectBuildSettingsControl
+from .registration import register_module_classes_factory
+from .extensions import ScenePropertyGroup, ObjectPropertyGroup
+from .op_build_avatar import BuildAvatarOp
+from .ui_object import ObjectBuildSettingsControl
 
 
 class SceneBuildSettingsUIList(UIList):

@@ -2,9 +2,9 @@ from typing import Union
 from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator
 from bpy.props import EnumProperty
 
-from ..registration import register_module_classes_factory
-from ..extensions import ScenePropertyGroup, ObjectPropertyGroup, ObjectBuildSettings
-from ..integration import check_gret_shape_key_apply_modifiers
+from .registration import register_module_classes_factory
+from .extensions import ScenePropertyGroup, ObjectPropertyGroup, ObjectBuildSettings
+from .integration import check_gret_shape_key_apply_modifiers
 
 
 class ObjectBuildSettingsUIList(UIList):

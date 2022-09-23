@@ -4,9 +4,9 @@ from collections import defaultdict
 from dataclasses import dataclass
 import bpy
 from bpy.types import Object, ShapeKey, Mesh, Operator, Modifier, MeshUVLoopLayer, Scene, Armature, ArmatureModifier
-from ..extensions import ObjectBuildSettings, ObjectPropertyGroup, ScenePropertyGroup
-from ..integration import check_gret_shape_key_apply_modifiers
-from ..registration import register_module_classes_factory
+from .extensions import ObjectBuildSettings, ObjectPropertyGroup, ScenePropertyGroup
+from .integration import check_gret_shape_key_apply_modifiers
+from .registration import register_module_classes_factory
 
 
 def merge_shapes_into_first(mesh_obj: Object, shapes_to_merge: list[tuple[ShapeKey, list[ShapeKey]]]):

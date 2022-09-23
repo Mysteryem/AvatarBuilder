@@ -8,17 +8,15 @@ bl_info = {
     "category": "3D View",
 }
 
-import bpy
-import importlib
-
-__all__ = [
-    'ops',
-    'ui',
-    'extensions',
-]
-
-for submodule in __all__:
-    globals()[submodule] = importlib.import_module("." + submodule, __name__)
+from bpy.utils import register_submodule_factory
 
 # Blender register and unregister
-register, unregister = bpy.utils.register_submodule_factory(__name__, __all__)
+register, unregister = register_submodule_factory(
+    __name__,
+    [
+        'op_build_avatar',
+        'ui_object',
+        'ui_scene',
+        'extensions'
+    ]
+)
