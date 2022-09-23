@@ -329,6 +329,36 @@ class ObjectBuildSettingsControl(Operator):
                 return description
         return f"Error: enum value '{command}' not found"
 
+    @staticmethod
+    def add_new(object_group: ObjectPropertyGroup, name=None):
+        object_build_settings = object_group.object_settings
+        added = object_build_settings.add()
+
+        # Custom name
+        if name:
+            added.name_prop = name
+        # Auto name
+        else:
+            # Rename if not unique and ensure that the internal name is also set
+            added_name = added.name_prop
+            orig_name = added_name
+            unique_number = 0
+            # Its internal name of the newly added build_settings will currently be "" since it hasn't been set
+            # We could do `while added_name in build_settings:` but I'm guessing Blender has to iterate through each
+            # element until `added_name` is found since duplicate names are allowed. Checking against a set should be
+            # faster if there are lots
+            existing_names = {bs.name for bs in object_build_settings}
+            while added_name in existing_names:
+                unique_number += 1
+                added_name = orig_name + " " + str(unique_number)
+            if added_name != orig_name:
+                # Assigning the prop will also update the internal name
+                added.name_prop = added_name
+            else:
+                added.name = added_name
+        # Set active to the new element
+        object_group.object_settings_active_index = len(object_build_settings) - 1
+
     def execute(self, context: Context):
         obj = context.object
         object_group = ObjectPropertyGroup.get_group(obj)
@@ -345,9 +375,7 @@ class ObjectBuildSettingsControl(Operator):
             if command == 'ADD':
                 active_build_settings = ScenePropertyGroup.get_group(context.scene).get_active()
                 if active_build_settings and active_build_settings.name not in object_build_settings:
-                    added = object_build_settings.add()
-                    added.name_prop = active_build_settings.name
-                    object_group.object_settings_active_index = len(object_build_settings) - 1
+                    ObjectBuildSettingsControl.add_new(object_group, active_build_settings.name)
                     return {'FINISHED'}
                 else:
                     return {'CANCELLED'}
@@ -368,27 +396,7 @@ class ObjectBuildSettingsControl(Operator):
                 return {'CANCELLED'}
         else:
             if command == 'ADD':
-                added = object_build_settings.add()
-
-                # Rename if not unique and ensure that the internal name is also set
-                added_name = added.name_prop
-                orig_name = added_name
-                unique_number = 0
-                # Its internal name of the newly added build_settings will currently be "" since it hasn't been set
-                # We could do `while added_name in build_settings:` but I'm guessing Blender has to iterate through each
-                # element until `added_name` is found since duplicate names are allowed. Checking against a set should be
-                # faster if there are lots
-                existing_names = {bs.name for bs in object_build_settings}
-                while added_name in existing_names:
-                    unique_number += 1
-                    added_name = orig_name + " " + str(unique_number)
-                if added_name != orig_name:
-                    # Assigning the prop will also update the internal name
-                    added.name_prop = added_name
-                else:
-                    added.name = added_name
-                # Set active to the new element
-                object_group.object_settings_active_index = len(object_build_settings) - 1
+                ObjectBuildSettingsControl.add_new(object_group)
             elif command == 'REMOVE':
                 object_build_settings.remove(active_index)
                 object_group.object_settings_active_index = active_index - 1

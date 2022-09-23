@@ -97,20 +97,22 @@ def merge_shapes_into_first(mesh_obj: Object, shapes_to_merge: list[tuple[ShapeK
 # Object = Annotated[Object, T]
 
 def remove_all_uv_layers_except(mesh_obj: Object, *uv_layers: Union[str, MeshUVLoopLayer]):
-    mesh_uv_layers = mesh_obj.data.uv_layers
-    uv_layer_idx_to_keep = set()
-    # print(mesh_obj)
-    for uv_layer in uv_layers:
-        if isinstance(uv_layer, MeshUVLoopLayer):
-            uv_layer = uv_layer.name
-        # print(uv_layer)
-        uv_layer_index = mesh_uv_layers.find(uv_layer)
-        uv_layer_idx_to_keep.add(uv_layer_index)
-    uv_layers_to_remove = [mesh_uv_layers[i].name for i in range(len(mesh_uv_layers)) if i not in uv_layer_idx_to_keep]
-    # print(uv_layers_to_remove)
-    for uv_layer in uv_layers_to_remove:
-        # print(f'Removing {uv_layer}')
-        mesh_uv_layers.remove(mesh_uv_layers[uv_layer])
+    me = mesh_obj.data
+    if isinstance(me, Mesh):
+        mesh_uv_layers = me.uv_layers
+        uv_layer_idx_to_keep = set()
+        # print(mesh_obj)
+        for uv_layer in uv_layers:
+            if isinstance(uv_layer, MeshUVLoopLayer):
+                uv_layer = uv_layer.name
+            # print(uv_layer)
+            uv_layer_index = mesh_uv_layers.find(uv_layer)
+            uv_layer_idx_to_keep.add(uv_layer_index)
+        uv_layers_to_remove = [mesh_uv_layers[i].name for i in range(len(mesh_uv_layers)) if i not in uv_layer_idx_to_keep]
+        # print(uv_layers_to_remove)
+        for uv_layer in uv_layers_to_remove:
+            # print(f'Removing {uv_layer}')
+            mesh_uv_layers.remove(mesh_uv_layers[uv_layer])
 
 
 # All modifier types that are eModifierTypeType_NonGeometrical
@@ -135,7 +137,6 @@ def run_gret_shape_key_apply_modifiers(obj: Object, modifier_names_to_apply: set
         # Temporarily disable all other modifiers, run the operator and then restore the modifiers that were temporarily
         # disabled
         mods_to_enable = []
-        mod: Modifier
         try:
             for mod in obj.modifiers:
                 if mod.name in modifier_names_to_apply:
@@ -147,6 +148,7 @@ def run_gret_shape_key_apply_modifiers(obj: Object, modifier_names_to_apply: set
                     # Disable the modifier so that it doesn't get applied
                     mod.show_viewport = False
             # Apply all non-disabled modifiers
+            # noinspection PyUnresolvedReferences
             return bpy.ops.gret.shape_key_apply_modifiers({'object': obj})
         finally:
             # Restore modifiers that were temporarily disabled

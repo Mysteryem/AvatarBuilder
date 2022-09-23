@@ -9,8 +9,8 @@ from .registration import register_module_classes_factory, _BL_ID_PREFIX as _PRO
 
 # bpy_prop_collection_idprop isn't currently exposed in bpy.types, so it can't actually be imported. It's presence here
 # is purely to assist with development.
-# noinspection PyUnreachableCode
 if hasattr(bpy.types, 'bpy_prop_collection_idprop'):
+    # noinspection PyUnresolvedReferences
     from bpy.types import bpy_prop_collection_idprop
 else:
     bpy_prop_collection_idprop = bpy.types.bpy_prop_collection
@@ -93,7 +93,6 @@ def update_name_ensure_unique(element_updating: PropertyGroup, collection_prop: 
         element_updating.name = new_name
     # Return name change so that it can be propagated to objects when updating a SceneBuildSettings
     return old_name, new_name
-
 
 
 def scene_build_settings_update_name(self: 'SceneBuildSettings', context: Context):
@@ -439,7 +438,8 @@ def register_props_factory(**registrations: (Type[PropHolderType], Type[Property
     return register_props, unregister_props, get_property_group
 
 
-_register_props = _unregister_props = get_property_group = _register_classes = _unregister_classes = None
+get_property_group: Callable[[PropHolderType, bool], Union[CollectionPropertyType, None]] = lambda obj, strict: ...
+_register_props = _unregister_props = _register_classes = _unregister_classes = lambda: None
 
 
 def register():
@@ -456,5 +456,7 @@ def register():
 
 
 def unregister():
+    print("Unregistering props for types.py")
     _unregister_props()
+    print("Unregistering classes for types.py")
     _unregister_classes()

@@ -3,8 +3,9 @@ from bpy.types import UIList, Context, UILayout, Menu, Panel, Operator, Object, 
 from bpy.props import EnumProperty
 
 from ..registration import register_module_classes_factory
-from ..extensions import ScenePropertyGroup
+from ..extensions import ScenePropertyGroup, ObjectPropertyGroup
 from ..ops.build_avatar import BuildAvatarOp
+from .object_ui import ObjectBuildSettingsControl
 
 
 class SceneBuildSettingsUIList(UIList):
@@ -53,6 +54,9 @@ class ScenePanel(Panel):
             row = buttons_col.row(align=True)
             row.operator(SceneBuildSettingsControl.bl_idname, text="Sync").command = 'SYNC'
             row.operator(SceneBuildSettingsControl.bl_idname, text="Purge").command = 'PURGE'
+            row = buttons_col.row(align=True)
+            row.operator(SelectObjectsInSceneSettings.bl_idname)
+            row.operator(AddSelectedToSceneSettings.bl_idname)
 
             col = layout.column()
             scene_settings = group.get_active()
@@ -203,6 +207,55 @@ class DeleteExportScene(Operator):
             if original_scene:
                 context.window.scene = original_scene
         return {'FINISHED'}
+
+
+class SelectObjectsInSceneSettings(Operator):
+    bl_idname = "select_objects_in_scene_settings"
+    bl_label = "Select"
+
+    # TODO: extend property
+    # TODO: include_disabled property
+
+    def execute(self, context: Context) -> set[str]:
+        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        if active:
+            active_group_name = active.name
+            vl = context.view_layer
+            for obj in context.view_layer.objects:
+                if not obj.select_get(view_layer=vl):
+                    object_settings = ObjectPropertyGroup.get_group(obj).object_settings
+                    if active_group_name in object_settings:
+                        if object_settings[active_group_name].include_in_build:
+                            obj.select_set(state=True, view_layer=vl)
+        return {'FINISHED'}
+
+
+class AddSelectedToSceneSettings(Operator):
+    bl_idname = "add_selected_to_scene_settings"
+    bl_label = "Add"
+
+    # TODO: name property so that the group to add to can be overwritten
+
+    def execute(self, context: Context) -> set[str]:
+        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        if active:
+            active_group_name = active.name
+            for obj in context.selected_objects:
+                object_group = ObjectPropertyGroup.get_group(obj)
+                object_settings = object_group.object_settings
+                if active_group_name not in object_settings:
+                    ObjectBuildSettingsControl.add_new(object_group, active_group_name)
+        return {'FINISHED'}
+
+
+# class RemoveSelectedFromSceneSettings(Operator):
+#     bl_idname = "remove_selected_from_scene_settings"
+#     bl_label = "Remove"
+#
+#
+# class DisableSelectedFromSceneSettings(Operator):
+#     bl_idname = "disable_selected_from_scene_settings"
+#     bl_label = "Disable"
 
 
 register, unregister = register_module_classes_factory(__name__, globals())
