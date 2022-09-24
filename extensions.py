@@ -1,5 +1,6 @@
 import bpy
 from typing import TypeVar, Type, Union, Any, Callable
+from itertools import chain
 
 from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
 from bpy.types import PropertyGroup, Scene, ID, Bone, PoseBone, Context, Object
@@ -22,7 +23,7 @@ T = TypeVar('T', bound='PropertyGroupSuper')
 
 
 def update_name_ensure_unique(element_updating: PropertyGroup, collection_prop: bpy_prop_collection_idprop,
-                              name_prop_name: str):
+                              name_prop_name: str, extra_disallowed_names: set[str] = None):
     """Helper function for ensuring name uniqueness with collection properties"""
     # Ensure name uniqueness by renaming the other found element with the same name, if it exists
 
@@ -33,65 +34,75 @@ def update_name_ensure_unique(element_updating: PropertyGroup, collection_prop: 
     # creation
     old_name = element_updating.name
     new_name = getattr(element_updating, name_prop_name)
+    if extra_disallowed_names is None:
+        extra_disallowed_names = set()
 
-    if new_name == old_name:
-        # Nothing to do
-        return
-    try:
-        # Get all existing internal names, excluding our new one
-        existing_names = {bs.name for bs in collection_prop} - {old_name}
-        print(f"Updating name of '{element_updating}' from '{old_name}' to '{new_name}'")
-        if new_name in collection_prop:
-            # print("New name already exists!")
-            existing_element = collection_prop[new_name]
+    if new_name != old_name:
+        try:
+            # Get all existing internal names, excluding our new one
+            existing_names = {bs.name for bs in collection_prop} - {old_name}
+            print(f"Updating name of '{element_updating}' from '{old_name}' to '{new_name}' and ensuring uniqueness")
+            if new_name in collection_prop:
+                # print("New name already exists!")
+                existing_element = collection_prop[new_name]
 
-            existing_element_new_name = new_name
+                existing_element_new_name = new_name
 
-            # Make sure we can't possibly set the existing element's name to the new name of self or any other elements
-            disallowed_names = existing_names.union({new_name})
+                # Make sure we can't possibly set the existing element's name to the new name of self or any other elements
+                disallowed_names = existing_names.union({new_name})
+                disallowed_names.update(extra_disallowed_names)
 
-            # Since we just got this element by name, this must be its current name
-            existing_element_name = new_name
+                # Since we just got this element by name, this must be its current name
+                existing_element_name = new_name
 
-            # Strip ".[0-9]+" from the end of the name to get the original name
-            last_period_idx = existing_element_name.rfind(".")
-            if last_period_idx != -1:
-                # Everything after the last period
-                suffix = existing_element_name[last_period_idx + 1:]
-                if suffix.isdigit():
-                    # Original name is everything before the last period
-                    existing_element_orig_name = existing_element_name[:last_period_idx]
+                # Strip ".[0-9]+" from the end of the name to get the original name
+                last_period_idx = existing_element_name.rfind(".")
+                if last_period_idx != -1:
+                    # Everything after the last period
+                    suffix = existing_element_name[last_period_idx + 1:]
+                    if suffix.isdigit():
+                        # Original name is everything before the last period
+                        existing_element_orig_name = existing_element_name[:last_period_idx]
+                    else:
+                        # The name has "." in it, but either there is nothing after it or there are characters that aren't
+                        # digits
+                        existing_element_orig_name = existing_element_name
                 else:
-                    # The name has "." in it, but either there is nothing after it or there are characters that aren't
-                    # digits
+                    # The name doesn't have "." in it, so use it as is
                     existing_element_orig_name = existing_element_name
-            else:
-                # The name doesn't have "." in it, so use it as is
-                existing_element_orig_name = existing_element_name
 
-            # TODO: Could check if existing_element_orig_name in disallowed_names first
+                # TODO: Could check if existing_element_orig_name in disallowed_names first
 
-            suffix_number = 0
-            while existing_element_new_name in disallowed_names:
-                suffix_number += 1
-                # my_name -> my_name.001 -> my_name.002 -> my_name.003 etc.
-                existing_element_new_name = f"{existing_element_orig_name}.{suffix_number:03d}"
-                # print(f"Trying new name '{existing_element_new_name}'")
+                suffix_number = 0
+                while existing_element_new_name in disallowed_names:
+                    suffix_number += 1
+                    # my_name -> my_name.001 -> my_name.002 -> my_name.003 etc.
+                    existing_element_new_name = f"{existing_element_orig_name}.{suffix_number:03d}"
+                    # print(f"Trying new name '{existing_element_new_name}'")
 
-            # Update the name of the existing element, so it won't conflict with the new name of self and won't conflict
-            # with the names of any other elements either
+                # Update the name of the existing element, so it won't conflict with the new name of self and won't conflict
+                # with the names of any other elements either
 
-            # print(f"Renaming already existing element with the same name as the new name '{new_name}' to '{existing_element_new_name}'")
+                # print(f"Renaming already existing element with the same name as the new name '{new_name}' to '{existing_element_new_name}'")
 
-            # Need to update the name of self first, otherwise when we change the name_prop of the existing element,
-            # it will see the old name of self
+                # Need to update the name of self first, otherwise when we change the name_prop of the existing element,
+                # it will see the old name of self
+                element_updating.name = new_name
+
+                # Return other name change so that it can be propagated correctly to objects when updating a
+                # SceneBuildSettings
+                return change_name_no_propagate(existing_element, name_prop_name, existing_element_new_name)
+                # print(f"Renamed already existing element with the same name as the new name '{new_name}'")
+        finally:
+            # Always update internal name to match, this name is used when subscripting the collection to get a specific element
             element_updating.name = new_name
-            setattr(existing_element, name_prop_name, existing_element_new_name)
-            # print(f"Renamed already existing element with the same name as the new name '{new_name}'")
-    finally:
-        # Always update internal name to match, this name is used when subscripting the collection to get a specific element
-        element_updating.name = new_name
-    # Return name change so that it can be propagated to objects when updating a SceneBuildSettings
+
+
+def change_name_no_propagate(element_updating: PropertyGroup, name_prop_name: str, new_name: str):
+    old_name = element_updating.name
+    print(f"Updating name of '{element_updating}' from '{old_name}' to '{new_name}' without propagation")
+    element_updating.name = new_name
+    setattr(element_updating, name_prop_name, new_name)
     return old_name, new_name
 
 
@@ -100,15 +111,36 @@ def scene_build_settings_update_name(self: 'SceneBuildSettings', context: Contex
     scene_group = ScenePropertyGroup.get_group(scene)
     build_settings = scene_group.build_settings
 
-    old_name, new_name = update_name_ensure_unique(self, build_settings, 'name_prop')
+    old_name = self.name
+    new_name = self.name_prop
 
     if old_name != new_name:
-        # Propagate name change to object settings of objects in the corresponding scene
-        for obj in scene.objects:
-            object_group = ObjectPropertyGroup.get_group(obj)
-            object_settings = object_group.object_settings
-            if old_name in object_settings:
-                object_settings[old_name].name_prop = new_name
+        existing_update = update_name_ensure_unique(self, build_settings, 'name_prop')
+        if existing_update is None:
+            # Propagate name change to object settings of objects in the corresponding scene
+            for obj in scene.objects:
+                object_group = ObjectPropertyGroup.get_group(obj)
+                object_settings = object_group.object_settings
+                if old_name in object_settings:
+                    object_settings[old_name].name_prop = new_name
+        else:
+            existing_old_name, existing_new_name = existing_update
+            # Propagate name changes to object settings of objects in the corresponding scene
+            for obj in scene.objects:
+                object_group = ObjectPropertyGroup.get_group(obj)
+                object_settings = object_group.object_settings
+
+                self_settings = None
+                existing_settings = None
+                if old_name in object_settings:
+                    self_settings = object_settings[old_name]
+                if existing_old_name in object_settings:
+                    existing_settings = object_settings[existing_old_name]
+
+                if self_settings:
+                    change_name_no_propagate(self_settings, 'name_prop', new_name)
+                if existing_settings:
+                    change_name_no_propagate(existing_settings, 'name_prop', existing_new_name)
 
 
 class SceneBuildSettings(PropertyGroup):
@@ -149,15 +181,12 @@ class SceneBuildSettings(PropertyGroup):
 
 
 def object_build_settings_update_name(self: 'ObjectBuildSettings', context: Context):
-    scene = context.scene
-    scene_group = ScenePropertyGroup.get_group(scene)
-    build_settings = scene_group.build_settings
-
     # id_data is the ID that owns this which should be the object
     obj = self.id_data
     object_group = ObjectPropertyGroup.get_group(obj)
 
-    update_name_ensure_unique(self, object_group.object_settings, 'name_prop')
+    all_scene_build_settings = set(chain.from_iterable(ScenePropertyGroup.get_group(s).build_settings.keys() for s in bpy.data.scenes))
+    update_name_ensure_unique(self, object_group.object_settings, 'name_prop', extra_disallowed_names=all_scene_build_settings)
 
 
 class ObjectBuildSettings(PropertyGroup):

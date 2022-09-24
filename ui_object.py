@@ -10,7 +10,7 @@ from .integration import check_gret_shape_key_apply_modifiers
 class ObjectBuildSettingsUIList(UIList):
     bl_idname = "object_build_settings"
 
-    def draw_item(self, context: Context, layout: UILayout, data, item, icon, active_data, active_property, index=0,
+    def draw_item(self, context: Context, layout: UILayout, data, item: ObjectBuildSettings, icon, active_data, active_property, index=0,
                   flt_flag=0):
         scene_group = ScenePropertyGroup.get_group(context.scene)
         scene_settings = scene_group.build_settings
@@ -33,8 +33,10 @@ class ObjectBuildSettingsUIList(UIList):
             row.alert = True
         else:
             row_icon = "BLANK1"
-        # Display the prop of the scene settings if it exists, this simplifies renaming
-        row.prop(item if is_orphaned else scene_settings[index_in_scene_settings], 'name_prop', text="", emboss=False, icon=row_icon)
+        # We could instead display the prop of the scene settings if it exists, which would make changing the name of
+        # ObjectBuildSettings also change the name of the connected SceneBuildSettings
+        # row.prop(item if is_orphaned else scene_settings[index_in_scene_settings], 'name_prop', text="", emboss=False, icon=row_icon)
+        row.prop(item, 'name_prop', text="", emboss=False, icon=row_icon)
         row.alert = False
         row.prop(item, "include_in_build", text="")
         #row.alert = True
