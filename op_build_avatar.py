@@ -695,7 +695,17 @@ class BuildAvatarOp(Operator):
             orig_object_to_helper[obj] = helper
 
             # Copy data (also will make single user any linked data)
-            copy_obj.data = obj.data.copy()
+            copy_data = obj.data.copy()
+            copy_obj.data = copy_data
+
+            # Remove drivers from copy
+            copy_obj.animation_data_clear()
+            copy_data.animation_data_clear()
+            if isinstance(copy_data, Mesh):
+                shape_keys = copy_data.shape_keys
+                if shape_keys:
+                    shape_keys.animation_data_clear()
+
 
             # Add the copy object to the export scene (needed in order to join meshes)
             export_scene.collection.objects.link(copy_obj)
