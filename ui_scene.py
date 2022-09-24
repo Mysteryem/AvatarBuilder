@@ -1,5 +1,6 @@
 import bpy
-from bpy.types import UIList, Context, UILayout, Menu, Panel, Operator, Object, Mesh
+from bpy.types import UIList, Context, UILayout, Menu, Panel, Operator, Object, Mesh, Armature
+from typing import cast
 from bpy.props import EnumProperty
 
 from .registration import register_module_classes_factory
@@ -56,7 +57,12 @@ class ScenePanel(Panel):
             row.operator(SceneBuildSettingsControl.bl_idname, text="Purge").command = 'PURGE'
             row = buttons_col.row(align=True)
             row.operator(SelectObjectsInSceneSettings.bl_idname)
+            row.operator(UnhideFromSceneSettings.bl_idname)
+            row.operator(DisableHiddenFromSceneSettings.bl_idname)
+            row = buttons_col.row(align=True)
             row.operator(AddSelectedToSceneSettings.bl_idname)
+            row.operator(EnableSelectedFromSceneSettings.bl_idname)
+            row.operator(DisableSelectedFromSceneSettings.bl_idname)
 
             col = layout.column()
             scene_settings = group.get_active()
@@ -177,19 +183,20 @@ class DeleteExportScene(Operator):
     def poll(cls, context) -> bool:
         return bpy.ops.scene.delete.poll() and ScenePropertyGroup.get_group(context.scene).is_export_scene
 
-    def execute(self, context: Context) -> str:
+    def execute(self, context: Context) -> set[str]:
         export_scene = context.scene
         obj: Object
         for obj in export_scene.objects:
             # Deleting data also deletes any objects using that data when do_unlink=True (default value)
             data = obj.data
-            if isinstance(data, Mesh):
+            if obj.type == 'MESH':
+                data = cast(Mesh, data)
                 shape_keys = data.shape_keys
                 if shape_keys:
                     obj.shape_key_clear()
-                bpy.data.meshes.remove(obj.data)
+                bpy.data.meshes.remove(data)
             elif obj.type == 'ARMATURE':
-                bpy.data.armatures.remove(obj.data)
+                bpy.data.armatures.remove(cast(Armature, data))
             else:
                 bpy.data.objects.remove(obj)
         group = ScenePropertyGroup.get_group(export_scene)
@@ -210,29 +217,35 @@ class DeleteExportScene(Operator):
 
 
 class SelectObjectsInSceneSettings(Operator):
+    """Select objects in the active scene settings"""
     bl_idname = "select_objects_in_scene_settings"
-    bl_label = "Select"
+    bl_label = "Select Active"
 
     # TODO: extend property
-    # TODO: include_disabled property
+    include_disabled: bpy.props.BoolProperty(
+        name="Include Disabled",
+        description="Include objects where the active scene settings are currently disabled",
+        default=False,
+    )
 
     def execute(self, context: Context) -> set[str]:
         active = ScenePropertyGroup.get_group(context.scene).get_active()
         if active:
             active_group_name = active.name
             vl = context.view_layer
-            for obj in context.view_layer.objects:
+            for obj in context.visible_objects:
                 if not obj.select_get(view_layer=vl):
                     object_settings = ObjectPropertyGroup.get_group(obj).object_settings
                     if active_group_name in object_settings:
-                        if object_settings[active_group_name].include_in_build:
+                        if self.include_disabled or object_settings[active_group_name].include_in_build:
                             obj.select_set(state=True, view_layer=vl)
         return {'FINISHED'}
 
 
 class AddSelectedToSceneSettings(Operator):
+    """Add selected objects to the active scene settings if they do not already exist"""
     bl_idname = "add_selected_to_scene_settings"
-    bl_label = "Add"
+    bl_label = "Add Selected"
 
     # TODO: name property so that the group to add to can be overwritten
 
@@ -248,14 +261,80 @@ class AddSelectedToSceneSettings(Operator):
         return {'FINISHED'}
 
 
-# class RemoveSelectedFromSceneSettings(Operator):
-#     bl_idname = "remove_selected_from_scene_settings"
-#     bl_label = "Remove"
-#
-#
-# class DisableSelectedFromSceneSettings(Operator):
-#     bl_idname = "disable_selected_from_scene_settings"
-#     bl_label = "Disable"
+class DisableSelectedFromSceneSettings(Operator):
+    """Disable the active scene settings on the selected objects if the settings exist"""
+    bl_idname = "disable_selected_from_scene_settings"
+    bl_label = "Disable Selected"
+
+    def execute(self, context: Context) -> set[str]:
+        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        if active:
+            active_group_name = active.name
+            for obj in context.selected_objects:
+                object_group = ObjectPropertyGroup.get_group(obj)
+                object_settings = object_group.object_settings
+                if active_group_name in object_settings:
+                    object_settings[active_group_name].include_in_build = False
+        return {'FINISHED'}
+
+
+class EnableSelectedFromSceneSettings(Operator):
+    """Enable the active scene settings on the selected objects if the settings exist"""
+    bl_idname = "enable_selected_from_scene_settings"
+    bl_label = "Enable Selected"
+
+    def execute(self, context: Context) -> set[str]:
+        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        if active:
+            active_group_name = active.name
+            for obj in context.selected_objects:
+                object_group = ObjectPropertyGroup.get_group(obj)
+                object_settings = object_group.object_settings
+                if active_group_name in object_settings:
+                    object_settings[active_group_name].include_in_build = True
+        return {'FINISHED'}
+
+
+class DisableHiddenFromSceneSettings(Operator):
+    """Disable the active scene settings on the hidden objects if the settings exist"""
+    bl_idname = "disable_hidden_from_scene_settings"
+    bl_label = "Disable Hidden"
+
+    def execute(self, context: Context) -> set[str]:
+        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        if active:
+            vl = context.view_layer
+            active_group_name = active.name
+            for obj in vl.objects:
+                if obj.hide_get(view_layer=vl):
+                    object_group = ObjectPropertyGroup.get_group(obj)
+                    object_settings = object_group.object_settings
+                    if active_group_name in object_settings:
+                        object_settings[active_group_name].include_in_build = False
+        return {'FINISHED'}
+
+
+class UnhideFromSceneSettings(Operator):
+    """Unhide objects which are in the active scene settings"""
+    bl_idname = "unhide_selected_from_scene_settings"
+    bl_label = "Reveal Hidden"
+
+    select: bpy.props.BoolProperty(name="Select", description="Select the objects", default=True)
+
+    def execute(self, context: Context) -> set[str]:
+        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        if active:
+            vl = context.view_layer
+            active_group_name = active.name
+            for obj in vl.objects:
+                if obj.hide_get(view_layer=vl):
+                    object_group = ObjectPropertyGroup.get_group(obj)
+                    object_settings = object_group.object_settings
+                    if active_group_name in object_settings:
+                        obj.hide_set(state=False, view_layer=vl)
+                        if self.select:
+                            obj.select_set(state=True, view_layer=vl)
+        return {'FINISHED'}
 
 
 register, unregister = register_module_classes_factory(__name__, globals())
