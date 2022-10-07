@@ -1,7 +1,7 @@
 import bpy
 from bpy.types import UIList, Context, UILayout, Menu, Panel, Operator, Object, Mesh, Armature
 from typing import cast
-from bpy.props import EnumProperty
+from bpy.props import EnumProperty, StringProperty
 
 from .registration import register_module_classes_factory
 from .extensions import ScenePropertyGroup, ObjectPropertyGroup
@@ -44,17 +44,17 @@ class ScenePanel(Panel):
             row = col.row()
             row.template_list(SceneBuildSettingsUIList.bl_idname, "", group, 'build_settings', group, 'build_settings_active_index')
             vertical_buttons_col = row.column(align=True)
-            vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="ADD").command = 'ADD'
-            vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="REMOVE").command = 'REMOVE'
+            vertical_buttons_col.operator(SceneBuildSettingsAdd.bl_idname, text="", icon="ADD")
+            vertical_buttons_col.operator(SceneBuildSettingsRemove.bl_idname, text="", icon="REMOVE")
             vertical_buttons_col.separator()
-            vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="TRIA_UP").command = 'UP'
-            vertical_buttons_col.operator(SceneBuildSettingsControl.bl_idname, text="", icon="TRIA_DOWN").command = 'DOWN'
+            vertical_buttons_col.operator(SceneBuildSettingsMove.bl_idname, text="", icon="TRIA_UP").type = 'UP'
+            vertical_buttons_col.operator(SceneBuildSettingsMove.bl_idname, text="", icon="TRIA_DOWN").type = 'DOWN'
 
             buttons_col = col.column(align=True)
             # TODO: Sync is only useful if forced sync is turned off, so only display it in those cases
             row = buttons_col.row(align=True)
-            row.operator(SceneBuildSettingsControl.bl_idname, text="Sync").command = 'SYNC'
-            row.operator(SceneBuildSettingsControl.bl_idname, text="Purge").command = 'PURGE'
+            row.operator(SceneBuildSettingsSync.bl_idname, text="Sync")
+            row.operator(SceneBuildSettingsPurge.bl_idname, text="Purge")
             row = buttons_col.row(align=True)
             row.operator(SelectObjectsInSceneSettings.bl_idname)
             row.operator(UnhideFromSceneSettings.bl_idname)
@@ -85,48 +85,20 @@ class ScenePanel(Panel):
                 sub.operator(BuildAvatarOp.bl_idname)
 
 
-# TODO: Split into different operators so that we can use different poll functions, e.g. disable move ops and remove op
-#  when there aren't any settings in the array
-class SceneBuildSettingsControl(Operator):
-    bl_idname = 'scene_build_settings_control'
-    bl_label = "Build Settings Control"
+class SceneBuildSettingsAdd(Operator):
+    """Add new scene build settings"""
+    bl_idname = "scene_build_settings_add"
+    bl_label = "Add"
 
-    # TODO: Add a DUPLICATE command that duplicates the current SceneBuildSettings and also duplicates the
-    #  ObjectBuildSettings for all Objects in the scene if that Object has ObjectBuildSettings that correspond to the
-    #  SceneBuildSettings being duplicated
-    command_items = (
-        ('ADD', "Add", "Add a new set of Build Settings"),
-        ('REMOVE', "Remove", "Remove the currently active Scene Settings"),
-        ('UP', "Move Up", "Move active Scene Settings up"),
-        ('DOWN', "Move Down", "Move active Scene Settings down"),
-        ('PURGE', "Purge", "Clear all orphaned Build Settings from all objects in the scene"),
-        ('TOP', "Move to top", "Move active Scene Settings to top"),
-        ('BOTTOM', "Move to bottom", "Move active Build Settings to bottom"),
-        # TODO: Implement and add a 'Fake User' BoolProperty to Object Settings that prevents purging
-        # TODO: By default we only show the object settings matching the scene settings, so is this necessary?
-        ('SYNC', "Sync", "Set the currently displayed settings of all objects in the scene to the currently active Build Settings"),
-    )
+    name: StringProperty(name="Name", description="Name of the newly created settings, leave blank for automatic name")
 
-    command: EnumProperty(
-        items=command_items,
-        default='ADD',
-    )
-
-    @classmethod
-    def description(cls, context, properties):
-        command = properties.command
-        for identifier, _, description in cls.command_items:
-            if identifier == command:
-                return description
-        return f"Error: enum value '{command}' not found"
-
-    def execute(self, context: Context):
+    def execute(self, context: bpy.types.Context) -> set[str]:
         scene_group = ScenePropertyGroup.get_group(context.scene)
-        active_index = scene_group.build_settings_active_index
         build_settings = scene_group.build_settings
-        command = self.command
-        if command == 'ADD':
-            added = build_settings.add()
+        added = build_settings.add()
+        if self.name:
+            added.name_prop = self.name
+        else:
             # Rename if not unique and ensure that the internal name is also set
             added_name = added.name_prop
             orig_name = added_name
@@ -144,17 +116,58 @@ class SceneBuildSettingsControl(Operator):
                 added.name_prop = added_name
             else:
                 added.name = added_name
-            # Set active to the new element
-            scene_group.build_settings_active_index = len(scene_group.build_settings) - 1
-        elif command == 'REMOVE':
-            # TODO: Also remove from objects in the scene! (maybe optionally)
-            build_settings.remove(active_index)
-            was_last_index = active_index >= len(build_settings)
-            if was_last_index:
-                scene_group.build_settings_active_index = max(0, active_index - 1)
-        elif command == 'SYNC':
-            self.report({'INFO'}, "Sync is not implemented yet")
-        elif command == 'UP':
+        # Set active to the new element
+        scene_group.build_settings_active_index = len(scene_group.build_settings) - 1
+        return {'FINISHED'}
+
+
+# TODO: Also remove from objects in the scene! (maybe optionally)
+class SceneBuildSettingsRemove(Operator):
+    """Remove the active build settings"""
+    bl_idname = "scene_build_settings_remove"
+    bl_label = "Remove"
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context) -> bool:
+        return len(ScenePropertyGroup.get_group(context.scene).build_settings) > 0
+
+    def execute(self, context: bpy.types.Context) -> set[str]:
+        scene_group = ScenePropertyGroup.get_group(context.scene)
+        active_index = scene_group.build_settings_active_index
+        build_settings = scene_group.build_settings
+        build_settings.remove(active_index)
+        was_last_index = active_index >= len(build_settings)
+        if was_last_index:
+            scene_group.build_settings_active_index = max(0, active_index - 1)
+        return {'FINISHED'}
+
+
+class SceneBuildSettingsMove(Operator):
+    """Move the active scene build settings up or down the list"""
+    bl_idname = "scene_build_settings_move"
+    bl_label = "Move"
+
+    type: EnumProperty(
+        items=(
+            ('UP', "Up", "Move settings up, wrapping around if already at the top"),
+            ('DOWN', "Down", "Move settings down, wrapping around if already at the bottom"),
+            ('TOP', "Top", "Move settings to the top"),
+            ('BOTTOM', "Bottom", "Move settings to the bottom"),
+        ),
+        name="Type",
+    )
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context) -> bool:
+        return len(ScenePropertyGroup.get_group(context.scene).build_settings) > 0
+
+    def execute(self, context: bpy.types.Context) -> set[str]:
+        scene_group = ScenePropertyGroup.get_group(context.scene)
+        build_settings = scene_group.build_settings
+        active_index = scene_group.build_settings_active_index
+
+        command = self.type
+        if command == 'UP':
             # Previous index, with wrap around to the bottom
             new_index = (active_index - 1) % len(build_settings)
             build_settings.move(active_index, new_index)
@@ -172,6 +185,51 @@ class SceneBuildSettingsControl(Operator):
             new_index = len(build_settings) - 1
             build_settings.move(active_index, new_index)
             scene_group.build_settings_active_index = new_index
+        return {'FINISHED'}
+
+
+class SceneBuildSettingsPurge(Operator):
+    """Clear all orphaned Build Settings from all objects in the scene
+    (Not yet implemented)"""
+    bl_idname = "scene_build_settings_purge"
+    bl_label = "Purge"
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context) -> bool:
+        return False
+
+    def execute(self, context: bpy.types.Context) -> set[str]:
+        return {'FINISHED'}
+
+
+# TODO: Implement and add a 'Fake User' BoolProperty to Object Settings that prevents purging
+# TODO: By default we only show the object settings matching the scene settings, so is this necessary?
+class SceneBuildSettingsSync(Operator):
+    """Set the currently displayed settings of all objects in the scene to the currently active Build Settings
+    (Not yet implemented)"""
+    bl_idname = "scene_build_settings_sync"
+    bl_label = "Purge"
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context) -> bool:
+        return False
+
+    def execute(self, context: bpy.types.Context) -> set[str]:
+        return {'FINISHED'}
+
+
+class SceneBuildSettingsDuplicate(Operator):
+    """Duplicate the active build settings, additionally duplicating them on all objects in the current scene if they
+    exist
+    (Not yet implemented)"""
+    bl_idname = "scene_build_settings_duplicate"
+    bl_label = "Duplicate"
+
+    @classmethod
+    def poll(cls, context: bpy.types.Context) -> bool:
+        return False
+
+    def execute(self, context: bpy.types.Context) -> set[str]:
         return {'FINISHED'}
 
 
