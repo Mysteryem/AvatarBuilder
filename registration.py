@@ -57,15 +57,17 @@ def prefix_classes(classes):
     for cls in classes:
         if hasattr(cls, 'bl_idname'):
             if issubclass(cls, Panel):
-                cls.bl_idname = get_panel_prefix(cls) + "_PT_" + _BL_ID_PREFIX + "_" + cls.bl_idname
+                prefix = f"{get_panel_prefix(cls)}_PT_{_BL_ID_PREFIX}_"
             elif issubclass(cls, Operator):
-                cls.bl_idname = _BL_ID_PREFIX + "." + cls.bl_idname
+                prefix = f"{_BL_ID_PREFIX}."
             elif issubclass(cls, UIList):
-                cls.bl_idname = "AVATAR_BUILDER_UL_" + cls.bl_idname
+                prefix = "AVATAR_BUILDER_UL_"
             elif issubclass(cls, Menu):
-                cls.bl_idname = "AVATAR_BUILDER_MT_" + cls.bl_idname
+                prefix = "AVATAR_BUILDER_MT_"
             else:
-                cls.bl_idname = _BL_ID_PREFIX + "_" + cls.bl_idname
+                prefix = f"{_BL_ID_PREFIX}_"
+            if not cls.bl_idname.startswith(prefix):
+                cls.bl_idname = prefix + cls.bl_idname
         # if prefix_id:
         #     cls.bl_idname = _BL_ID_PREFIX + cls.bl_idname
         # elif hasattr(cls, 'bl_idname'):
