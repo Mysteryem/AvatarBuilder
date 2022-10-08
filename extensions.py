@@ -2,7 +2,7 @@ import bpy
 from typing import Optional
 from itertools import chain
 
-from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty
+from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
 from bpy.types import PropertyGroup, Scene, Context, Object
 
 from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup
@@ -183,6 +183,15 @@ def object_build_settings_update_name(self: 'ObjectBuildSettings', context: Cont
     update_name_ensure_unique(self, object_group.object_settings, 'name_prop', extra_disallowed_names=all_scene_build_settings)
 
 
+class ObjectSettings(PropertyGroup):
+    target_object_name: StringProperty(
+        name="Built name",
+        description="The name of the object once building is complete.\n"
+                    "All objects with the same name will be joined together (if they're the same type)\n"
+                    "Leave blank to keep the current name"
+    )
+
+
 class ObjectBuildSettings(PropertyGroup):
     name_prop: StringProperty(default="BuildSettings", update=object_build_settings_update_name)
 
@@ -194,6 +203,10 @@ class ObjectBuildSettings(PropertyGroup):
         description="The name of the object once building is complete.\n"
                     "All objects with the same name will be joined together (if they're the same type)\n"
                     "Leave blank to keep the current name"
+    )
+    object_settings: PointerProperty(
+        name="Object Settings",
+        type=ObjectSettings
     )
     include_in_build: BoolProperty(name="Include in build", default=True, description="Include these build settings. This lets you disable the export without deleting settings")
 
