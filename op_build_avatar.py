@@ -681,6 +681,21 @@ class BuildAvatarOp(Operator):
         export_scene_group.is_export_scene = True
         export_scene_group.export_scene_source_scene = scene.name
 
+        # Copy Color Management from original scene to export scene
+        # Copy Display Device
+        export_scene.display_settings.display_device = scene.display_settings.display_device
+        # Copy View Settings
+        orig_view_settings = scene.view_settings
+        export_view_settings = export_scene.view_settings
+        export_view_settings.view_transform = orig_view_settings.view_transform
+        export_view_settings.look = orig_view_settings.look
+        export_view_settings.exposure = orig_view_settings.exposure
+        export_view_settings.gamma = orig_view_settings.gamma
+        # TODO: Copy .curve_mapping too
+        export_view_settings.use_curve_mapping = orig_view_settings.use_curve_mapping
+        # Copy Sequencer
+        export_scene.sequencer_colorspace_settings.name = scene.sequencer_colorspace_settings.name
+
         orig_object_to_helper: dict[Object, ObjectHelper] = {}
         # TODO: Change to store helpers?
         copy_objects: set[Object] = set()
