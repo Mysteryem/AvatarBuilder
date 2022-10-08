@@ -1,12 +1,11 @@
 import bpy
-from typing import TypeVar, Type, Union, Any, Callable
+from typing import Optional
 from itertools import chain
 
-from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
-from bpy.types import PropertyGroup, Scene, ID, Bone, PoseBone, Context, Object
-from bpy.types import CollectionProperty as CollectionPropertyType
+from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty
+from bpy.types import PropertyGroup, Scene, Context, Object
 
-from .registration import register_module_classes_factory, _BL_ID_PREFIX as _PROP_PREFIX
+from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup
 
 # bpy_prop_collection_idprop isn't currently exposed in bpy.types, so it can't actually be imported. It's presence here
 # is purely to assist with development.
@@ -15,9 +14,6 @@ if hasattr(bpy.types, 'bpy_prop_collection_idprop'):
     from bpy.types import bpy_prop_collection_idprop
 else:
     bpy_prop_collection_idprop = bpy.types.bpy_prop_collection
-
-# Type hint for any Blender type that can have custom properties assigned to it
-PropHolderType = Union[ID, Bone, PoseBone]
 
 
 def update_name_ensure_unique(element_updating: PropertyGroup, collection_prop: bpy_prop_collection_idprop,
@@ -367,37 +363,7 @@ class ObjectBuildSettings(PropertyGroup):
     # materials_remap: CollectionProperty(type=<custom type needed?>)
 
 
-T = TypeVar('T', bound='PropertyGroupBase')
-
-
-# Base class used to provide typed access (and checks) to getting groups from ID types
-# Ideally we'd make this an abstract baseclass, but Blender doesn't like that for metaclasses
-class PropertyGroupBase:
-    _registration_name: str
-    _registration_type: type[ID]
-
-    # Technically, obj can also be a Bone or PoseBone, but we're not using
-    @classmethod
-    def get_group(cls: Type[T], obj: PropHolderType) -> T:
-        if isinstance(obj, cls._registration_type):
-            group = getattr(obj, cls._registration_name)
-            if isinstance(group, cls):
-                return group
-            else:
-                raise ValueError(f"Tried to get a {cls} from {obj}, but got a {type(group)}.")
-        else:
-            raise ValueError(f"Tried to get a {cls} from {obj}, but {obj} is not a {cls._registration_type}")
-
-    @classmethod
-    def register_prop(cls):
-        setattr(cls._registration_type, cls._registration_name, PointerProperty(type=cls))
-
-    @classmethod
-    def unregister_prop(cls):
-        delattr(cls._registration_type, cls._registration_name)
-
-
-class ScenePropertyGroup(PropertyGroupBase, PropertyGroup):
+class ScenePropertyGroup(IdPropertyGroup, PropertyGroup):
     _registration_name = f'{_PROP_PREFIX}_scene_settings_group'
     _registration_type = Scene
 
@@ -415,17 +381,16 @@ class ScenePropertyGroup(PropertyGroupBase, PropertyGroup):
         description="Name of the scene this export scene was created from and should swap back to when deleted",
     )
 
-    def get_active(self) -> Union[SceneBuildSettings, None]:
+    def get_active(self) -> Optional[SceneBuildSettings]:
         settings = self.build_settings
         active_index = self.build_settings_active_index
-        if settings:
-            if 0 <= active_index < len(settings):
-                return settings[active_index]
+        if settings and 0 <= active_index < len(settings):
+            return settings[active_index]
         else:
             return None
 
 
-class ObjectPropertyGroup(PropertyGroupBase, PropertyGroup):
+class ObjectPropertyGroup(IdPropertyGroup, PropertyGroup):
     _registration_name = f'{_PROP_PREFIX}_object_settings_group'
     _registration_type = Object
 
@@ -433,16 +398,15 @@ class ObjectPropertyGroup(PropertyGroupBase, PropertyGroup):
     object_settings_active_index: IntProperty()
     sync_active_with_scene: BoolProperty(name="Toggle scene sync", default=True)
 
-    def get_active_settings(self) -> Union[ObjectBuildSettings, None]:
+    def get_active_settings(self) -> Optional[ObjectBuildSettings]:
         settings = self.object_settings
         active_index = self.object_settings_active_index
-        if settings:
-            if 0 <= active_index < len(settings):
-                return settings[active_index]
+        if settings and 0 <= active_index < len(settings):
+            return settings[active_index]
         else:
             return None
 
-    def get_synced_settings(self, scene: Scene) -> Union[ObjectBuildSettings, None]:
+    def get_synced_settings(self, scene: Scene) -> Optional[ObjectBuildSettings]:
         active_build_settings = ScenePropertyGroup.get_group(scene).get_active()
         if active_build_settings and active_build_settings.name in self.object_settings:
             return self.object_settings[active_build_settings.name]
@@ -450,38 +414,4 @@ class ObjectPropertyGroup(PropertyGroupBase, PropertyGroup):
             return None
 
 
-_unregister_props = _unregister_classes = lambda: None
-
-
-def register_props_factory(*property_groups: Type[PropertyGroupBase]) -> (Callable[[], None], Callable[[], None]):
-
-    def register_props():
-        for prop_group_base in property_groups:
-            prop_group_base.register_prop()
-
-    def unregister_props():
-        for prop_group_base in property_groups:
-            prop_group_base.unregister_prop()
-
-    return register_props, unregister_props
-
-
-def register():
-    global _unregister_classes, _unregister_props
-
-    register_classes, _unregister_classes = register_module_classes_factory(__name__, globals())
-    register_props, _unregister_props = register_props_factory(
-        ScenePropertyGroup,
-        ObjectPropertyGroup,
-    )
-    print(f"Registering classes for {__name__}")
-    register_classes()
-    print(f"Registering props for {__name__}")
-    register_props()
-
-
-def unregister():
-    print(f"Unregistering props for {__name__}")
-    _unregister_props()
-    print(f"Unregistering classes for {__name__}")
-    _unregister_classes()
+register, unregister = register_module_classes_factory(__name__, globals())

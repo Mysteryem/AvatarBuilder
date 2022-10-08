@@ -1,12 +1,17 @@
 from collections import defaultdict
-from typing import Type
+from typing import TypeVar, Union
 
 import bpy
-from bpy.types import Panel, Operator, UIList, Menu
+from bpy.types import Panel, Operator, UIList, Menu, ID, Bone, PoseBone
+from bpy.props import PointerProperty
 
 # Prefix
 _BL_ID_PREFIX = "mysteryem_avatar_builder"
 _PROP_PREFIX = _BL_ID_PREFIX
+
+# Type hint for any Blender type that can have custom properties assigned to it
+PropHolderType = Union[ID, Bone, PoseBone]
+
 
 # Mapping from space type to panel prefix
 _PANEL_SPACE_TYPE_PREFIX = {
@@ -45,7 +50,7 @@ _NODE_EDITOR_PANEL_SPACE_TYPE_PREFIX = defaultdict(
 )
 
 
-def get_panel_prefix(panel_cls: Type[Panel], node_type=None, node_engine_type=None):
+def get_panel_prefix(panel_cls: type[Panel], node_type=None, node_engine_type=None):
     space_type = panel_cls.bl_space_type
     if space_type == 'NODE_EDITOR':
         return _NODE_EDITOR_PANEL_SPACE_TYPE_PREFIX[node_type][node_engine_type]
@@ -112,8 +117,37 @@ def prefix_classes(classes):
 # _register_classes, _unregister_classes = bpy.utils.register_classes_factory(bl_classes)
 
 
+T = TypeVar('T', bound='PropertyGroupBase')
+
+
+# Base class used to provide typed access (and checks) to getting groups from ID types
+# Ideally we'd make this an abstract baseclass, but Blender doesn't like that for 'metaclasses'
+class IdPropertyGroup:
+    _registration_name: str
+    _registration_type: type[PropHolderType]
+
+    # Technically, obj can also be a Bone or PoseBone, but we're not using
+    @classmethod
+    def get_group(cls: type[T], obj: PropHolderType) -> T:
+        if isinstance(obj, cls._registration_type):
+            group = getattr(obj, cls._registration_name)
+            if isinstance(group, cls):
+                return group
+            else:
+                raise ValueError(f"Tried to get a {cls} from {obj}, but got a {type(group)}.")
+        else:
+            raise ValueError(f"Tried to get a {cls} from {obj}, but {obj} is not a {cls._registration_type}")
+
+    @classmethod
+    def register_prop(cls):
+        setattr(cls._registration_type, cls._registration_name, PointerProperty(type=cls))
+
+    @classmethod
+    def unregister_prop(cls):
+        delattr(cls._registration_type, cls._registration_name)
+
+
 def register_classes_factory(classes):
-    # TODO: Is this going to prefix every time we unload and re-load the addon?
     prefix_classes(classes)
     return bpy.utils.register_classes_factory(classes)
 
@@ -121,16 +155,37 @@ def register_classes_factory(classes):
 def register_module_classes_factory(calling_module_name, calling_module_globals):
     # TODO: Alternative could be to iterate through dir(sys.modules[calling_module_name])
     #  or by importing the module
-    classes = []
+    print(f"Looking for classes to register in {calling_module_name}")
+    classes: list[type] = []
+    id_prop_groups: list[type[IdPropertyGroup]] = []
     for attribute in calling_module_globals.values():
         if isinstance(attribute, type) and attribute.__module__ == calling_module_name:
             if hasattr(attribute, 'bl_idname'):
-                print(f"Found {attribute.__name__} in {calling_module_name} via bl_idname")
+                print(f"\tFound {attribute.__name__} in {calling_module_name} via bl_idname")
                 classes.append(attribute)
             elif issubclass(attribute, bpy.types.PropertyGroup):
-                print(f"Found {attribute.__name__} in {calling_module_name} via bpy.types.PropertyGroup")
+                print(f"\tFound {attribute.__name__} in {calling_module_name} via bpy.types.PropertyGroup")
                 classes.append(attribute)
+                if issubclass(attribute, IdPropertyGroup):
+                    print(f"\t\tIt is also an {IdPropertyGroup.__name__} and will be registered on"
+                          f" {attribute._registration_type} as {attribute._registration_name}")
+                    id_prop_groups.append(attribute)
             elif issubclass(attribute, bpy.types.bpy_struct):
-                print(f"Found {attribute.__name__} in {calling_module_name} via bpy.types.bpy_struct (it has been skipped)")
+                print(f"\tFound {attribute.__name__} in {calling_module_name} via bpy.types.bpy_struct (it has been skipped)")
 
-    return register_classes_factory(classes)
+    if id_prop_groups:
+        register_classes, unregister_classes = register_classes_factory(classes)
+
+        def register():
+            register_classes()
+            for id_prop_group in id_prop_groups:
+                id_prop_group.register_prop()
+
+        def unregister():
+            for id_prop_group in id_prop_groups:
+                id_prop_group.unregister_prop()
+            unregister_classes()
+
+        return register, unregister
+    else:
+        return register_classes_factory(classes)
