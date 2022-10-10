@@ -1,12 +1,19 @@
 import bpy
 from bpy.types import UIList, Context, UILayout, Menu, Panel, Operator, Object, Mesh, Armature
 from typing import cast
-from bpy.props import EnumProperty, StringProperty
+from bpy.props import EnumProperty
 
 from .registration import register_module_classes_factory
 from .extensions import ScenePropertyGroup, ObjectPropertyGroup
 from .op_build_avatar import BuildAvatarOp
 from .ui_object import ObjectBuildSettingsControl
+from .context_collection_ops import (
+    PropCollectionType,
+    ContextCollectionOperatorBase,
+    CollectionAddBase,
+    CollectionRemoveBase,
+    CollectionMoveBase,
+)
 
 
 class SceneBuildSettingsUIList(UIList):
@@ -85,17 +92,25 @@ class ScenePanel(Panel):
                 sub.operator(BuildAvatarOp.bl_idname)
 
 
-class SceneBuildSettingsAdd(Operator):
+class SceneBuildSettingsBase(ContextCollectionOperatorBase):
+    @classmethod
+    def get_collection(cls, context: Context) -> PropCollectionType:
+        return ScenePropertyGroup.get_group(context.scene).build_settings
+
+    @classmethod
+    def get_active_index(cls, context: Context) -> int:
+        return ScenePropertyGroup.get_group(context.scene).build_settings_active_index
+
+    @classmethod
+    def set_active_index(cls, context: Context, value: int):
+        ScenePropertyGroup.get_group(context.scene).build_settings_active_index = value
+
+
+class SceneBuildSettingsAdd(CollectionAddBase, SceneBuildSettingsBase):
     """Add new scene build settings"""
     bl_idname = "scene_build_settings_add"
-    bl_label = "Add"
 
-    name: StringProperty(name="Name", description="Name of the newly created settings, leave blank for automatic name")
-
-    def execute(self, context: bpy.types.Context) -> set[str]:
-        scene_group = ScenePropertyGroup.get_group(context.scene)
-        build_settings = scene_group.build_settings
-        added = build_settings.add()
+    def set_new_item_name(self, data, added):
         if self.name:
             added.name_prop = self.name
         else:
@@ -107,7 +122,7 @@ class SceneBuildSettingsAdd(Operator):
             # We could do `while added_name in build_settings:` but I'm guessing Blender has to iterate through each
             # element until `added_name` is found since duplicate names are allowed. Checking against a set should be
             # faster if there are lots
-            existing_names = {bs.name for bs in build_settings}
+            existing_names = {bs.name for bs in data}
             while added_name in existing_names:
                 unique_number += 1
                 added_name = orig_name + " " + str(unique_number)
@@ -116,36 +131,17 @@ class SceneBuildSettingsAdd(Operator):
                 added.name_prop = added_name
             else:
                 added.name = added_name
-        # Set active to the new element
-        scene_group.build_settings_active_index = len(scene_group.build_settings) - 1
-        return {'FINISHED'}
 
 
 # TODO: Also remove from objects in the scene! (maybe optionally)
-class SceneBuildSettingsRemove(Operator):
+class SceneBuildSettingsRemove(CollectionRemoveBase, SceneBuildSettingsBase):
     """Remove the active build settings"""
     bl_idname = "scene_build_settings_remove"
-    bl_label = "Remove"
-
-    @classmethod
-    def poll(cls, context: bpy.types.Context) -> bool:
-        return len(ScenePropertyGroup.get_group(context.scene).build_settings) > 0
-
-    def execute(self, context: bpy.types.Context) -> set[str]:
-        scene_group = ScenePropertyGroup.get_group(context.scene)
-        active_index = scene_group.build_settings_active_index
-        build_settings = scene_group.build_settings
-        build_settings.remove(active_index)
-        was_last_index = active_index >= len(build_settings)
-        if was_last_index:
-            scene_group.build_settings_active_index = max(0, active_index - 1)
-        return {'FINISHED'}
 
 
-class SceneBuildSettingsMove(Operator):
+class SceneBuildSettingsMove(CollectionMoveBase, SceneBuildSettingsBase):
     """Move the active scene build settings up or down the list"""
     bl_idname = "scene_build_settings_move"
-    bl_label = "Move"
 
     type: EnumProperty(
         items=(
@@ -156,36 +152,6 @@ class SceneBuildSettingsMove(Operator):
         ),
         name="Type",
     )
-
-    @classmethod
-    def poll(cls, context: bpy.types.Context) -> bool:
-        return len(ScenePropertyGroup.get_group(context.scene).build_settings) > 0
-
-    def execute(self, context: bpy.types.Context) -> set[str]:
-        scene_group = ScenePropertyGroup.get_group(context.scene)
-        build_settings = scene_group.build_settings
-        active_index = scene_group.build_settings_active_index
-
-        command = self.type
-        if command == 'UP':
-            # Previous index, with wrap around to the bottom
-            new_index = (active_index - 1) % len(build_settings)
-            build_settings.move(active_index, new_index)
-            scene_group.build_settings_active_index = new_index
-        elif command == 'DOWN':
-            # Next index, with wrap around to the top
-            new_index = (active_index + 1) % len(build_settings)
-            build_settings.move(active_index, new_index)
-            scene_group.build_settings_active_index = new_index
-        elif command == 'TOP':
-            new_index = 0
-            build_settings.move(active_index, new_index)
-            scene_group.build_settings_active_index = new_index
-        elif command == 'BOTTOM':
-            new_index = len(build_settings) - 1
-            build_settings.move(active_index, new_index)
-            scene_group.build_settings_active_index = new_index
-        return {'FINISHED'}
 
 
 class SceneBuildSettingsPurge(Operator):
