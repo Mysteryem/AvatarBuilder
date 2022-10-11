@@ -216,11 +216,11 @@ class ShapeKeyOp(PropertyGroup):
         (DELETE_BEFORE, "Delete Before", "Delete all shape keys before the specified shape key"),
         (DELETE_BETWEEN, "Delete Between", "Delete all shape keys between (exclusive) the specified shape keys"),
         (DELETE_SINGLE, "Delete Shape", "Delete by name"),
+        (DELETE_REGEX, "Delete Regex", "Delete shape keys whose name matches a regular expression"),
         (MERGE_PREFIX, "Merge Prefix", "Merge shape keys that start with the specified prefix into one shape key"),
         (MERGE_SUFFIX, "Merge Suffix", "Merge shape keys that start with the specified suffix into one shape key"),
         (MERGE_COMMON_BEFORE_DELIMITER, "Merge Common Before Delimiter", "Merge shape keys that start with the same characters up to a delimiter"),
-        (MERGE_COMMON_AFTER_DELIMITER, "Merge Common After Delimiter", "Merge shape keys that start with the same characters up to a delimiter"),
-        (DELETE_REGEX, "Delete Regex", "Delete shape keys whose name matches a regular expression"),
+        (MERGE_COMMON_AFTER_DELIMITER, "Merge Common After Delimiter", "Merge shape keys that have the same characters after a delimiter"),
         # TODO: Do we want some extra functionality that also compares capture groups? This would be for the consecutive mode
         (MERGE_REGEX, "Merge Regex", "Merge shape keys that match the specified regular expression into one shape key"),
     )
@@ -263,10 +263,6 @@ class ShapeKeyOp(PropertyGroup):
         ],
         default='CONSECUTIVE',
     )
-
-    def get_display_name(self):
-        # TODO: See if this can be made more informative
-        return self._type_name_lookup.get(self.type, "ERROR")
 
 
 del _DELETE_, _MERGE_

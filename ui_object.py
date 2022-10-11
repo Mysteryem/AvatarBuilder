@@ -20,8 +20,78 @@ class ShapeKeyOpsUIList(UIList):
 
     def draw_item(self, context: Context, layout: UILayout, data, item: ShapeKeyOp, icon: int, active_data: ShapeKeyOp,
                   active_property: str, index: int = 0, flt_flag: int = 0):
+        self.use_filter_show = False
+
+        op_type = item.type
+        type_name = variable_names = "ERROR"
+        mode_str = ""
+        main_icon = "QUESTION"
+        mode_icon = "NONE"
+        if op_type in ShapeKeyOp.DELETE_OPS:
+            main_icon = "TRASH"
+            if op_type == ShapeKeyOp.DELETE_AFTER:
+                type_name = "After"
+                variable_names = item.delete_after_name
+            elif op_type == ShapeKeyOp.DELETE_BEFORE:
+                type_name = "Before"
+                variable_names = item.delete_before_name
+            elif op_type == ShapeKeyOp.DELETE_BETWEEN:
+                type_name = "Between"
+                variable_names = f"{item.delete_after_name}, {item.delete_before_name}"
+            elif op_type == ShapeKeyOp.DELETE_SINGLE:
+                type_name = ""
+                variable_names = item.pattern
+            elif op_type == ShapeKeyOp.DELETE_REGEX:
+                type_name = "Regex"
+                variable_names = f"/{item.pattern}/"
+        elif op_type in ShapeKeyOp.MERGE_OPS:
+            # main_icon = "FULLSCREEN_EXIT"
+            # main_icon = "IMPORT"
+            # main_icon = "SEQ_SEQUENCER"
+            main_icon = "NLA_PUSHDOWN"
+            if op_type == ShapeKeyOp.MERGE_PREFIX:
+                type_name = "Prefix"
+                variable_names = item.pattern
+            elif op_type == ShapeKeyOp.MERGE_SUFFIX:
+                type_name = "Suffix"
+                variable_names = item.pattern
+            elif op_type == ShapeKeyOp.MERGE_COMMON_BEFORE_DELIMITER:
+                type_name = "Common Before"
+                variable_names = item.pattern
+            elif op_type == ShapeKeyOp.MERGE_COMMON_AFTER_DELIMITER:
+                type_name = "Common After"
+                variable_names = item.pattern
+            elif op_type == ShapeKeyOp.MERGE_REGEX:
+                type_name = "Regex"
+                variable_names = f"/{item.pattern}/"
+
+            if item.merge_grouping == 'CONSECUTIVE':
+                mode_icon = "THREE_DOTS"
+            elif item.merge_grouping == 'ALL':
+                mode_icon = "WORLD_DATA"
+
         row = layout.row()
-        row.label(text=item.get_display_name())
+        # row.label(text=f"{type_name}: {variable_names}", icon=main_icon)
+        # row.label(text="", icon=mode_icon)
+
+        split = row.split(factor=0.9, align=True)
+
+        # col = split.column(align=True)
+        # col.label(text=type_name, icon=main_icon)
+        # col.label(text=variable_names, icon="BLANK1")
+        split.label(text=f"{type_name}: {variable_names}", icon=main_icon)
+
+        # col = split.column(align=True)
+        split.label(text="", icon=mode_icon)
+
+    def draw_filter(self, context: Context, layout: UILayout):
+        # No filter
+        pass
+
+    def filter_items(self, context: Context, data, property: str):
+        # We always want to show every op in order because they are applied in series. No filtering or sorting is ever
+        # enabled
+        return [], []
 
 
 class ShapeKeyOpsListBase(ContextCollectionOperatorBase):
@@ -197,16 +267,20 @@ class ObjectPanel(Panel):
         if main_op == 'CUSTOM':
             shape_key_ops = settings.shape_key_ops
 
-            shape_keys_box_col.label(text="Operations")
-            row = shape_keys_box_col.row()
-            row.template_list(
-                ShapeKeyOpsUIList.bl_idname, "", shape_key_ops, 'data', shape_key_ops, 'active_index', sort_lock=True)
-            vertical_buttons_col = row.column(align=True)
+            operations_title_row = shape_keys_box_col.row()
+            operations_title_row.label(text="Operations")
+            vertical_buttons_col = operations_title_row.row(align=True)
             vertical_buttons_col.operator(ShapeKeyOpsListAdd.bl_idname, text="", icon="ADD")
             vertical_buttons_col.operator(ShapeKeyOpsListRemove.bl_idname, text="", icon="REMOVE")
             vertical_buttons_col.separator()
             vertical_buttons_col.operator(ShapeKeyOpsListMove.bl_idname, text="", icon="TRIA_UP").type = 'UP'
             vertical_buttons_col.operator(ShapeKeyOpsListMove.bl_idname, text="", icon="TRIA_DOWN").type = 'DOWN'
+            shape_keys_box_col.template_list(
+                ShapeKeyOpsUIList.bl_idname, "",
+                shape_key_ops, 'data',
+                shape_key_ops, 'active_index',
+                # With the buttons down the side, 4 rows is the minimum we can have, so we put the buttons on top
+                sort_lock=True, rows=1)
 
             active_op_col = shape_keys_box_col.column(align=True)
             active_op = shape_key_ops.active
@@ -224,7 +298,7 @@ class ObjectPanel(Panel):
                     elif op_type == ShapeKeyOp.DELETE_SINGLE:
                         active_op_col.prop_search(active_op, 'pattern', me.shape_keys, 'key_blocks', text="Name")
                     elif op_type == ShapeKeyOp.DELETE_REGEX:
-                        active_op_col.prop_search(active_op, 'pattern', me.shape_keys, 'key_blocks')
+                        active_op_col.prop(active_op, 'pattern')
                 elif op_type in ShapeKeyOp.MERGE_OPS:
                     if op_type == ShapeKeyOp.MERGE_PREFIX:
                         active_op_col.prop(active_op, 'pattern', text="Prefix")
@@ -233,7 +307,7 @@ class ObjectPanel(Panel):
                     elif op_type == ShapeKeyOp.MERGE_COMMON_BEFORE_DELIMITER or op_type == ShapeKeyOp.MERGE_COMMON_AFTER_DELIMITER:
                         active_op_col.prop(active_op, 'pattern', text="Delimiter")
                     elif op_type == ShapeKeyOp.MERGE_REGEX:
-                        active_op_col.prop_search(active_op, 'pattern', me.shape_keys, 'key_blocks')
+                        active_op_col.prop(active_op, 'pattern')
 
                     # Common for all merge ops
                     active_op_col.prop(active_op, 'merge_grouping')
@@ -292,6 +366,8 @@ class ObjectPanel(Panel):
             self.draw_mesh_modifiers_box(properties_col, settings.modifier_settings)
         if me.uv_layers:
             self.draw_uv_layers_box(properties_col, settings.uv_settings, me)
+        if me.materials:
+            self.draw_materials_box(properties_col, settings.material_settings, me)
 
     def draw(self, context: Context):
         # guaranteed to be SpaceProperties by the bl_space_type
