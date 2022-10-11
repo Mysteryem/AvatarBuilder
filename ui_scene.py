@@ -6,7 +6,7 @@ from bpy.props import EnumProperty
 from .registration import register_module_classes_factory
 from .extensions import ScenePropertyGroup, ObjectPropertyGroup
 from .op_build_avatar import BuildAvatarOp
-from .ui_object import ObjectBuildSettingsControl
+from .ui_object import ObjectBuildSettingsAdd
 from .context_collection_ops import (
     PropCollectionType,
     ContextCollectionOperatorBase,
@@ -281,7 +281,8 @@ class AddSelectedToSceneSettings(Operator):
                 object_group = ObjectPropertyGroup.get_group(obj)
                 object_settings = object_group.object_settings
                 if active_group_name not in object_settings:
-                    ObjectBuildSettingsControl.add_new(object_group, active_group_name)
+                    added = object_settings.add()
+                    ObjectBuildSettingsAdd.set_new_item_name_static(object_settings, added, active_group_name)
         return {'FINISHED'}
 
 

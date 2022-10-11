@@ -1,9 +1,9 @@
 from collections import defaultdict
-from typing import TypeVar, Union
+from typing import TypeVar, Union, Generic, Optional
 
 import bpy
-from bpy.types import Panel, Operator, UIList, Menu, ID, Bone, PoseBone
-from bpy.props import PointerProperty
+from bpy.types import Panel, Operator, UIList, Menu, ID, Bone, PoseBone, PropertyGroup
+from bpy.props import PointerProperty, CollectionProperty, IntProperty
 
 # Prefix
 _BL_ID_PREFIX = "mysteryem_avatar_builder"
@@ -117,7 +117,7 @@ def prefix_classes(classes):
 # _register_classes, _unregister_classes = bpy.utils.register_classes_factory(bl_classes)
 
 
-T = TypeVar('T', bound='PropertyGroupBase')
+T = TypeVar('T', bound='IdPropertyGroup')
 
 
 # Base class used to provide typed access (and checks) to getting groups from ID types
@@ -145,6 +145,26 @@ class IdPropertyGroup:
     @classmethod
     def unregister_prop(cls):
         delattr(cls._registration_type, cls._registration_name)
+
+
+E = TypeVar('E', bound=PropertyGroup)
+
+
+class CollectionPropBase(Generic[E]):
+    # Unfortunately, PyCharm won't pick up the typing if we try to set
+    # data: CollectionProperty(type=<type as argument>)
+    # using a passed in argument, so we must provide the annotation in subclasses
+    #
+    # By setting this property's type to None, it will error if it's not overridden
+    data: CollectionProperty(type=None)
+    active_index: IntProperty()
+
+    @property
+    def active(self) -> Optional[E]:
+        if 0 <= self.active_index < len(self.data):
+            return self.data[self.active_index]
+        else:
+            return None
 
 
 def register_classes_factory(classes):

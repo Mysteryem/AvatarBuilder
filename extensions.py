@@ -5,13 +5,13 @@ from itertools import chain
 from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
 from bpy.types import PropertyGroup, Scene, Context, Object
 
-from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup
+from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup, CollectionPropBase
 
 # bpy_prop_collection_idprop isn't currently exposed in bpy.types, so it can't actually be imported. It's presence here
-# is purely to assist with development.
-if hasattr(bpy.types, 'bpy_prop_collection_idprop'):
-    # noinspection PyUnresolvedReferences
-    from bpy.types import bpy_prop_collection_idprop
+# is purely to assist with development where it exists as a fake class.
+if hasattr(bpy.types, '_bpy_prop_collection_idprop'):
+    # noinspection PyProtectedMember
+    from bpy.types import _bpy_prop_collection_idprop as bpy_prop_collection_idprop
 else:
     bpy_prop_collection_idprop = bpy.types.bpy_prop_collection
 
@@ -142,6 +142,15 @@ class SceneBuildSettings(PropertyGroup):
     # Create export scene as f"Export {build_settings.name} scene"
     name_prop: StringProperty(default="BuildSettings", update=scene_build_settings_update_name)
 
+    # TODO: Property enabled by default to 're-sync vertices with basis shape keys' with description about how the two
+    #  can become desynced outside of edit mode and how the FBX exporter exports vertices and not the basis
+    # TODO: Or add operator to re-sync vertices with basis shape keys for all objects in scene, maybe in an extra
+    #  'tools' panel for Avatar Builder
+    # TODO: Or both: add a small button next to the property, that allows users to run the re-sync manually. The
+    #  operator should report the number of meshes it checked and how many had their sync fixed
+
+    # TODO: Also property/operator for checking NaNs in UV components?
+
     reduce_to_two_meshes: BoolProperty(
         name="Reduce to two meshes",
         description="Reduce to two meshes as a final step, one mesh that has shape keys and a second mesh that doesn't have shape keys",
@@ -172,6 +181,99 @@ class SceneBuildSettings(PropertyGroup):
     #     default='INDEX',
     #     description="Specify how UV Maps of meshes should be combined when meshes are joined together",
     # )
+    do_limit_total: BoolProperty(
+        name="Limit Total Weights",
+        description="Limit the number of weights per vertex."
+                    "\nVRChat's max is 4, Unity's default max is 4, other software may vary"
+    )
+    limit_num_groups: IntProperty(
+        name="Number of weights",
+        description="Limit the number of weights per vertex."
+                    ,
+        default=4,
+        min=1,
+    )
+
+
+_DELETE_ = 'DELETE_'
+_MERGE_ = 'MERGE_'
+
+
+class ShapeKeyOp(PropertyGroup):
+    DELETE_AFTER = _DELETE_ + 'AFTER'
+    DELETE_BEFORE = _DELETE_ + 'BEFORE'
+    DELETE_BETWEEN = _DELETE_ + 'BETWEEN'
+    DELETE_SINGLE = _DELETE_ + 'SINGLE'
+    DELETE_REGEX = _DELETE_ + 'REGEX'
+    MERGE_PREFIX = _MERGE_ + 'PREFIX'
+    MERGE_SUFFIX = _MERGE_ + 'SUFFIX'
+    MERGE_COMMON_BEFORE_DELIMITER = _MERGE_ + 'COMMON_BEFORE_DELIMITER'
+    MERGE_COMMON_AFTER_DELIMITER = _MERGE_ + 'COMMON_AFTER_DELIMITER'
+    MERGE_REGEX = _MERGE_ + 'REGEX'
+
+    _types = (
+        (DELETE_AFTER, "Delete After", "Delete all shape keys after the specified shape key"),
+        (DELETE_BEFORE, "Delete Before", "Delete all shape keys before the specified shape key"),
+        (DELETE_BETWEEN, "Delete Between", "Delete all shape keys between (exclusive) the specified shape keys"),
+        (DELETE_SINGLE, "Delete Shape", "Delete by name"),
+        (MERGE_PREFIX, "Merge Prefix", "Merge shape keys that start with the specified prefix into one shape key"),
+        (MERGE_SUFFIX, "Merge Suffix", "Merge shape keys that start with the specified suffix into one shape key"),
+        (MERGE_COMMON_BEFORE_DELIMITER, "Merge Common Before Delimiter", "Merge shape keys that start with the same characters up to a delimiter"),
+        (MERGE_COMMON_AFTER_DELIMITER, "Merge Common After Delimiter", "Merge shape keys that start with the same characters up to a delimiter"),
+        (DELETE_REGEX, "Delete Regex", "Delete shape keys whose name matches a regular expression"),
+        # TODO: Do we want some extra functionality that also compares capture groups? This would be for the consecutive mode
+        (MERGE_REGEX, "Merge Regex", "Merge shape keys that match the specified regular expression into one shape key"),
+    )
+    MERGE_OPS = {t[0] for t in _types if t[0].startswith(_MERGE_)}
+    DELETE_OPS = {t[0] for t in _types if t[0].startswith(_DELETE_)}
+    _type_name_lookup = {t[0]: t[1] for t in _types}
+
+    type: EnumProperty(
+        name="Type",
+        items=_types
+    )
+    delete_after_name: StringProperty(
+        name="Delete after",
+        description="Delete shape keys after the specified shape key",
+    )
+    delete_before_name: StringProperty(
+        name="Delete before",
+        description="Delete shape keys before the specified shape key (will not delete the first shape key)",
+    )
+    pattern: StringProperty(
+        name="Pattern",
+        description="Prefix, suffix or other pattern used to match shape keys"
+    )
+    ignore_regex: StringProperty(
+        name="Ignore Regex Pattern",
+        description="If a shape key's name matches this regex pattern, ignore it from the shape key operation."
+                    '\nFor example, to ignore the common names for VRChat visemes, such as vrc.sil, use "vrc\\..+" to'
+                    'ignore every shape key starting with "vrc."',
+        default=r"vrc\..+",
+    )
+    # delimiter: StringProperty(
+    #     name="Delimiter",
+    #     description="Delimiter used to match shape keys"
+    # )
+    merge_grouping: EnumProperty(
+        name="Merge grouping",
+        items=[
+            ('CONSECUTIVE', "Consecutive", "Only consecutive shape keys matching the pattern will be merged together"),
+            ('ALL', "All", "All shape keys matching the same pattern will be merged together"),
+        ],
+        default='CONSECUTIVE',
+    )
+
+    def get_display_name(self):
+        # TODO: See if this can be made more informative
+        return self._type_name_lookup.get(self.type, "ERROR")
+
+
+del _DELETE_, _MERGE_
+
+
+class ShapeKeyOps(CollectionPropBase[ShapeKeyOp], PropertyGroup):
+    data: CollectionProperty(type=ShapeKeyOp)
 
 
 def object_build_settings_update_name(self: 'ObjectBuildSettings', context: Context):
@@ -192,24 +294,7 @@ class ObjectSettings(PropertyGroup):
     )
 
 
-class ObjectBuildSettings(PropertyGroup):
-    name_prop: StringProperty(default="BuildSettings", update=object_build_settings_update_name)
-
-    # Could use a string type and match by name instead, TODO: in both cases, consider what happens or needs to happen if the BuildSettings are deleted or renamed
-    #build_settings: bpy.props.PointerProperty(type=SceneBuildSettings)
-    # General properties
-    target_object_name: StringProperty(
-        name="Built name",
-        description="The name of the object once building is complete.\n"
-                    "All objects with the same name will be joined together (if they're the same type)\n"
-                    "Leave blank to keep the current name"
-    )
-    object_settings: PointerProperty(
-        name="Object Settings",
-        type=ObjectSettings
-    )
-    include_in_build: BoolProperty(name="Include in build", default=True, description="Include these build settings. This lets you disable the export without deleting settings")
-
+class ArmatureSettings(PropertyGroup):
     # Armature object properties
     armature_export_pose: EnumProperty(
         name="Export pose",
@@ -247,92 +332,69 @@ class ObjectBuildSettings(PropertyGroup):
                     " results than when exporting in an A-pose."
     )
 
-    ignore_reduce_to_two_meshes: BoolProperty(default=False)
 
-    # TODO: If the shape key operations were put into a PropertyGroup, we could then have a CollectionProperty where we
-    #  can add as many operations as we want.
-    #  e.g.
-    #  - Add an operation to delete all shape keys before/after <shape key name>
-    #  - Add an operation to delete all shape keys between <shape key 1> <shape key 2>
-    #  - Add an operation to apply one of the different merge operations
-    #  And maybe in the future:
-    #  - Add a special mmd convert, translate and rename conflicts operation
-    # Mesh props
-    # Keep/Merge(see below)/Apply Mix/Delete-All
-    shape_keys_op: EnumProperty(
-        name="Extra Operation",
+class ShapeKeySettings(PropertyGroup):
+    # TODO: Might there be any merit in allowing for APPLY_MIX after running CUSTOM ops?
+    shape_keys_main_op: EnumProperty(
+        name="Operation",
         items=[
             ('KEEP', "Keep", "Keep all the shape keys"),
-            ('MERGE', "Merge", "Merge shape keys together, according to the rules below"),
             ('APPLY_MIX', "Apply Mix", "Set the mesh to the current mix of all the shape keys and then delete all the shape keys"),
             ('DELETE_ALL', "Delete All", "Delete all the shape keys"),
+            ('CUSTOM', "Custom", "Merge or delete shape keys according to a series of custom operations"),
         ],
         default='KEEP'
     )
+    shape_key_ops: PointerProperty(type=ShapeKeyOps)
+    # TODO: BoolProperty to remove shape keys that do next to nothing
+    # TODO: FloatProperty to specify how much movement is still considered nothing
+    # TODO: BoolProperty to do a special mmd convert: translate according to user dictionary and rename conflicts with
+    #  Cats translation names operation
 
-    # TODO: prop to remove empty shapes (with a tolerance setting?)
 
-    delete_shape_keys_after: StringProperty(
-        name="Delete after",
-        description="Delete shape keys after the specified shape key."
-                    " Can be used with Delete shape keys before to delete all shape keys between the two.")
-    delete_shape_keys_before: StringProperty(
-        name="Delete before",
-        description="Delete shape keys before the specified shape key."
-                    " Can be used with Delete shape keys after to delete all shape keys between the two."
-                    " Will not delete the 'Basis' shape key")
+class UVSettings(PropertyGroup):
+    # TODO: Extend this to a collection property so that multiple can be kept
+    # UV Layer to keep
+    keep_only_uv_map: StringProperty(name="UV Map to keep", description="Name of the only UV map to keep on this mesh")
 
-    # Merge by prefix/suffix/common-before-last-delimiter/common-after-first-delimiter none/all/consecutive-only
-    # TODO: Could make this into a multiple-choice enum, merge_shape_keys_prefix_suffix would then have to be split
-    #  into one property for each option
-    # TODO: Rename property
-    merge_shape_keys: EnumProperty(
-        name="Merge pattern",
-        items=[
-            ('PREFIX', "Prefix",
-                "Shape keys with the specified prefix will be merged together"
-            ),
-            ('SUFFIX', "Suffix",
-                "Shape keys with the specified suffix will be merged together"
-             ),
-            # TODO: Could also have modes that ignore shape keys that don't have the delimiter
-            ('COMMON_BEFORE_LAST', "Common before last delimiter",
-                "Shape keys that have the same characters before the last found delimiter in their name will be merged"
-                " together.\n"
-                'e.g. "Smile", "Smile_part1" and "Smile_part2" when the delimiter is "_"\n'
-                "The delimiter and common part will be removed from the merged shape key"
-            ),
-            ('COMMON_AFTER_FIRST', "Common after first delimiter",
-                "Shape keys that have the same characters after the first found delimiter in their name will be merged"
-                " together.\n"
-                'e.g. "frown", "part1.frown" and "part2.frown" when the delimiter is "."\n'
-            ),
-        ],
-        default='COMMON_BEFORE_LAST'
+
+class VertexGroupSettings(PropertyGroup):
+    # Clean up vertex groups that aren't used by the armature
+    remove_non_deform_vertex_groups: BoolProperty(
+        name="Remove non-deform",
+        default=True,
+        description="Remove vertex groups that don't have an associated deform bone"
+    )
+    do_limit_total: BoolProperty("")
+    limit_num_groups: IntProperty(
+        name="Number of weights",
+        description="Limit the number of weights per vertex.",
+        default=4,
+        min=1,
+    )
+    # TODO: Try smartly limiting vertex group weights
+
+
+class VertexColorSettings(PropertyGroup):
+    remove_vertex_colors: BoolProperty(
+        name="Remove vertex colors",
+        default=True,
+        description="Remove all vertex colors"
     )
 
-    # TODO: Rename property
-    merge_shape_keys_pattern: EnumProperty(
-        name="Merge grouping",
-        items=[
-            ('ALL', "All", "All shape keys matching the same pattern will be merged together"),
-            ('CONSECUTIVE', "Consecutive", "Only consecutive shape keys matching the same pattern will be merged together"),
-        ],
-        default='CONSECUTIVE',
+
+class MaterialSettings(PropertyGroup):
+    # TODO: Extend to being able to re-map materials from one to another
+    keep_only_material: StringProperty(
+        name="Material to keep",
+        description="Name of the only Material to keep on the mesh"
     )
-    merge_shape_keys_prefix_suffix: StringProperty()
+    # materials_remap
+    remap_materials: BoolProperty(default=False)
+    # materials_remap: CollectionProperty(type=<custom type needed?>)
 
-    #merge_shape_keys_delimiter: StringProperty(default=".")
-    merge_shape_keys_ignore_prefix: StringProperty(
-        name="Ignore prefix",
-        default="vrc.",
-        description="Ignore this prefix when comparing shape key names."
-                    " This is generally used to prevent merging all 'vrc.' shape keys when you want to merge all"
-                    " shape keys that are the same before the first '.'")
 
-    # TODO: If we were to instead put properties on Meshes and Armatures and not their objects, this is how they should be split up
-    # Mesh object properties
-    # TODO: Might be better if this actually applied all Armature modifiers excluding the first one
+class ModifierSettings(PropertyGroup):
     apply_non_armature_modifiers: EnumProperty(
         name="Apply modifiers",
         items=[
@@ -345,35 +407,32 @@ class ObjectBuildSettings(PropertyGroup):
         default='APPLY_IF_POSSIBLE',
     )
 
-    # TODO: Extend this to a collection property so that multiple can be kept
-    # UV Layer to keep
-    keep_only_uv_map: StringProperty(name="UV Map to keep", description="Name of the only UV map to keep on this mesh")
-
-    # Clean up vertex groups that aren't used by the armature
-    remove_non_deform_vertex_groups: BoolProperty(
-        name="Remove non-deform",
-        default=True,
-        description="Remove vertex groups that don't have an associated deform bone"
-    )
-
-    remove_vertex_colors: BoolProperty(
-        name="Remove vertex colors",
-        default=True,
-        description="Remove all vertex colors"
-    )
-
-    # TODO: Extend to being able to re-map materials from one to another
-    keep_only_material: StringProperty(
-        name="Material to keep",
-        description="Name of the only Material to keep on the mesh"
-    )
-
     remove_disabled_modifiers: BoolProperty(
-        name="Remove disabled modifiers", default=True, description="Remove all modifiers which are disabled in the viewport")
+        name="Remove disabled modifiers",
+        default=True,
+        description="Remove all modifiers which are disabled in the viewport"
+    )
 
-    # materials_remap
-    remap_materials: BoolProperty(default=False)
-    # materials_remap: CollectionProperty(type=<custom type needed?>)
+
+class MeshSettings(PropertyGroup):
+    # TODO: IntProperty for Join priority, used to order meshes that are being joined together (and deciding which mesh
+    #  will be the mesh that all the others are joined to, used for both initial joining by name and reduce_to_two)
+    ignore_reduce_to_two_meshes: BoolProperty(default=False)
+    shape_key_settings: PointerProperty(type=ShapeKeySettings)
+    uv_settings: PointerProperty(type=UVSettings)
+    vertex_group_settings: PointerProperty(type=VertexGroupSettings)
+    vertex_color_settings: PointerProperty(type=VertexColorSettings)
+    material_settings: PointerProperty(type=MaterialSettings)
+    modifier_settings: PointerProperty(type=ModifierSettings)
+
+
+class ObjectBuildSettings(PropertyGroup):
+    name_prop: StringProperty(default="BuildSettings", update=object_build_settings_update_name)
+
+    include_in_build: BoolProperty(name="Include in build", default=True, description="Include these build settings. This lets you disable the export without deleting settings")
+    object_settings: PointerProperty(type=ObjectSettings)
+    armature_settings: PointerProperty(type=ArmatureSettings)
+    mesh_settings: PointerProperty(type=MeshSettings)
 
 
 class ScenePropertyGroup(IdPropertyGroup, PropertyGroup):
@@ -425,6 +484,12 @@ class ObjectPropertyGroup(IdPropertyGroup, PropertyGroup):
             return self.object_settings[active_build_settings.name]
         else:
             return None
+
+    def get_displayed_settings(self, scene: Scene) -> Optional[ObjectBuildSettings]:
+        if self.sync_active_with_scene:
+            return self.get_synced_settings(scene)
+        else:
+            return self.get_active_settings()
 
 
 register, unregister = register_module_classes_factory(__name__, globals())
