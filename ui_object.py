@@ -2,16 +2,26 @@ from typing import Union, cast, Optional
 from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator, Object, Mesh, PropertyGroup
 
 from .registration import register_module_classes_factory
-from .extensions import (ScenePropertyGroup, ObjectPropertyGroup, ObjectBuildSettings, ObjectSettings, ArmatureSettings,
-                         MeshSettings, VertexGroupSettings, ShapeKeySettings, ModifierSettings, UVSettings,
-                         MaterialSettings, ShapeKeyOp)
+from .extensions import (
+    ArmatureSettings,
+    MaterialSettings,
+    MeshSettings,
+    ModifierSettings,
+    ObjectBuildSettings,
+    ObjectPropertyGroup,
+    ScenePropertyGroup,
+    ShapeKeyOp,
+    ShapeKeySettings,
+    UVSettings,
+    VertexGroupSettings,
+)
 from .integration import check_gret_shape_key_apply_modifiers
 from .context_collection_ops import (
-    PropCollectionType,
-    ContextCollectionOperatorBase,
+    CollectionAddBase,
     CollectionMoveBase,
     CollectionRemoveBase,
-    CollectionAddBase,
+    ContextCollectionOperatorBase,
+    PropCollectionType,
 )
 
 
@@ -206,7 +216,7 @@ class ObjectPanel(Panel):
         return ScenePropertyGroup.get_group(scene).build_settings
 
     @staticmethod
-    def draw_general_object_box(properties_col: UILayout, settings: ObjectSettings):
+    def draw_general_object_box(properties_col: UILayout, settings: ObjectBuildSettings):
         object_box = properties_col.box()
         object_box_col = object_box.column()
         object_box_col.label(text="Object", icon="OBJECT_DATA")
@@ -272,6 +282,9 @@ class ObjectPanel(Panel):
             vertical_buttons_col = operations_title_row.row(align=True)
             vertical_buttons_col.operator(ShapeKeyOpsListAdd.bl_idname, text="", icon="ADD")
             vertical_buttons_col.operator(ShapeKeyOpsListRemove.bl_idname, text="", icon="REMOVE")
+            # TODO: Add a menu that lets the user add a specific type of op, the menu should be split into sub-menus,
+            #  one sub-menu for DELETE_ ops, one for MERGE_ ops etc.. Then, the .type prop could be hidden, simplifying
+            #  the UI slightly
             vertical_buttons_col.separator()
             vertical_buttons_col.operator(ShapeKeyOpsListMove.bl_idname, text="", icon="TRIA_UP").type = 'UP'
             vertical_buttons_col.operator(ShapeKeyOpsListMove.bl_idname, text="", icon="TRIA_DOWN").type = 'DOWN'
@@ -455,7 +468,7 @@ class ObjectPanel(Panel):
             properties_col.enabled = settings_enabled
 
             # Display the box for general object settings
-            self.draw_general_object_box(properties_col, active_object_settings.object_settings)
+            self.draw_general_object_box(properties_col, active_object_settings)
 
             # Display the box for armature settings if the object is an armature
             if obj.type == 'ARMATURE':

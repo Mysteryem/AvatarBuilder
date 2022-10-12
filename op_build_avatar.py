@@ -1,10 +1,41 @@
 import numpy as np
-from typing import Union
+import re
+from typing import Union, Optional, AnyStr, Callable, Literal, cast
 from collections import defaultdict
 from dataclasses import dataclass
+import itertools
+
 import bpy
-from bpy.types import Object, ShapeKey, Mesh, Operator, Modifier, MeshUVLoopLayer, Scene, Armature, ArmatureModifier
-from .extensions import ObjectBuildSettings, ObjectPropertyGroup, ScenePropertyGroup
+from bpy.types import (
+    Armature,
+    ArmatureModifier,
+    Context,
+    ID,
+    Key,
+    Mesh,
+    MeshUVLoopLayer,
+    Modifier,
+    Object,
+    Operator,
+    Scene,
+    ShapeKey,
+)
+
+from .extensions import (
+    ArmatureSettings,
+    MaterialSettings,
+    MeshSettings,
+    ModifierSettings,
+    ObjectBuildSettings,
+    ObjectPropertyGroup,
+    SceneBuildSettings,
+    ScenePropertyGroup,
+    ShapeKeyOp,
+    ShapeKeySettings,
+    UVSettings,
+    VertexColorSettings,
+    VertexGroupSettings,
+)
 from .integration import check_gret_shape_key_apply_modifiers
 from .registration import register_module_classes_factory
 
@@ -168,219 +199,292 @@ def run_gret_shape_key_apply_modifiers(obj: Object, modifier_names_to_apply: set
         raise RuntimeError("Gret addon not found or version incompatible")
 
 
-# TODO: Break up the larger parts of this function into separate functions
-# Needs to be down here for the type hints to work
-def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBuildSettings):
-    # Shape keys first, then modifiers
-    shape_keys = me.shape_keys
-    if shape_keys:
-        key_blocks = shape_keys.key_blocks
-        shape_keys_op = settings.shape_keys_op
+def build_mesh_shape_key_op(obj: Object, shape_keys: Key, op: ShapeKeyOp):
+    # TODO: Replace ignore_regex with 'IGNORE_' ops. See ShapeKeyOp comments for details. Note that key_blocks would
+    #  need to be passed between subsequent calls to this function in that case.
+    key_blocks = shape_keys.key_blocks
 
-        if shape_keys_op == 'DELETE_ALL':
-            # Avoid reference key and vertices desync by setting vertices co to reference key co
-            reference_key_co = np.empty(3 * len(me.vertices), dtype=np.single)
-            shape_keys.reference_key.data.foreach_get('co', reference_key_co)
-            me.vertices.foreach_set('co', reference_key_co)
-            # Remove all shape keys
-            obj.shape_key_clear()
-            del reference_key_co
-        else:
-            # Delete shape keys before/after the specified keys (excluding the reference key)
+    ignore_regex = op.ignore_regex
+    if ignore_regex:
+        try:
+            ignore_pattern = re.compile(ignore_regex)
+            available_key_blocks = {k for k in key_blocks if ignore_pattern.fullmatch(k.name) is None}
+        except re.error as err:
+            # TODO: Check patterns in advance for validity, see ShapeKeyOp comments for details
+            print(f"Regex error occurred for ignore_regex '{ignore_regex}' :\n\t{err}")
+            available_key_blocks = set(key_blocks)
+    else:
+        available_key_blocks = set(key_blocks)
+
+    if key_blocks:
+        op_type = op.type
+        if op_type in ShapeKeyOp.DELETE_OPS:
             keys_to_delete = set()
-            delete_after_name = settings.delete_shape_keys_after
-            if delete_after_name:
-                delete_after_index = key_blocks.find(delete_after_name)
+            if op_type == ShapeKeyOp.DELETE_SINGLE:
+                key_name = op.pattern
+                if key_name in key_blocks:
+                    keys_to_delete = {key_blocks[key_name]}
+            if op_type == ShapeKeyOp.DELETE_AFTER:
+                delete_after_index = key_blocks.find(op.delete_after_name)
                 if delete_after_index != -1:
                     keys_to_delete = set(key_blocks[delete_after_index + 1:])
-                else:
-                    raise KeyError(f"Shape key to delete after '{delete_after_name}' could not be found on Object"
-                                   f" '{obj.name}'")
-
-            delete_before_name = settings.delete_shape_keys_before
-            if delete_before_name:
-                delete_before_index = key_blocks.find(delete_before_name)
+            elif op_type == ShapeKeyOp.DELETE_BEFORE:
+                delete_before_index = key_blocks.find(op.delete_before_name)
                 if delete_before_index != -1:
                     # Start from 1 to avoid including the reference key
-                    found_keys = set(key_blocks[1:delete_before_index])
-                    if delete_after_name:
-                        # Only shape keys that satisfy both conditions
-                        keys_to_delete.intersection_update(found_keys)
-                    else:
-                        keys_to_delete = found_keys
-                else:
-                    raise KeyError(f"Shape key to delete before '{delete_before_name}' could not be found on Object"
-                                   f" '{obj.name}'")
+                    keys_to_delete = set(key_blocks[1:delete_before_index])
+            elif op_type == ShapeKeyOp.DELETE_BETWEEN:
+                delete_after_index = key_blocks.find(op.delete_after_name)
+                delete_before_index = key_blocks.find(op.delete_before_name)
+                if delete_after_index != -1 and delete_before_index != -1:
+                    keys_to_delete = set(key_blocks[delete_after_index + 1:delete_before_index])
+            elif op_type == ShapeKeyOp.DELETE_REGEX:
+                pattern_str = op.pattern
+                if pattern_str:
+                    try:
+                        pattern = re.compile(pattern_str)
+                        keys_to_delete = {k for k in key_blocks if pattern.fullmatch(k.name) is not None}
+                    except re.error as err:
+                        print(f"Regex error for '{pattern_str}' for {ShapeKeyOp.DELETE_REGEX}:\n\t{err}")
 
-            for key_name in keys_to_delete:
-                obj.shape_key_remove(key_name)
+            # Limit the deleted keys to those available
+            keys_to_delete.intersection_update(available_key_blocks)
 
-            if shape_keys_op == 'APPLY_MIX':
-                # Delete all remaining shape keys, setting the mesh vertices to the current mix of all shape keys
-                # Add a shape key that is the mix of all shapes at their current values
-                mix_shape = obj.shape_key_add(from_mix=True)
-                mix_shape_co = np.empty(3 * len(me.vertices), dtype=np.single)
-                # Get the co for the mixed shape
-                mix_shape.data.foreach_get('co', mix_shape_co)
-                # Remove all the shapes
-                obj.shape_key_clear()
-                # Set the vertices to the mixed shape co
-                me.vertices.foreach_set('co', mix_shape_co)
-                del mix_shape_co
-            elif shape_keys_op == 'MERGE':
-                merge_pattern = settings.merge_shape_keys
-                merge_grouping = settings.merge_shape_keys_pattern
-                merge_prefix_suffix_delim = settings.merge_shape_keys_prefix_suffix
-                merge_ignore_prefix = settings.merge_shape_keys_ignore_prefix
+            # Remove all the shape keys being deleted
+            for key in keys_to_delete:
+                obj.shape_key_remove(key)
 
-                # Merge shape keys based on their names
-                # Only one of these structures will be used based on which options were picked
-                # A list of shapes, all elements will be merged into one shape
-                matched = []
-                # A dictionary of 'common prefix/suffix' to list of shapes with that prefix/suffix
-                # Each list will be merged into one shape
-                matched_grouped = defaultdict(list)
-                # A list of lists of shapes
-                # Each list will be merged into one shape
-                matched_consecutive = []
+        elif op_type in ShapeKeyOp.MERGE_OPS:
+            grouping = op.merge_grouping
 
-                # Skip the reference shape
-                key_blocks_to_search = key_blocks[1:]
-                if merge_ignore_prefix:
-                    # Skip any that begin with the specific prefix we're ignoring
-                    key_blocks_to_search = (shape for shape in key_blocks_to_search if not shape.name.startswith(merge_ignore_prefix))
+            # Collect all the shapes to be merged into a common dictionary format that the merge function uses
+            # The first shape in each list will be picked as the shape that the other shapes in the list should be
+            # merged into
+            # We will skip any lists that don't have more than one element since merging only happens with two or
+            # more shapes
+            merge_lists: list[tuple[ShapeKey, list[ShapeKey]]] = []
 
-                if merge_grouping == 'ALL':
-                    if merge_pattern == 'PREFIX':
-                        matched = [shape for shape in key_blocks_to_search if shape.name.startswith(merge_prefix_suffix_delim)]
-                    elif merge_pattern == 'SUFFIX':
-                        matched = [shape for shape in key_blocks_to_search if shape.name.endswith(merge_prefix_suffix_delim)]
-                    elif merge_pattern == 'COMMON_BEFORE_LAST':
-                        for shape in key_blocks_to_search:
-                            name = shape.name
-                            index = name.rfind(merge_prefix_suffix_delim)
-                            if index != -1:
-                                common_part_before_delimiter = name[:index]
+            # Skip the reference shape and any other ignored shape keys
+            key_blocks_to_search = (k for k in key_blocks[1:] if k in available_key_blocks)
+
+            if grouping == 'ALL':
+                matched: list[ShapeKey] = []
+                matched_grouped: dict[Union[str, tuple[AnyStr, ...]], list[ShapeKey]] = defaultdict(list)
+                if op_type == ShapeKeyOp.MERGE_PREFIX:
+                    prefix = op.pattern
+                    if prefix:
+                        matched = [shape for shape in key_blocks_to_search if shape.name.startswith(prefix)]
+                elif op_type == ShapeKeyOp.MERGE_SUFFIX:
+                    suffix = op.pattern
+                    if suffix:
+                        matched = [shape for shape in key_blocks_to_search if shape.name.endswith(suffix)]
+                elif op_type == ShapeKeyOp.MERGE_REGEX:
+                    pattern_str = op.pattern
+                    if pattern_str:
+                        try:
+                            pattern = re.compile(pattern_str)
+                            if pattern.groups:
+                                # If the pattern contains groups, they need to match too
+                                for key in key_blocks_to_search:
+                                    name = key.name
+                                    match = pattern.fullmatch(name)
+                                    if match:
+                                        # Create key from all capture groups, so that if capture groups are used, they
+                                        # must match
+                                        matched_grouped[match.groups()].append(key)
                             else:
-                                # If the delimiter isn't found we use the entire name, this allows for "MyShape" to
-                                # combine with "MyShape_adjustments" when the delimiter is "_", for example.
-                                common_part_before_delimiter = name
-                            matched_grouped[common_part_before_delimiter].append(shape)
-                    elif merge_pattern == 'COMMON_AFTER_FIRST':
-                        # TODO: Reduce duplicate code shared with COMMON_BEFORE_LAST
-                        for shape in key_blocks_to_search:
-                            name = shape.name
-                            index = name.find(merge_prefix_suffix_delim)
-                            if index != -1:
-                                common_part_after_delimiter = name[index+1:]
+                                matched = [k for k in key_blocks_to_search if pattern.fullmatch(k.name)]
+                        except re.error as err:
+                            print(f"Regex error for '{pattern_str}' for {ShapeKeyOp.MERGE_REGEX}:\n\t{err}")
+                elif op_type == ShapeKeyOp.MERGE_COMMON_BEFORE_DELIMITER:
+                    delimiter = op.pattern
+                    if delimiter:
+                        for key in key_blocks_to_search:
+                            name = key.name
+                            before, _found_delimiter, _after = name.partition(delimiter)
+                            # Note that if the delimiter is not found, before will contain the original string. We
+                            # include this so that "MyShape" can combine with "MyShape_adjustments" when the
+                            # delimiter is "_"
+                            matched_grouped[before].append(key)
+                elif op_type == ShapeKeyOp.MERGE_COMMON_AFTER_DELIMITER:
+                    delimiter = op.pattern
+                    if delimiter:
+                        for key in key_blocks_to_search:
+                            name = key.name
+                            _before, found_delimiter, after = name.partition(delimiter)
+                            if found_delimiter:
+                                common_part = after
                             else:
-                                # If the delimiter isn't found we use the entire name, this allows for "MyShape" to
-                                # combine with "adjust.MyShape" when the delimiter is "_", for example.
-                                common_part_after_delimiter = name
-                            matched_grouped[common_part_after_delimiter].append(shape)
-                elif merge_grouping == 'CONSECUTIVE':
-                    # similar to 'ALL', but check against the previous
-                    if merge_pattern == 'PREFIX':
-                        previous_shape_matched = False
-                        current_merge_list = None
-                        for shape in key_blocks_to_search:
-                            current_shape_matches = shape.name.startswith(merge_prefix_suffix_delim)
-                            if current_shape_matches:
-                                if not previous_shape_matched:
-                                    # Create a new merge list
-                                    current_merge_list = []
-                                    matched_consecutive.append(current_merge_list)
-                                # Add to the current merge list
-                                current_merge_list.append(shape)
-                            # Update for the next shape in the list
-                            previous_shape_matched = current_shape_matches
-                    elif merge_pattern == 'SUFFIX':
-                        # TODO: Remove the duplicate code shared with PREFIX
-                        previous_shape_matched = False
-                        current_merge_list = None
-                        for shape in key_blocks_to_search:
-                            current_shape_matches = shape.name.endswith(merge_prefix_suffix_delim)
-                            if current_shape_matches:
-                                if not previous_shape_matched:
-                                    # Create a new merge list
-                                    current_merge_list = []
-                                    matched_consecutive.append(current_merge_list)
-                                # Add to the current merge list
-                                current_merge_list.append(shape)
-                            # Update for the next shape in the list
-                            previous_shape_matched = current_shape_matches
-                    elif merge_pattern == 'COMMON_BEFORE_LAST':
-                        previous_common_part = None
-                        current_merge_list = None
-                        for shape in key_blocks_to_search:
-                            name = shape.name
-                            index = name.rfind(merge_prefix_suffix_delim)
-                            if index != -1:
-                                common_part_before_delimiter = name[:index]
-                            else:
-                                # If the delimiter isn't found we use the entire name, this allows for "MyShape" to
-                                # combine with "MyShape_adjustments" when the delimiter is "_", for example.
-                                common_part_before_delimiter = name
-                            if common_part_before_delimiter != previous_common_part:
-                                # Create a new merge list
-                                current_merge_list = []
-                                matched_consecutive.append(current_merge_list)
-                            # Add to the current merge list
-                            current_merge_list.append(shape)
-                    elif merge_pattern == 'COMMON_AFTER_FIRST':
-                        # TODO: Reduce common code shared with COMMON_BEFORE_LAST
-                        previous_common_part = None
-                        current_merge_list = None
-                        for shape in key_blocks_to_search:
-                            name = shape.name
-                            index = name.find(merge_prefix_suffix_delim)
-                            if index != -1:
-                                common_part_after_delimiter = name[index+1:]
-                            else:
-                                # If the delimiter isn't found we use the entire name, this allows for "MyShape" to
-                                # combine with "MyShape_adjustments" when the delimiter is "_", for example.
-                                common_part_after_delimiter = name
-                            if common_part_after_delimiter != previous_common_part:
-                                # Create a new merge list
-                                current_merge_list = []
-                                matched_consecutive.append(current_merge_list)
-                            # Add to the current merge list
-                            current_merge_list.append(shape)
-                # Collect all the shapes to be merged into a common dictionary format that the merge function uses
-                # The first shape in each list will be picked as the shape that the other shapes in the list should be
-                # merged into
-                # We will skip any lists that don't have more than one element since merging only happens with two or
-                # more shapes
-                merge_lists = []
+                                # When the delimiter is not found, we will consider the common part to be the original
+                                # string, so that "MyShape" can be merged with "adjust.MyShape" when the delimiter is
+                                # "."
+                                common_part = name
+                            matched_grouped[common_part].append(key)
 
-                # Only one of the 3 different data structures we declared will actually be used, but we'll check all
-                # three for simplicity
-                if len(matched) > 1:
-                    merge_lists.append((matched[0], matched[1:]))
-                for shapes_to_merge in matched_grouped.values():
+                # Only one of the data structures we declared will actually be used, but we'll check them both for
+                # simplicity
+                for shapes_to_merge in itertools.chain([matched], matched_grouped.values()):
                     if len(shapes_to_merge) > 1:
                         merge_lists.append((shapes_to_merge[0], shapes_to_merge[1:]))
+
+            elif grouping == 'CONSECUTIVE':
+                # Similar to 'ALL', but check against the previous and create a new sub-list each time the previous
+                # didn't match
+                matched_consecutive = []
+                if op_type == ShapeKeyOp.MERGE_PREFIX:
+                    prefix = op.pattern
+                    if prefix:
+                        previous_shape_matched = False
+                        current_merge_list = None
+                        for shape in key_blocks_to_search:
+                            current_shape_matches = shape.name.startswith(prefix)
+                            if current_shape_matches:
+                                if not previous_shape_matched:
+                                    # Create a new merge list
+                                    current_merge_list = []
+                                    matched_consecutive.append(current_merge_list)
+                                # Add to the current merge list
+                                current_merge_list.append(shape)
+                            # Update for the next shape in the list
+                            previous_shape_matched = current_shape_matches
+                elif op_type == ShapeKeyOp.MERGE_SUFFIX:
+                    suffix = op.pattern
+                    if suffix:
+                        previous_shape_matched = False
+                        current_merge_list = None
+                        for shape in key_blocks_to_search:
+                            current_shape_matches = shape.name.endswith(suffix)
+                            if current_shape_matches:
+                                if not previous_shape_matched:
+                                    # Create a new merge list
+                                    current_merge_list = []
+                                    matched_consecutive.append(current_merge_list)
+                                # Add to the current merge list
+                                current_merge_list.append(shape)
+                            # Update for the next shape in the list
+                            previous_shape_matched = current_shape_matches
+                elif op_type == ShapeKeyOp.MERGE_REGEX:
+                    pattern_str = op.pattern
+                    if pattern_str:
+                        try:
+                            pattern = re.compile(pattern_str)
+                            previous_shape_match: Optional[re.Match] = None
+                            current_merge_list = None
+                            for key in key_blocks_to_search:
+                                name = key.name
+                                match = pattern.fullmatch(name)
+                                if match:
+                                    if not previous_shape_match or previous_shape_match.groups() != match.groups():
+                                        # If the previous shape key didn't match, or it did, but the groups of the
+                                        # match are different to the current match, create a new merge list.
+                                        # If the pattern has no capture groups, then .groups() will be an empty tuple
+                                        current_merge_list = []
+                                        matched_consecutive.append(current_merge_list)
+                                    # Add to the current merge list
+                                    current_merge_list.append(key)
+                                # Update for the next shape in the list
+                                previous_shape_match = match
+                        except re.error as err:
+                            print(f"Regex error for '{pattern_str}' for {ShapeKeyOp.MERGE_REGEX}:\n\t{err}")
+                elif op_type == ShapeKeyOp.MERGE_COMMON_BEFORE_DELIMITER:
+                    delimiter = op.pattern
+                    if delimiter:
+                        previous_common_part = None
+                        current_merge_list = None
+                        for key in key_blocks_to_search:
+                            name = key.name
+                            before, _found_delimiter, _after = name.partition(delimiter)
+                            # Note that if the delimiter is not found, before will contain the original string. We
+                            # include this so that "MyShape" can combine with "MyShape_adjustments" when the
+                            # delimiter is "_"
+                            common_part = before
+                            if common_part != previous_common_part:
+                                # Create a new merge list
+                                current_merge_list = []
+                                matched_consecutive.append(current_merge_list)
+                                # Set the previous_common_part to the new, different common_part, for the next iteration
+                                previous_common_part = common_part
+                            # Add to the current merge list
+                            current_merge_list.append(key)
+                elif op_type == ShapeKeyOp.MERGE_COMMON_AFTER_DELIMITER:
+                    delimiter = op.pattern
+                    if delimiter:
+                        previous_common_part = None
+                        current_merge_list = None
+                        for key in key_blocks_to_search:
+                            name = key.name
+                            _before, found_delimiter, after = name.partition(delimiter)
+                            if found_delimiter:
+                                common_part = after
+                            else:
+                                # When the delimiter is not found, we will consider the common part to be the original
+                                # string, so that "MyShape" can be merged with "adjust.MyShape" when the delimiter is
+                                # "."
+                                common_part = name
+                            if common_part != previous_common_part:
+                                # Create a new merge list
+                                current_merge_list = []
+                                matched_consecutive.append(current_merge_list)
+                                # Set the previous_common_part to the new, different common_part, for the next iteration
+                                previous_common_part = common_part
+                            # Add to the current merge list
+                            current_merge_list.append(key)
+
+                # Collect all lists of shapes to merge that have more than one element into merge_lists
                 for shapes_to_merge in matched_consecutive:
                     if len(shapes_to_merge) > 1:
                         merge_lists.append((shapes_to_merge[0], shapes_to_merge[1:]))
 
-                # Merge all the specified shapes
-                merge_shapes_into_first(obj, merge_lists)
+            # Merge all the specified shapes
+            merge_shapes_into_first(obj, merge_lists)
 
-            # If there is only the reference shape key left, remove it
-            # This will allow for most modifiers to be applied, compared to when there is just the reference key
-            if len(key_blocks) == 1:
-                # Copy reference key co to the vertices to avoid desync between the vertices and reference key
-                reference_key_co = np.empty(3 * len(me.vertices), dtype=np.single)
-                shape_keys.reference_key.data.foreach_get('co', reference_key_co)
-                me.vertices.foreach_set('co', reference_key_co)
-                # Remove all shape keys
-                obj.shape_key_clear()
-                del reference_key_co
 
-    # Update shape keys reference in-case it has changed (happens when removing all shape keys)
+def build_mesh_shape_keys(obj: Object, me: Mesh, settings: ShapeKeySettings):
+    """Note that this function may invalidate old references to Mesh.shape_keys as it may delete them entirely"""
     shape_keys = me.shape_keys
+    if shape_keys:
+        key_blocks = shape_keys.key_blocks
+        main_op = settings.shape_keys_main_op
+        if main_op == 'APPLY_MIX':
+            # Delete shape keys, setting the mesh vertices to the current mix of all shape keys
+            # Add a shape key that is the mix of all shapes at their current values
+            mix_shape = obj.shape_key_add(from_mix=True)
+            mix_shape_co = np.empty(3 * len(me.vertices), dtype=np.single)
+            # Get the co for the mixed shape
+            mix_shape.data.foreach_get('co', mix_shape_co)
+            # Remove all the shapes
+            obj.shape_key_clear()
+            # Set the vertices to the mixed shape co
+            me.vertices.foreach_set('co', mix_shape_co)
+            del mix_shape_co
+            return
+        elif main_op == 'CUSTOM':
+            for op in settings.shape_key_ops:
+                build_mesh_shape_key_op(obj, shape_keys, op)
+        elif main_op == 'KEEP':
+            # Nothing to do
+            pass
 
+        # If there is only the reference shape key left, remove it
+        # This will allow for most modifiers to be applied, compared to when there is just the reference key
+        if main_op == 'DELETE_ALL' or len(key_blocks) == 1:
+            # Copy reference key co to the vertices to avoid desync between the vertices and reference key
+            reference_key_co = np.empty(3 * len(me.vertices), dtype=np.single)
+            shape_keys.reference_key.data.foreach_get('co', reference_key_co)
+            me.vertices.foreach_set('co', reference_key_co)
+            # Remove all shape keys
+            # Note that this will invalidate any existing references to me.shape_keys
+            obj.shape_key_clear()
+            del reference_key_co
+
+
+def build_mesh_uvs(obj: Object, settings: UVSettings):
+    # Remove other uv maps
+    if settings.keep_only_uv_map:
+        remove_all_uv_layers_except(obj, settings.keep_only_uv_map)
+
+
+def build_mesh_modifiers(original_scene: Scene, obj: Object, me: Mesh, settings: ModifierSettings):
     # Optionally remove disabled modifiers
     if settings.remove_disabled_modifiers:
         modifiers = obj.modifiers
@@ -390,6 +494,7 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
                 modifiers.remove(mod)
 
     # Apply modifiers
+    shape_keys = me.shape_keys
     apply_modifiers = settings.apply_non_armature_modifiers
     if apply_modifiers != 'NONE' and not (apply_modifiers == 'APPLY_IF_NO_SHAPES' and shape_keys):
         # Note: deprecated in newer blender
@@ -421,9 +526,8 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
         # For data transfer modifiers to work (and possibly some other modifiers), we must temporarily add the copied
         # object to the original (and active) scene
         original_scene.collection.objects.link(obj)
-        # Again for data transfer modifiers to work, the active shape key has to be set to the reference key because,
-        # for some reason. This isn't normal behaviour of applying th modifier gets applied almost as if the active shape key has a value of 1.0, despite the
-        # fact this is not the normal behaviour in any way. I honestly don't know why this happens
+        # Again for data transfer modifiers to work, the active shape key has to be set to the reference key because it
+        # applies to the active shape key
         orig_active_shape_key_index = obj.active_shape_key_index
         obj.active_shape_key_index = 0
         # gret might also be turning this off, we'll follow suit
@@ -449,32 +553,41 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
             # Unlink from the collection again
             original_scene.collection.objects.unlink(obj)
 
-    # Remove other uv maps
-    if settings.keep_only_uv_map:
-        remove_all_uv_layers_except(obj, settings.keep_only_uv_map)
 
-    # Remove non-deform vertex groups
-    # Must be done after applying modifiers, as modifiers may use vertex groups to affect their behaviour
+def get_deform_bone_names(obj: Object) -> set[str]:
+    # TODO: Not sure how FBX and unity handle multiple armatures, should we only check the first armature modifier when
+    #  exporting as FBX or exporting for Unity?
+    deform_bone_names: set[str] = set()
+    for mod in obj.modifiers:
+        if isinstance(mod, ArmatureModifier) and mod.use_vertex_groups:
+            if mod.object and isinstance(mod.object.data, Armature):
+                armature = mod.object.data
+                for bone in armature.bones:
+                    if bone.use_deform:
+                        deform_bone_names.add(bone.name)
+    return deform_bone_names
+
+
+def build_mesh_vertex_groups(obj: Object, settings: VertexGroupSettings):
     if settings.remove_non_deform_vertex_groups:
-        # TODO: Not sure how FBX and unity handle multiple armatures
-        deform_bones_names = set()
-        for mod in obj.modifiers:
-            if isinstance(mod, ArmatureModifier) and mod.use_vertex_groups:
-                if mod.object and isinstance(mod.object.data, Armature):
-                    armature = mod.object.data
-                    for bone in armature.bones:
-                        if bone.use_deform:
-                            deform_bones_names.add(bone.name)
+        deform_bone_names = get_deform_bone_names(obj)
         for vg in obj.vertex_groups:
-            if vg.name not in deform_bones_names:
+            if vg.name not in deform_bone_names:
                 obj.vertex_groups.remove(vg)
 
-    # Remove vertex colors
+
+def build_mesh_vertex_colors(me: Mesh, settings: VertexColorSettings):
     if settings.remove_vertex_colors:
         # TODO: Support for newer vertex colors via mesh attributes or whatever they're called
         for vc in me.vertex_colors:
             me.vertex_colors.remove(vc)
 
+
+def build_mesh_materials(me: Mesh, settings: MaterialSettings):
+    # TODO: Remap materials instead (and option to combine materials mapped to the same other material into one
+    #  material slot)
+    # TODO: Support materials defined on the Object rather than Mesh (MaterialSlot.link), note that deleting slots
+    #  still appears to be done by deleting the material from the object
     # Remove all but one material
     if settings.keep_only_material:
         only_material_name = settings.keep_only_material
@@ -487,8 +600,22 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
             if material.name != only_material_name:
                 materials.pop(index=idx)
 
-    # TODO: Remap materials
-    pass
+
+def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: MeshSettings):
+    # Shape keys before modifiers because this may result in all shape keys being removed, in which case, more types of
+    # modifier can be applied
+    build_mesh_shape_keys(obj, me, settings.shape_key_settings)
+
+    build_mesh_modifiers(original_scene, obj, me, settings.modifier_settings)
+
+    build_mesh_uvs(obj, settings.uv_settings)
+
+    # Must be done after applying modifiers, as modifiers may use vertex groups to affect their behaviour
+    build_mesh_vertex_groups(obj, settings.vertex_group_settings)
+
+    build_mesh_vertex_colors(me, settings.vertex_color_settings)
+
+    build_mesh_materials(me, settings.material_settings)
 
     # This could be done just prior to joining meshes together, but I think it's ok to do here
     # There probably shouldn't be an option to turn this off
@@ -498,10 +625,9 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: ObjectBui
 
     # TODO: Add option to apply all transforms
     # bpy.ops.object.transform_apply({'selected_editable_objects': [obj]}, location=True, rotation=True, scale=True)
-    pass
 
 
-def build_armature(obj: Object, armature: Armature, settings: ObjectBuildSettings, copy_objects: set[Object]):
+def build_armature(obj: Object, armature: Armature, settings: ArmatureSettings, copy_objects: set[Object]):
     export_pose = settings.armature_export_pose
     if export_pose == "REST":
         armature.pose_position = 'REST'
@@ -550,6 +676,135 @@ def set_build_name_for_existing_object_about_to_be_renamed(name: str):
                 object_build_settings.target_object_name = name
 
 
+@dataclass
+class ObjectHelper:
+    """Helper class"""
+    orig_object: Object
+    settings: ObjectBuildSettings
+    desired_name: str
+    copy_object: Union[Object, None] = None
+    joined_settings_ignore_reduce_to_two_meshes: Union[bool, None] = None
+
+
+@dataclass
+class ValidatedBuild:
+    """Helper class"""
+    export_scene_name: str
+    objects_for_build: list[ObjectHelper]
+    desired_name_meshes: dict[str, list[ObjectHelper]]
+    desired_name_armatures: dict[str, list[ObjectHelper]]
+    shape_keys_mesh_name: str
+    no_shape_keys_mesh_name: str
+
+
+def validate_build(context: Context, active_scene_settings: SceneBuildSettings) -> ValidatedBuild:
+    scene = context.scene
+    view_layer = context.view_layer
+
+    export_scene_name = active_scene_settings.name
+    if not export_scene_name:
+        raise ValueError("Active build settings' name must not be empty")
+
+    if active_scene_settings.ignore_hidden_objects:
+        scene_objects_gen = [o for o in scene.objects if o.visible_get(view_layer=view_layer)]
+    else:
+        scene_objects_gen = scene.objects
+
+    objects_for_build: list[ObjectHelper] = []
+
+    allowed_object_types = {'MESH', 'ARMATURE'}
+    for obj in scene_objects_gen:
+        if obj.type in allowed_object_types:
+            group = ObjectPropertyGroup.get_group(obj)
+            object_settings = group.get_synced_settings(scene)
+            if object_settings and object_settings.include_in_build:
+                desired_name = object_settings.target_object_name
+                if not desired_name:
+                    desired_name = obj.name
+                helper_tuple = ObjectHelper(obj, object_settings, desired_name)
+                objects_for_build.append(helper_tuple)
+
+    # Get desired object names and validate that there won't be any attempt to join Objects of different types
+    desired_name_meshes: dict[str, list[ObjectHelper]] = defaultdict(list)
+    desired_name_armatures: dict[str, list[ObjectHelper]] = defaultdict(list)
+    for helper in objects_for_build:
+        obj = helper.orig_object
+        data = obj.data
+        if isinstance(data, Mesh):
+            name_dict = desired_name_meshes
+        elif isinstance(data, Armature):
+            name_dict = desired_name_armatures
+        else:
+            raise RuntimeError(f"Unexpected data type '{type(data)}' for object '{repr(obj)}' with type"
+                               f" '{obj.type}'")
+
+        name_dict[helper.desired_name].append(helper)
+
+    name_conflicts = set(desired_name_meshes.keys())
+    name_conflicts.intersection_update(desired_name_armatures.keys())
+    if name_conflicts:
+        conflict_lines: list[str] = []
+        for name in name_conflicts:
+            meshes = [helper.orig_object for helper in desired_name_meshes[name]]
+            armatures = [helper.orig_object for helper in desired_name_armatures[name]]
+            conflict_lines.append(f"Name conflict '{name}':\n\tMeshes: {meshes}\n\tArmatures: {armatures}")
+        conflicts_str = "\n".join(conflict_lines)
+        raise RuntimeError(f"Some meshes and armatures have the same build name, but only objects of the same type"
+                           f" can be combined together. Please change the build name for all objects in one"
+                           f" of the lists for each name conflict:\n{conflicts_str}")
+
+    shape_keys_mesh_name = active_scene_settings.shape_keys_mesh_name
+    no_shape_keys_mesh_name = active_scene_settings.no_shape_keys_mesh_name
+    if active_scene_settings.reduce_to_two_meshes:
+        if not shape_keys_mesh_name:
+            raise ValueError("When reduce to two meshes is enabled, the shape keys mesh name must not be empty")
+        if not no_shape_keys_mesh_name:
+            raise ValueError("When reduce to two meshes is enabled, the no shape keys mesh must not be empty")
+
+        # There may be no name conflicts with the objects being joined, but if we're reducing to two meshes, it's
+        # possible that a mesh that ignores reduce_to_two_meshes has the same name as either the shapekey mesh
+        # or the non-shapekey mesh, which would be another conflict.
+        disallowed_names = {shape_keys_mesh_name, no_shape_keys_mesh_name}
+
+        for disallowed_name in disallowed_names:
+            # Since armatures are unaffected by reduce_to_two_meshes, if there are any with the same name, we have
+            # a conflict
+            if disallowed_name in desired_name_armatures:
+                armature_helpers = desired_name_armatures[disallowed_name]
+                armature_object_names = ", ".join(h.orig_object.name for h in armature_helpers)
+                raise RuntimeError(f"Naming conflict. The armatures [{armature_object_names}] have the build name"
+                                   f" '{disallowed_name}', but it is reserved by one of the meshes used in the"
+                                   f" 'Reduce to two meshes' option."
+                                   f"\nEither change the build name of the armatures or change the mesh name used"
+                                   f" by the 'Reduce to two meshes' option.")
+            # Meshes will be joined into one of the two meshes, unless they have the option enabled that makes them
+            # ignore the reduce operation. We only need to check meshes that ignore that reduce operation.
+            # Note that when meshes are joined by name, if any of them ignore the reduce operation, the joined mesh
+            # will also ignore the reduce operation
+            if disallowed_name in desired_name_meshes:
+                mesh_helpers = desired_name_meshes[disallowed_name]
+                # We only need to check meshes which ignore the reduce_to_two option, since other meshes will be
+                # joined together into one of the reduced meshes
+                ignoring_mesh_helpers = [h.orig_object.name for h in mesh_helpers if h.settings.mesh_settings.ignore_reduce_to_two_meshes]
+                if ignoring_mesh_helpers:
+                    ignoring_mesh_object_names = ", ".join(ignoring_mesh_helpers)
+                    raise RuntimeError(f"Naming conflict. The meshes [{ignoring_mesh_object_names}] are ignoring"
+                                       f" the 'Reduce to two meshes' option, but have the build name"
+                                       f" '{disallowed_name}'. '{disallowed_name}' is reserved by one of the"
+                                       f" meshes used in the 'Reduce to two meshes' option."
+                                       f"\nEither change the build name of the meshes or change the mesh name used"
+                                       f" by the 'Reduce to two meshes' option.")
+
+    return ValidatedBuild(
+        export_scene_name,
+        objects_for_build,
+        desired_name_meshes,
+        desired_name_armatures,
+        shape_keys_mesh_name,
+        no_shape_keys_mesh_name,
+    )
+
+
 class BuildAvatarOp(Operator):
     bl_idname = "build_avatar"
     bl_label = "Build Avatar"
@@ -564,119 +819,18 @@ class BuildAvatarOp(Operator):
             return False
         return True
 
-    def execute(self, context) -> str:
+    def execute(self, context) -> set[str]:
         scene = context.scene
         active_scene_settings = ScenePropertyGroup.get_group(context.scene).get_active()
 
-        export_scene_name = active_scene_settings.name
-        if not export_scene_name:
-            raise ValueError("Active build settings' name must not be empty")
-
-        if active_scene_settings.ignore_hidden_objects:
-            scene_objects_gen = [o for o in scene.objects if not o.hide and not o.hide_viewport]
-        else:
-            scene_objects_gen = scene.objects
-
-        # Annotated variables to assist with typing Object.data
-        mesh_data: Mesh
-        armature_data: Armature
-
-        # Helper class
-        @dataclass
-        class ObjectHelper:
-            orig_object: Object
-            settings: ObjectBuildSettings
-            desired_name: str
-            copy_object: Union[Object, None] = None
-            joined_settings_ignore_reduce_to_two_meshes: Union[bool, None] = None
-
-        objects_for_build: list[ObjectHelper] = []
-
-        allowed_object_types = {'MESH', 'ARMATURE'}
-        for obj in scene_objects_gen:
-            if obj.type in allowed_object_types:
-                group = ObjectPropertyGroup.get_group(obj)
-                object_settings = group.get_synced_settings(scene)
-                if object_settings and object_settings.include_in_build:
-                    desired_name = object_settings.target_object_name
-                    if not desired_name:
-                        desired_name = obj.name
-                    helper_tuple = ObjectHelper(obj, object_settings, desired_name)
-                    objects_for_build.append(helper_tuple)
-
-        # Get desired object names and validate that there won't be any attempt to join Objects of different types
-        desired_name_meshes: dict[str, list[ObjectHelper]] = defaultdict(list)
-        desired_name_armatures: dict[str, list[ObjectHelper]] = defaultdict(list)
-        for helper in objects_for_build:
-            obj = helper.orig_object
-            data = obj.data
-            if isinstance(data, Mesh):
-                name_dict = desired_name_meshes
-            elif isinstance(data, Armature):
-                name_dict = desired_name_armatures
-            else:
-                raise RuntimeError(f"Unexpected data type '{type(data)}' for object '{repr(obj)}' with type"
-                                   f" '{obj.type}'")
-
-            name_dict[helper.desired_name].append(helper)
-
-        name_conflicts = set(desired_name_meshes.keys())
-        name_conflicts.intersection_update(desired_name_armatures.keys())
-        if name_conflicts:
-            conflict_lines: list[str] = []
-            for name in name_conflicts:
-                meshes = [helper.orig_object for helper in desired_name_meshes[name]]
-                armatures = [helper.orig_object for helper in desired_name_armatures[name]]
-                conflict_lines.append(f"Name conflict '{name}':\n\tMeshes: {meshes}\n\tArmatures: {armatures}")
-            conflicts_str = "\n".join(conflict_lines)
-            raise RuntimeError(f"Some meshes and armatures have the same build name, but only objects of the same type"
-                               f" can be combined together. Please change the build name for all objects in one"
-                               f" of the lists for each name conflict:\n{conflicts_str}")
-
-        shape_keys_mesh_name = active_scene_settings.shape_keys_mesh_name
-        no_shape_keys_mesh_name = active_scene_settings.no_shape_keys_mesh_name
-        if active_scene_settings.reduce_to_two_meshes:
-            if not shape_keys_mesh_name:
-                raise ValueError("When reduce to two meshes is enabled, the shape keys mesh name must not be empty")
-            if not no_shape_keys_mesh_name:
-                raise ValueError("When reduce to two meshes is enabled, the no shape keys mesh must not be empty")
-
-            # There may be no name conflicts with the objects being joined, but if we're reducing to two meshes, it's
-            # possible that a mesh that ignores reduce_to_two_meshes has the same name as either the shapekey mesh
-            # or the non-shapekey mesh, which would be another conflict.
-            disallowed_names = {shape_keys_mesh_name, no_shape_keys_mesh_name}
-
-            for disallowed_name in disallowed_names:
-                # Since armatures are unaffected by reduce_to_two_meshes, if there are any with the same name, we have
-                # a conflict
-                if disallowed_name in desired_name_armatures:
-                    armature_helpers = desired_name_armatures[disallowed_name]
-                    armature_object_names = ", ".join(h.orig_object.name for h in armature_helpers)
-                    raise RuntimeError(f"Naming conflict. The armatures [{armature_object_names}] have the build name"
-                                       f" '{disallowed_name}', but it is reserved by one of the meshes used in the"
-                                       f" 'Reduce to two meshes' option."
-                                       f"\nEither change the build name of the armatures or change the mesh name used"
-                                       f" by the 'Reduce to two meshes' option.")
-                # Meshes will be joined into one of the two meshes, unless they have the option enabled that makes them
-                # ignore the reduce operation. We only need to check meshes that ignore that reduce operation.
-                # Note that when meshes are joined by name, if any of them ignore the reduce operation, the joined mesh
-                # will also ignore the reduce operation
-                if disallowed_name in desired_name_meshes:
-                    mesh_helpers = desired_name_meshes[disallowed_name]
-                    # We only need to check meshes which ignore the reduce_to_two option, since other meshes will be
-                    # joined together into one of the reduced meshes
-                    ignoring_mesh_helpers = [h.orig_object.name for h in mesh_helpers if h.settings.ignore_reduce_to_two_meshes]
-                    if ignoring_mesh_helpers:
-                        ignoring_mesh_object_names = ", ".join(ignoring_mesh_helpers)
-                        raise RuntimeError(f"Naming conflict. The meshes [{ignoring_mesh_object_names}] are ignoring"
-                                           f" the 'Reduce to two meshes' option, but have the build name"
-                                           f" '{disallowed_name}'. '{disallowed_name}' is reserved by one of the"
-                                           f" meshes used in the 'Reduce to two meshes' option."
-                                           f"\nEither change the build name of the meshes or change the mesh name used"
-                                           f" by the 'Reduce to two meshes' option.")
+        try:
+            validated_build = validate_build(context, active_scene_settings)
+        except (ValueError, RuntimeError) as err:
+            self.report({'ERROR'}, str(err))
+            return {'FINISHED'}
 
         # Creation and modification can now commence as all checks have passed
-        export_scene = bpy.data.scenes.new(export_scene_name + " Export Scene")
+        export_scene = bpy.data.scenes.new(validated_build.export_scene_name + " Export Scene")
         export_scene_group = ScenePropertyGroup.get_group(export_scene)
         export_scene_group.is_export_scene = True
         export_scene_group.export_scene_source_scene = scene.name
@@ -699,7 +853,7 @@ class BuildAvatarOp(Operator):
         orig_object_to_helper: dict[Object, ObjectHelper] = {}
         # TODO: Change to store helpers?
         copy_objects: set[Object] = set()
-        for helper in objects_for_build:
+        for helper in validated_build.objects_for_build:
             obj = helper.orig_object
             # Copy object
             copy_obj = obj.copy()
@@ -721,7 +875,8 @@ class BuildAvatarOp(Operator):
                 if shape_keys:
                     shape_keys.animation_data_clear()
 
-
+            # TODO: Do we need to make the copy objects visible at all, or will they automatically not be hidden in the
+            #  export scene's view_layer?
             # Add the copy object to the export scene (needed in order to join meshes)
             export_scene.collection.objects.link(copy_obj)
 
@@ -805,9 +960,9 @@ class BuildAvatarOp(Operator):
             # Run build based on Object data type
             data = copy_obj.data
             if isinstance(data, Armature):
-                build_armature(copy_obj, data, object_settings, copy_objects)
+                build_armature(copy_obj, data, object_settings.armature_settings, copy_objects)
             elif isinstance(data, Mesh):
-                build_mesh(scene, copy_obj, data, object_settings)
+                build_mesh(scene, copy_obj, data, object_settings.mesh_settings)
 
         # Join meshes and armatures by desired names and rename the combined objects to those desired names
 
@@ -816,23 +971,37 @@ class BuildAvatarOp(Operator):
         meshes_after_joining: list[ObjectHelper] = []
         armatures_after_joining: list[ObjectHelper] = []
 
-        # meshes_tuple: tuple[str, defa]
-        meshes_tuple = (
+        @dataclass
+        class JoinGroup:
+            """Helper class"""
+            type: Literal['MESH', 'ARMATURE']
+            desired_names: dict[str, list[ObjectHelper]]
+            after_joining_list: list[ObjectHelper]
+            get_func: Callable[[str], ID]
+            remove_func: Callable[[Union[Armature, Mesh]], None]
+
+        meshes_tuple = JoinGroup(
             'MESH',
-            desired_name_meshes,
+            validated_build.desired_name_meshes,
             meshes_after_joining,
             bpy.data.meshes.get,
             bpy.data.meshes.remove,
         )
-        armatures_tuple = (
+        armatures_tuple = JoinGroup(
             'ARMATURE',
-            desired_name_armatures,
+            validated_build.desired_name_armatures,
             armatures_after_joining,
             bpy.data.armatures.get,
             bpy.data.armatures.remove,
         )
 
-        for object_type, join_dict, after_joining_list, get_func, remove_func in (meshes_tuple, armatures_tuple):
+        for join_group in (meshes_tuple, armatures_tuple):
+            object_type = join_group.type
+            join_dict = join_group.desired_names
+            after_joining_list = join_group.after_joining_list
+            get_func = join_group.get_func
+            remove_func = join_group.remove_func
+
             names_to_remove: list[str] = []
             for name, object_helpers in join_dict.items():
                 objects = [helper.copy_object for helper in object_helpers]
@@ -850,13 +1019,12 @@ class BuildAvatarOp(Operator):
 
                     if object_type == 'MESH':
                         # If any of the objects being joined were set to ignore, the combined mesh will be too
-                        ignore_reduce_to_two = any(h.settings.ignore_reduce_to_two_meshes for h in object_helpers)
+                        ignore_reduce_to_two = any(h.settings.mesh_settings.ignore_reduce_to_two_meshes for h in object_helpers)
                         combined_object_helper.joined_settings_ignore_reduce_to_two_meshes = ignore_reduce_to_two
 
                         # TODO: Clean up all these comprehensions
                         # TODO: Are there other things that we should ensure are set a specific way on the combined mesh?
-                        # noinspection PyUnresolvedReferences
-                        joined_mesh_autosmooth = any(o.data.use_auto_smooth for o in objects)
+                        joined_mesh_autosmooth = any(cast(Mesh, o.data).use_auto_smooth for o in objects)
 
                         # Set mesh autosmooth if any of the joined meshes used it
                         combined_object.data.use_auto_smooth = joined_mesh_autosmooth
@@ -917,8 +1085,8 @@ class BuildAvatarOp(Operator):
                         no_shape_key_meshes.append(mesh_obj)
                         no_shape_key_meshes_auto_smooth |= mesh_data.use_auto_smooth
 
-            shape_keys_tuple = (shape_keys_mesh_name, shape_key_meshes, shape_key_meshes_auto_smooth)
-            no_shape_keys_tuple = (no_shape_keys_mesh_name, no_shape_key_meshes, no_shape_key_meshes_auto_smooth)
+            shape_keys_tuple = (validated_build.shape_keys_mesh_name, shape_key_meshes, shape_key_meshes_auto_smooth)
+            no_shape_keys_tuple = (validated_build.no_shape_keys_mesh_name, no_shape_key_meshes, no_shape_key_meshes_auto_smooth)
 
             for name, mesh_objects, auto_smooth in (shape_keys_tuple, no_shape_keys_tuple):
                 if mesh_objects:

@@ -200,6 +200,7 @@ _MERGE_ = 'MERGE_'
 
 
 class ShapeKeyOp(PropertyGroup):
+    # TODO: IGNORE_ ops that effectively hide the shape keys they match from the rest of the operations?
     DELETE_AFTER = _DELETE_ + 'AFTER'
     DELETE_BEFORE = _DELETE_ + 'BEFORE'
     DELETE_BETWEEN = _DELETE_ + 'BETWEEN'
@@ -219,10 +220,15 @@ class ShapeKeyOp(PropertyGroup):
         (DELETE_REGEX, "Delete Regex", "Delete shape keys whose name matches a regular expression"),
         (MERGE_PREFIX, "Merge Prefix", "Merge shape keys that start with the specified prefix into one shape key"),
         (MERGE_SUFFIX, "Merge Suffix", "Merge shape keys that start with the specified suffix into one shape key"),
-        (MERGE_COMMON_BEFORE_DELIMITER, "Merge Common Before Delimiter", "Merge shape keys that start with the same characters up to a delimiter"),
-        (MERGE_COMMON_AFTER_DELIMITER, "Merge Common After Delimiter", "Merge shape keys that have the same characters after a delimiter"),
+        (MERGE_COMMON_BEFORE_DELIMITER, "Merge Common Before Delimiter",
+         "Merge shape keys that start with the same characters up to a delimiter."
+         " If the delimiter is not found, the entire name is considered the common part"),
+        (MERGE_COMMON_AFTER_DELIMITER, "Merge Common After Delimiter",
+         "Merge shape keys that have the same characters after a delimiter."
+         " If the delimiter is not found, the entire name is considered the common part"),
         # TODO: Do we want some extra functionality that also compares capture groups? This would be for the consecutive mode
-        (MERGE_REGEX, "Merge Regex", "Merge shape keys that match the specified regular expression into one shape key"),
+        (MERGE_REGEX, "Merge Regex", "Merge shape keys that match the specified regular expression into one shape key."
+                                     " If the expression contains capture groups, they must match to be merged"),
     )
     MERGE_OPS = {t[0] for t in _types if t[0].startswith(_MERGE_)}
     DELETE_OPS = {t[0] for t in _types if t[0].startswith(_DELETE_)}
@@ -240,10 +246,14 @@ class ShapeKeyOp(PropertyGroup):
         name="Delete before",
         description="Delete shape keys before the specified shape key (will not delete the first shape key)",
     )
+    # TODO: When updating pattern (that is regex) or ignore_regex, try to compile the regex, if an error occurs, update
+    #  a hidden property that stores whether the regex is valid, then, the UI can draw the property and element in the
+    #  UI list with .alert = True when the regex is invalid. Also, the op can be skipped when attempting to build
     pattern: StringProperty(
         name="Pattern",
         description="Prefix, suffix or other pattern used to match shape keys"
     )
+    # TODO: Replace with IGNORE_ op
     ignore_regex: StringProperty(
         name="Ignore Regex Pattern",
         description="If a shape key's name matches this regex pattern, ignore it from the shape key operation."
@@ -251,10 +261,6 @@ class ShapeKeyOp(PropertyGroup):
                     'ignore every shape key starting with "vrc."',
         default=r"vrc\..+",
     )
-    # delimiter: StringProperty(
-    #     name="Delimiter",
-    #     description="Delimiter used to match shape keys"
-    # )
     merge_grouping: EnumProperty(
         name="Merge grouping",
         items=[
@@ -279,15 +285,6 @@ def object_build_settings_update_name(self: 'ObjectBuildSettings', context: Cont
 
     all_scene_build_settings = set(chain.from_iterable(ScenePropertyGroup.get_group(s).build_settings.keys() for s in bpy.data.scenes))
     update_name_ensure_unique(self, object_group.object_settings, 'name_prop', extra_disallowed_names=all_scene_build_settings)
-
-
-class ObjectSettings(PropertyGroup):
-    target_object_name: StringProperty(
-        name="Built name",
-        description="The name of the object once building is complete.\n"
-                    "All objects with the same name will be joined together (if they're the same type)\n"
-                    "Leave blank to keep the current name"
-    )
 
 
 class ArmatureSettings(PropertyGroup):
@@ -426,7 +423,12 @@ class ObjectBuildSettings(PropertyGroup):
     name_prop: StringProperty(default="BuildSettings", update=object_build_settings_update_name)
 
     include_in_build: BoolProperty(name="Include in build", default=True, description="Include these build settings. This lets you disable the export without deleting settings")
-    object_settings: PointerProperty(type=ObjectSettings)
+    target_object_name: StringProperty(
+        name="Built name",
+        description="The name of the object once building is complete.\n"
+                    "All objects with the same name will be joined together (if they're the same type)\n"
+                    "Leave blank to keep the current name"
+    )
     armature_settings: PointerProperty(type=ArmatureSettings)
     mesh_settings: PointerProperty(type=MeshSettings)
 
