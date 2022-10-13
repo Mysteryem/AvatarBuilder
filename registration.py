@@ -6,7 +6,7 @@ from bpy.types import Panel, Operator, UIList, Menu, ID, Bone, PoseBone, Propert
 from bpy.props import PointerProperty, CollectionProperty, IntProperty
 
 # Prefix
-_BL_ID_PREFIX = "mysteryem_avatar_builder"
+_BL_ID_PREFIX = "em_av_builder"
 _PROP_PREFIX = _BL_ID_PREFIX
 
 # Type hint for any Blender type that can have custom properties assigned to it
