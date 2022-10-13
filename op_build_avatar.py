@@ -218,7 +218,7 @@ def build_mesh_shape_key_op(obj: Object, shape_keys: Key, op: ShapeKeyOp):
 
     if key_blocks:
         op_type = op.type
-        if op_type in ShapeKeyOp.DELETE_OPS:
+        if op_type in ShapeKeyOp.DELETE_OPS_DICT:
             keys_to_delete = set()
             if op_type == ShapeKeyOp.DELETE_SINGLE:
                 key_name = op.pattern
@@ -254,7 +254,7 @@ def build_mesh_shape_key_op(obj: Object, shape_keys: Key, op: ShapeKeyOp):
             for key in keys_to_delete:
                 obj.shape_key_remove(key)
 
-        elif op_type in ShapeKeyOp.MERGE_OPS:
+        elif op_type in ShapeKeyOp.MERGE_OPS_DICT:
             grouping = op.merge_grouping
 
             # Collect all the shapes to be merged into a common dictionary format that the merge function uses

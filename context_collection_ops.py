@@ -3,7 +3,7 @@ from bpy.types import Operator, Context, PropertyGroup
 from bpy.props import StringProperty, EnumProperty, BoolProperty
 from types import MethodDescriptorType
 from abc import abstractmethod
-from typing import Optional
+from typing import Optional, Generic, TypeVar
 
 # bpy_prop_collection_idprop isn't currently exposed in bpy.types, so it can't actually be imported. It's presence here
 # is purely to assist with development where it exists as a fake class.
@@ -68,8 +68,11 @@ class ContextCollectionOperatorBase:
             return cls.index_in_bounds(collection, active_index)
 
 
+E = TypeVar('E', bound=PropertyGroup)
+
+
 # noinspection PyAbstractClass
-class CollectionAddBase(ContextCollectionOperatorBase, Operator):
+class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
     """Add a new item to the collection and optionally set it as the active item"""
     bl_label = "Add"
 
@@ -77,10 +80,14 @@ class CollectionAddBase(ContextCollectionOperatorBase, Operator):
     do_set_active_index: BoolProperty(name="Set Active Index", description="Set the newly created element as active",
                                       default=True)
 
-    def set_new_item_name(self, data: PropCollectionType, added: PropertyGroup):
+    def set_new_item_name(self, data: PropCollectionType, added: E):
         """Set the name of a newly created item, defaults to settings .name to self.name"""
         if self.name:
             added.name = self.name
+
+    def modify_newly_created(self, data: PropCollectionType, added: E):
+        """Modify the newly created item, by default, calls self.set_new_item_name"""
+        self.set_new_item_name(data, added)
 
     def execute(self, context: Context) -> set[str]:
         data = self.get_collection(context)
@@ -89,7 +96,7 @@ class CollectionAddBase(ContextCollectionOperatorBase, Operator):
             return {'CANCELLED'}
 
         added = data.add()
-        self.set_new_item_name(data, added)
+        self.modify_newly_created(data, added)
         if self.do_set_active_index:
             self.set_active_index(context, len(data) - 1)
         return {'FINISHED'}
@@ -104,7 +111,7 @@ class CollectionRemoveBase(ContextCollectionOperatorBase, Operator):
     def poll(cls, context: Context) -> bool:
         return cls.active_index_in_bounds(context)
 
-    def execute(self, context: bpy.types.Context) -> set[str]:
+    def execute(self, context: Context) -> set[str]:
         data = self.get_collection(context)
         active_index = self.get_active_index(context)
 
@@ -145,7 +152,7 @@ class CollectionMoveBase(ContextCollectionOperatorBase, Operator):
                 return len(collection) > 1
         return False
 
-    def execute(self, context: bpy.types.Context) -> set[str]:
+    def execute(self, context: Context) -> set[str]:
         data = self.get_collection(context)
         active_index = self.get_active_index(context)
 

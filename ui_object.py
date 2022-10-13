@@ -1,5 +1,6 @@
 from typing import Union, cast, Optional
-from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator, Object, Mesh, PropertyGroup
+from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator, Object, Mesh, PropertyGroup, Menu
+from bpy.props import EnumProperty
 
 from .registration import register_module_classes_factory
 from .extensions import (
@@ -32,67 +33,39 @@ class ShapeKeyOpsUIList(UIList):
                   active_property: str, index: int = 0, flt_flag: int = 0):
         self.use_filter_show = False
 
+        row = layout.row()
+
         op_type = item.type
-        type_name = variable_names = "ERROR"
-        mode_str = ""
         main_icon = "QUESTION"
         mode_icon = "NONE"
-        if op_type in ShapeKeyOp.DELETE_OPS:
+        if op_type in ShapeKeyOp.OPS_DICT:
+            label_text = ShapeKeyOp.OPS_DICT[op_type].list_label_format.format(item=item)
+        else:
+            # This shouldn't happen normally
+            label_text = "ERROR: Unknown Op Type"
+
+        if op_type in ShapeKeyOp.DELETE_OPS_DICT:
             main_icon = "TRASH"
-            if op_type == ShapeKeyOp.DELETE_AFTER:
-                type_name = "After"
-                variable_names = item.delete_after_name
-            elif op_type == ShapeKeyOp.DELETE_BEFORE:
-                type_name = "Before"
-                variable_names = item.delete_before_name
-            elif op_type == ShapeKeyOp.DELETE_BETWEEN:
-                type_name = "Between"
-                variable_names = f"{item.delete_after_name}, {item.delete_before_name}"
-            elif op_type == ShapeKeyOp.DELETE_SINGLE:
-                type_name = ""
-                variable_names = item.pattern
-            elif op_type == ShapeKeyOp.DELETE_REGEX:
-                type_name = "Regex"
-                variable_names = f"/{item.pattern}/"
-        elif op_type in ShapeKeyOp.MERGE_OPS:
+            row.label(text=label_text, icon=main_icon)
+        elif op_type in ShapeKeyOp.MERGE_OPS_DICT:
             # main_icon = "FULLSCREEN_EXIT"
             # main_icon = "IMPORT"
             # main_icon = "SEQ_SEQUENCER"
             main_icon = "NLA_PUSHDOWN"
-            if op_type == ShapeKeyOp.MERGE_PREFIX:
-                type_name = "Prefix"
-                variable_names = item.pattern
-            elif op_type == ShapeKeyOp.MERGE_SUFFIX:
-                type_name = "Suffix"
-                variable_names = item.pattern
-            elif op_type == ShapeKeyOp.MERGE_COMMON_BEFORE_DELIMITER:
-                type_name = "Common Before"
-                variable_names = item.pattern
-            elif op_type == ShapeKeyOp.MERGE_COMMON_AFTER_DELIMITER:
-                type_name = "Common After"
-                variable_names = item.pattern
-            elif op_type == ShapeKeyOp.MERGE_REGEX:
-                type_name = "Regex"
-                variable_names = f"/{item.pattern}/"
 
             if item.merge_grouping == 'CONSECUTIVE':
                 mode_icon = "THREE_DOTS"
             elif item.merge_grouping == 'ALL':
                 mode_icon = "WORLD_DATA"
 
-        row = layout.row()
-        # row.label(text=f"{type_name}: {variable_names}", icon=main_icon)
-        # row.label(text="", icon=mode_icon)
-
-        split = row.split(factor=0.9, align=True)
-
-        # col = split.column(align=True)
-        # col.label(text=type_name, icon=main_icon)
-        # col.label(text=variable_names, icon="BLANK1")
-        split.label(text=f"{type_name}: {variable_names}", icon=main_icon)
-
-        # col = split.column(align=True)
-        split.label(text="", icon=mode_icon)
+            # 90% of the width is used by the main label, the other 10% is used by the icon indicated if the
+            # merge_grouping is 'ALL' or 'CONSECUTIVE'
+            split = row.split(factor=0.9, align=True)
+            split.label(text=label_text, icon=main_icon)
+            split.label(text="", icon=mode_icon)
+        else:
+            # This shouldn't happen normally
+            row.label(text=label_text, icon=main_icon)
 
     def draw_filter(self, context: Context, layout: UILayout):
         # No filter
@@ -134,15 +107,61 @@ class ShapeKeyOpsListBase(ContextCollectionOperatorBase):
             settings.mesh_settings.shape_key_settings.shape_key_ops.active_index = value
 
 
-class ShapeKeyOpsListAdd(ShapeKeyOpsListBase, CollectionAddBase):
+class ShapeKeyOpsListAdd(ShapeKeyOpsListBase, CollectionAddBase[ShapeKeyOp]):
+    """Add a new shape key op"""
     bl_idname = 'shape_key_ops_list_add'
+
+    type: EnumProperty(
+        items=ShapeKeyOp.TYPE_ITEMS,
+        name="Type",
+        description="Type of the added shape key op"
+    )
+
+    def modify_newly_created(self, data: PropCollectionType, added: ShapeKeyOp):
+        super().modify_newly_created(data, added)
+        added.type = self.type
+
+
+class ShapeKeyOpsListAddDeleteSubMenu(Menu):
+    """Add an op that deletes shape keys"""
+    bl_idname = 'shape_key_ops_list_add_delete_submenu'
+    bl_label = "Delete Op"
+
+    def draw(self, context: Context):
+        layout = self.layout
+        for op in ShapeKeyOp.DELETE_OPS_DICT.values():
+            layout.operator(ShapeKeyOpsListAdd.bl_idname, text=op.menu_label).type = op.id
+
+
+class ShapeKeyOpsListAddMergeSubMenu(Menu):
+    """Add an op that merges shape keys"""
+    bl_idname = 'shape_key_ops_list_add_merge_submenu'
+    bl_label = "Merge Op"
+
+    def draw(self, context: Context):
+        layout = self.layout
+        for op in ShapeKeyOp.MERGE_OPS_DICT.values():
+            layout.operator(ShapeKeyOpsListAdd.bl_idname, text=op.menu_label).type = op.id
+
+
+class ShapeKeyOpsListAddMenu(Menu):
+    """Add a new shape key op to the list"""
+    bl_idname = 'shape_key_ops_list_add_menu'
+    bl_label = "Add"
+
+    def draw(self, context: Context):
+        layout = self.layout
+        layout.menu(ShapeKeyOpsListAddDeleteSubMenu.bl_idname)
+        layout.menu(ShapeKeyOpsListAddMergeSubMenu.bl_idname)
 
 
 class ShapeKeyOpsListRemove(ShapeKeyOpsListBase, CollectionRemoveBase):
+    """Remove the active shape key op"""
     bl_idname = 'shape_key_ops_list_remove'
 
 
 class ShapeKeyOpsListMove(ShapeKeyOpsListBase, CollectionMoveBase):
+    """Move the active shape key op"""
     bl_idname = 'shape_key_ops_list_move'
 
 
@@ -280,11 +299,8 @@ class ObjectPanel(Panel):
             operations_title_row = shape_keys_box_col.row()
             operations_title_row.label(text="Operations")
             vertical_buttons_col = operations_title_row.row(align=True)
-            vertical_buttons_col.operator(ShapeKeyOpsListAdd.bl_idname, text="", icon="ADD")
+            vertical_buttons_col.menu(ShapeKeyOpsListAddMenu.bl_idname, text="", icon="ADD")
             vertical_buttons_col.operator(ShapeKeyOpsListRemove.bl_idname, text="", icon="REMOVE")
-            # TODO: Add a menu that lets the user add a specific type of op, the menu should be split into sub-menus,
-            #  one sub-menu for DELETE_ ops, one for MERGE_ ops etc.. Then, the .type prop could be hidden, simplifying
-            #  the UI slightly
             vertical_buttons_col.separator()
             vertical_buttons_col.operator(ShapeKeyOpsListMove.bl_idname, text="", icon="TRIA_UP").type = 'UP'
             vertical_buttons_col.operator(ShapeKeyOpsListMove.bl_idname, text="", icon="TRIA_DOWN").type = 'DOWN'
@@ -298,9 +314,8 @@ class ObjectPanel(Panel):
             active_op_col = shape_keys_box_col.column(align=True)
             active_op = shape_key_ops.active
             if active_op:
-                active_op_col.prop(active_op, 'type')
                 op_type = active_op.type
-                if op_type in ShapeKeyOp.DELETE_OPS:
+                if op_type in ShapeKeyOp.DELETE_OPS_DICT:
                     if op_type == ShapeKeyOp.DELETE_AFTER:
                         active_op_col.prop_search(active_op, 'delete_after_name', me.shape_keys, 'key_blocks')
                     elif op_type == ShapeKeyOp.DELETE_BEFORE:
@@ -312,7 +327,7 @@ class ObjectPanel(Panel):
                         active_op_col.prop_search(active_op, 'pattern', me.shape_keys, 'key_blocks', text="Name")
                     elif op_type == ShapeKeyOp.DELETE_REGEX:
                         active_op_col.prop(active_op, 'pattern')
-                elif op_type in ShapeKeyOp.MERGE_OPS:
+                elif op_type in ShapeKeyOp.MERGE_OPS_DICT:
                     if op_type == ShapeKeyOp.MERGE_PREFIX:
                         active_op_col.prop(active_op, 'pattern', text="Prefix")
                     elif op_type == ShapeKeyOp.MERGE_SUFFIX:

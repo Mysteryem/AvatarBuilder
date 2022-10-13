@@ -1,6 +1,7 @@
 import bpy
 from typing import Optional
 from itertools import chain
+from dataclasses import dataclass
 
 from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
 from bpy.types import PropertyGroup, Scene, Context, Object
@@ -199,6 +200,15 @@ _DELETE_ = 'DELETE_'
 _MERGE_ = 'MERGE_'
 
 
+@dataclass
+class ShapeKeyOpData:
+    id: str
+    label: str
+    description: str
+    list_label_format: str
+    menu_label: str
+
+
 class ShapeKeyOp(PropertyGroup):
     # TODO: IGNORE_ ops that effectively hide the shape keys they match from the rest of the operations?
     DELETE_AFTER = _DELETE_ + 'AFTER'
@@ -212,31 +222,90 @@ class ShapeKeyOp(PropertyGroup):
     MERGE_COMMON_AFTER_DELIMITER = _MERGE_ + 'COMMON_AFTER_DELIMITER'
     MERGE_REGEX = _MERGE_ + 'REGEX'
 
-    _types = (
-        (DELETE_AFTER, "Delete After", "Delete all shape keys after the specified shape key"),
-        (DELETE_BEFORE, "Delete Before", "Delete all shape keys before the specified shape key"),
-        (DELETE_BETWEEN, "Delete Between", "Delete all shape keys between (exclusive) the specified shape keys"),
-        (DELETE_SINGLE, "Delete Shape", "Delete by name"),
-        (DELETE_REGEX, "Delete Regex", "Delete shape keys whose name matches a regular expression"),
-        (MERGE_PREFIX, "Merge Prefix", "Merge shape keys that start with the specified prefix into one shape key"),
-        (MERGE_SUFFIX, "Merge Suffix", "Merge shape keys that start with the specified suffix into one shape key"),
-        (MERGE_COMMON_BEFORE_DELIMITER, "Merge Common Before Delimiter",
-         "Merge shape keys that start with the same characters up to a delimiter."
-         " If the delimiter is not found, the entire name is considered the common part"),
-        (MERGE_COMMON_AFTER_DELIMITER, "Merge Common After Delimiter",
-         "Merge shape keys that have the same characters after a delimiter."
-         " If the delimiter is not found, the entire name is considered the common part"),
-        # TODO: Do we want some extra functionality that also compares capture groups? This would be for the consecutive mode
-        (MERGE_REGEX, "Merge Regex", "Merge shape keys that match the specified regular expression into one shape key."
-                                     " If the expression contains capture groups, they must match to be merged"),
+    _TYPE_DATA = (
+        ShapeKeyOpData(
+            id=DELETE_AFTER,
+            label="Delete After",
+            description="Delete all shape keys after the specified shape key",
+            list_label_format="After: {item.delete_after_name}",
+            menu_label="After Shape Key",
+        ),
+        ShapeKeyOpData(
+            id=DELETE_BEFORE,
+            label="Delete Before",
+            description="Delete all shape keys before the specified shape key, excluding the reference ('basis') shape"
+                        " key",
+            list_label_format="Before: {item.delete_before_name}",
+            menu_label="Before Shape Key",
+        ),
+        ShapeKeyOpData(
+            id=DELETE_BETWEEN,
+            label="Delete Between",
+            description="Delete all shape keys between (exclusive) the specified shape keys",
+            list_label_format="Between: {item.delete_after_name}, {item.delete_before_name}",
+            menu_label="Between Two Shape Keys",
+        ),
+        ShapeKeyOpData(
+            id=DELETE_SINGLE,
+            label="Delete Shape",
+            description="Delete by name",
+            list_label_format="{item.pattern}",
+            menu_label="Specific Shape Key",
+        ),
+        ShapeKeyOpData(
+            id=DELETE_REGEX,
+            label="Delete Regex",
+            description="Delete shape keys whose name matches a regular expression",
+            list_label_format="Regex: /{item.pattern}/",
+            menu_label="By Regex Pattern",
+        ),
+        ShapeKeyOpData(
+            id=MERGE_PREFIX,
+            label="Merge Prefix",
+            description="Merge shape keys that start with the specified prefix into one shape key",
+            list_label_format="Prefix: {item.pattern}",
+            menu_label="By Prefix",
+        ),
+        ShapeKeyOpData(
+            id=MERGE_SUFFIX,
+            label="Merge Suffix",
+            description="Merge shape keys that start with the specified suffix into one shape key",
+            list_label_format="Suffix: {item.pattern}",
+            menu_label="By Suffix",
+        ),
+        ShapeKeyOpData(
+            id=MERGE_COMMON_BEFORE_DELIMITER,
+            label="Merge Common Before Delimiter",
+            description="Merge shape keys that start with the same characters up to a delimiter. If the delimiter is"
+                        " not found, the entire name is considered the common part",
+            list_label_format="Common Before: {item.pattern}",
+            menu_label="By Common Part Before Delimiter",
+        ),
+        ShapeKeyOpData(
+            id=MERGE_COMMON_AFTER_DELIMITER,
+            label="Merge Common After Delimiter",
+            description="Merge shape keys that have the same characters after a delimiter. If the delimiter is not"
+                        " found, the entire name is considered the common part",
+            list_label_format="Common After: {item.pattern}",
+            menu_label="By Common Part After Delimiter",
+        ),
+        ShapeKeyOpData(
+            id=MERGE_REGEX,
+            label="Merge Regex",
+            description="Merge shape keys that match the specified regular expression into one shape key. If the"
+                        " expression contains capture groups, they must match to be merged",
+            list_label_format="Regex: /{item.pattern}/",
+            menu_label="By Regex",
+        ),
     )
-    MERGE_OPS = {t[0] for t in _types if t[0].startswith(_MERGE_)}
-    DELETE_OPS = {t[0] for t in _types if t[0].startswith(_DELETE_)}
-    _type_name_lookup = {t[0]: t[1] for t in _types}
+    OPS_DICT: dict[str, ShapeKeyOpData] = {t.id: t for t in _TYPE_DATA}
+    TYPE_ITEMS: tuple[str, str, str] = tuple((t.id, t.label, t.description) for t in OPS_DICT.values())
+    MERGE_OPS_DICT: dict[str, ShapeKeyOpData] = {k: v for k, v in OPS_DICT.items() if k.startswith(_MERGE_)}
+    DELETE_OPS_DICT: dict[str, ShapeKeyOpData] = {k: v for k, v in OPS_DICT.items() if k.startswith(_DELETE_)}
 
     type: EnumProperty(
         name="Type",
-        items=_types
+        items=TYPE_ITEMS,
     )
     delete_after_name: StringProperty(
         name="Delete after",
