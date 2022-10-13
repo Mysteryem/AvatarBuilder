@@ -54,9 +54,9 @@ class ShapeKeyOpsUIList(UIList):
             main_icon = "NLA_PUSHDOWN"
 
             if item.merge_grouping == 'CONSECUTIVE':
-                mode_icon = "THREE_DOTS"
+                mode_icon = ShapeKeyOp.GROUPING_CONSECUTIVE_ICON
             elif item.merge_grouping == 'ALL':
-                mode_icon = "WORLD_DATA"
+                mode_icon = ShapeKeyOp.GROUPING_ALL_ICON
 
             # 90% of the width is used by the main label, the other 10% is used by the icon indicated if the
             # merge_grouping is 'ALL' or 'CONSECUTIVE'

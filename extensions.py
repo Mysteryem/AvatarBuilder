@@ -221,6 +221,8 @@ class ShapeKeyOp(PropertyGroup):
     MERGE_COMMON_BEFORE_DELIMITER = _MERGE_ + 'COMMON_BEFORE_DELIMITER'
     MERGE_COMMON_AFTER_DELIMITER = _MERGE_ + 'COMMON_AFTER_DELIMITER'
     MERGE_REGEX = _MERGE_ + 'REGEX'
+    GROUPING_ALL_ICON = 'WORLD_DATA'
+    GROUPING_CONSECUTIVE_ICON = 'THREE_DOTS'
 
     _TYPE_DATA = (
         ShapeKeyOpData(
@@ -333,8 +335,9 @@ class ShapeKeyOp(PropertyGroup):
     merge_grouping: EnumProperty(
         name="Merge grouping",
         items=[
-            ('CONSECUTIVE', "Consecutive", "Only consecutive shape keys matching the pattern will be merged together"),
-            ('ALL', "All", "All shape keys matching the same pattern will be merged together"),
+            ('CONSECUTIVE', "Consecutive", "Only consecutive shape keys matching the pattern will be merged together",
+             GROUPING_CONSECUTIVE_ICON, 0),
+            ('ALL', "All", "All shape keys matching the same pattern will be merged together", GROUPING_ALL_ICON, 1),
         ],
         default='CONSECUTIVE',
     )
