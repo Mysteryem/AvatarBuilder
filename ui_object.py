@@ -125,7 +125,7 @@ class ShapeKeyOpsListAdd(ShapeKeyOpsListBase, CollectionAddBase[ShapeKeyOp]):
 class ShapeKeyOpsListAddDeleteSubMenu(Menu):
     """Add an op that deletes shape keys"""
     bl_idname = 'shape_key_ops_list_add_delete_submenu'
-    bl_label = "Delete Op"
+    bl_label = "Delete"
 
     def draw(self, context: Context):
         layout = self.layout
@@ -136,7 +136,7 @@ class ShapeKeyOpsListAddDeleteSubMenu(Menu):
 class ShapeKeyOpsListAddMergeSubMenu(Menu):
     """Add an op that merges shape keys"""
     bl_idname = 'shape_key_ops_list_add_merge_submenu'
-    bl_label = "Merge Op"
+    bl_label = "Merge"
 
     def draw(self, context: Context):
         layout = self.layout
