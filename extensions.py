@@ -1,10 +1,10 @@
 import bpy
-from typing import Optional
+from typing import Optional, Callable, Any
 from itertools import chain
 from dataclasses import dataclass
 
 from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
-from bpy.types import PropertyGroup, Scene, Context, Object
+from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key
 
 from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup, CollectionPropBase
 
@@ -200,12 +200,23 @@ _DELETE_ = 'DELETE_'
 _MERGE_ = 'MERGE_'
 
 
+def _draw_pattern_prop(layout: UILayout, _shape_keys: Key, item: "ShapeKeyOp", label: str):
+    layout.prop(item, 'pattern', text=label)
+
+
+def _draw_delete_between_props(layout: UILayout, shape_keys: Key, item: "ShapeKeyOp", label: str):
+    row = layout.row(align=True)
+    row.prop_search(item, 'delete_after_name', shape_keys, 'key_blocks', text=label)
+    row.prop_search(item, 'delete_before_name', shape_keys, 'key_blocks', text="")
+
+
 @dataclass
 class ShapeKeyOpData:
     id: str
     label: str
     description: str
-    list_label_format: str
+    list_label: str
+    draw_props: Callable[[UILayout, Key, "ShapeKeyOp", str], Any]
     menu_label: str
 
 
@@ -229,7 +240,8 @@ class ShapeKeyOp(PropertyGroup):
             id=DELETE_AFTER,
             label="Delete After",
             description="Delete all shape keys after the specified shape key",
-            list_label_format="After: {item.delete_after_name}",
+            list_label="After:",
+            draw_props=lambda layout, shape_keys, item, label: layout.prop_search(item, 'delete_after_name', shape_keys, 'key_blocks', text=label),
             menu_label="After Shape Key",
         ),
         ShapeKeyOpData(
@@ -237,42 +249,48 @@ class ShapeKeyOp(PropertyGroup):
             label="Delete Before",
             description="Delete all shape keys before the specified shape key, excluding the reference ('basis') shape"
                         " key",
-            list_label_format="Before: {item.delete_before_name}",
+            list_label="Before:",
+            draw_props=lambda layout, shape_keys, item, label: layout.prop_search(item, 'delete_before_name', shape_keys, 'key_blocks', text=label),
             menu_label="Before Shape Key",
         ),
         ShapeKeyOpData(
             id=DELETE_BETWEEN,
             label="Delete Between",
             description="Delete all shape keys between (exclusive) the specified shape keys",
-            list_label_format="Between: {item.delete_after_name}, {item.delete_before_name}",
+            list_label="Between:",
+            draw_props=_draw_delete_between_props,
             menu_label="Between Two Shape Keys",
         ),
         ShapeKeyOpData(
             id=DELETE_SINGLE,
             label="Delete Shape",
             description="Delete by name",
-            list_label_format="{item.pattern}",
+            list_label="Name:",
+            draw_props=lambda layout, shape_keys, item, label: layout.prop_search(item, 'pattern', shape_keys, 'key_blocks', text=label),
             menu_label="Specific Shape Key",
         ),
         ShapeKeyOpData(
             id=DELETE_REGEX,
             label="Delete Regex",
             description="Delete shape keys whose name matches a regular expression",
-            list_label_format="Regex: /{item.pattern}/",
+            list_label="Regex:",
+            draw_props=_draw_pattern_prop,
             menu_label="By Regex Pattern",
         ),
         ShapeKeyOpData(
             id=MERGE_PREFIX,
             label="Merge Prefix",
             description="Merge shape keys that start with the specified prefix into one shape key",
-            list_label_format="Prefix: {item.pattern}",
+            list_label="Prefix:",
+            draw_props=_draw_pattern_prop,
             menu_label="By Prefix",
         ),
         ShapeKeyOpData(
             id=MERGE_SUFFIX,
             label="Merge Suffix",
             description="Merge shape keys that start with the specified suffix into one shape key",
-            list_label_format="Suffix: {item.pattern}",
+            list_label="Suffix:",
+            draw_props=_draw_pattern_prop,
             menu_label="By Suffix",
         ),
         ShapeKeyOpData(
@@ -280,7 +298,8 @@ class ShapeKeyOp(PropertyGroup):
             label="Merge Common Before Delimiter",
             description="Merge shape keys that start with the same characters up to a delimiter. If the delimiter is"
                         " not found, the entire name is considered the common part",
-            list_label_format="Common Before: {item.pattern}",
+            list_label="Before Delimiter:",
+            draw_props=_draw_pattern_prop,
             menu_label="By Common Part Before Delimiter",
         ),
         ShapeKeyOpData(
@@ -288,7 +307,8 @@ class ShapeKeyOp(PropertyGroup):
             label="Merge Common After Delimiter",
             description="Merge shape keys that have the same characters after a delimiter. If the delimiter is not"
                         " found, the entire name is considered the common part",
-            list_label_format="Common After: {item.pattern}",
+            list_label="After Delimiter:",
+            draw_props=_draw_pattern_prop,
             menu_label="By Common Part After Delimiter",
         ),
         ShapeKeyOpData(
@@ -296,7 +316,8 @@ class ShapeKeyOp(PropertyGroup):
             label="Merge Regex",
             description="Merge shape keys that match the specified regular expression into one shape key. If the"
                         " expression contains capture groups, they must match to be merged",
-            list_label_format="Regex: /{item.pattern}/",
+            list_label="Regex:",
+            draw_props=_draw_pattern_prop,
             menu_label="By Regex",
         ),
     )

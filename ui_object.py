@@ -33,39 +33,33 @@ class ShapeKeyOpsUIList(UIList):
                   active_property: str, index: int = 0, flt_flag: int = 0):
         self.use_filter_show = False
 
-        row = layout.row()
+        row = layout.row(align=True)
 
         op_type = item.type
-        main_icon = "QUESTION"
-        mode_icon = "NONE"
-        if op_type in ShapeKeyOp.OPS_DICT:
-            label_text = ShapeKeyOp.OPS_DICT[op_type].list_label_format.format(item=item)
-        else:
-            # This shouldn't happen normally
-            label_text = "ERROR: Unknown Op Type"
+        shape_keys = item.id_data.data.shape_keys
 
         if op_type in ShapeKeyOp.DELETE_OPS_DICT:
-            main_icon = "TRASH"
-            row.label(text=label_text, icon=main_icon)
+            op = ShapeKeyOp.DELETE_OPS_DICT[op_type]
+            row.label(text=op.list_label, icon="TRASH")
+            op.draw_props(row, shape_keys, item, "")
         elif op_type in ShapeKeyOp.MERGE_OPS_DICT:
-            # main_icon = "FULLSCREEN_EXIT"
-            # main_icon = "IMPORT"
-            # main_icon = "SEQ_SEQUENCER"
-            main_icon = "NLA_PUSHDOWN"
+            op = ShapeKeyOp.MERGE_OPS_DICT[op_type]
 
             if item.merge_grouping == 'CONSECUTIVE':
                 mode_icon = ShapeKeyOp.GROUPING_CONSECUTIVE_ICON
             elif item.merge_grouping == 'ALL':
                 mode_icon = ShapeKeyOp.GROUPING_ALL_ICON
+            else:
+                mode_icon = "NONE"
 
-            # 90% of the width is used by the main label, the other 10% is used by the icon indicated if the
-            # merge_grouping is 'ALL' or 'CONSECUTIVE'
-            split = row.split(factor=0.9, align=True)
-            split.label(text=label_text, icon=main_icon)
-            split.label(text="", icon=mode_icon)
+            row.label(text=op.list_label, icon="FULLSCREEN_EXIT")
+            op.draw_props(row, shape_keys, item, "")
+            options = row.operator('wm.context_cycle_enum', text="", icon=mode_icon)
+            options.wrap = True
+            options.data_path = 'object.' + item.path_from_id('merge_grouping')
         else:
             # This shouldn't happen normally
-            row.label(text=label_text, icon=main_icon)
+            row.label(text="ERROR: Unknown Op Type", icon="QUESTION")
 
     def draw_filter(self, context: Context, layout: UILayout):
         # No filter
@@ -151,8 +145,8 @@ class ShapeKeyOpsListAddMenu(Menu):
 
     def draw(self, context: Context):
         layout = self.layout
-        layout.menu(ShapeKeyOpsListAddDeleteSubMenu.bl_idname)
-        layout.menu(ShapeKeyOpsListAddMergeSubMenu.bl_idname)
+        layout.menu(ShapeKeyOpsListAddDeleteSubMenu.bl_idname, icon='TRASH')
+        layout.menu(ShapeKeyOpsListAddMergeSubMenu.bl_idname, icon='FULLSCREEN_EXIT')
 
 
 class ShapeKeyOpsListRemove(ShapeKeyOpsListBase, CollectionRemoveBase):
