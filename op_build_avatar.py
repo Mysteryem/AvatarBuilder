@@ -809,6 +809,7 @@ class BuildAvatarOp(Operator):
     bl_idname = "build_avatar"
     bl_label = "Build Avatar"
     bl_description = "Build an avatar based on the meshes in the current scene, creating a new scene with the created avatar"
+    bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context) -> bool:

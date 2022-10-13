@@ -75,6 +75,7 @@ E = TypeVar('E', bound=PropertyGroup)
 class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
     """Add a new item to the collection and optionally set it as the active item"""
     bl_label = "Add"
+    bl_options = {'REGISTER', 'UNDO'}
 
     name: StringProperty(name="New item name", description="Name of the newly created element (optional)")
     do_set_active_index: BoolProperty(name="Set Active Index", description="Set the newly created element as active",
@@ -106,6 +107,7 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
 class CollectionRemoveBase(ContextCollectionOperatorBase, Operator):
     """Remove the active item from the collection"""
     bl_label = "Remove"
+    bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context: Context) -> bool:
@@ -131,6 +133,7 @@ class CollectionRemoveBase(ContextCollectionOperatorBase, Operator):
 class CollectionMoveBase(ContextCollectionOperatorBase, Operator):
     """Move the active item in the collection"""
     bl_label = "Move"
+    bl_options = {'REGISTER', 'UNDO'}
 
     type: EnumProperty(
         items=(

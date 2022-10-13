@@ -589,6 +589,7 @@ class ObjectBuildSettingsSync(ObjectBuildSettingsBase, Operator):
     """Set the currently displayed settings to the currently active build settings"""
     bl_idname = 'object_build_settings_sync'
     bl_label = "Sync"
+    bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context: Context) -> bool:

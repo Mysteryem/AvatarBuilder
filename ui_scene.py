@@ -159,6 +159,7 @@ class SceneBuildSettingsPurge(Operator):
     (Not yet implemented)"""
     bl_idname = "scene_build_settings_purge"
     bl_label = "Purge"
+    bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
@@ -175,6 +176,7 @@ class SceneBuildSettingsSync(Operator):
     (Not yet implemented)"""
     bl_idname = "scene_build_settings_sync"
     bl_label = "Purge"
+    bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
@@ -190,6 +192,7 @@ class SceneBuildSettingsDuplicate(Operator):
     (Not yet implemented)"""
     bl_idname = "scene_build_settings_duplicate"
     bl_label = "Duplicate"
+    bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context: bpy.types.Context) -> bool:
@@ -202,6 +205,7 @@ class SceneBuildSettingsDuplicate(Operator):
 class DeleteExportScene(Operator):
     bl_idname = "delete_export_scene"
     bl_label = "Delete Export Scene"
+    bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -244,6 +248,7 @@ class SelectObjectsInSceneSettings(Operator):
     """Select objects in the active scene settings"""
     bl_idname = "select_objects_in_scene_settings"
     bl_label = "Select Active"
+    bl_options = {'REGISTER', 'UNDO'}
 
     # TODO: extend property
     include_disabled: bpy.props.BoolProperty(
@@ -270,6 +275,7 @@ class AddSelectedToSceneSettings(Operator):
     """Add selected objects to the active scene settings if they do not already exist"""
     bl_idname = "add_selected_to_scene_settings"
     bl_label = "Add Selected"
+    bl_options = {'REGISTER', 'UNDO'}
 
     # TODO: name property so that the group to add to can be overwritten
 
@@ -290,6 +296,7 @@ class DisableSelectedFromSceneSettings(Operator):
     """Disable the active scene settings on the selected objects if the settings exist"""
     bl_idname = "disable_selected_from_scene_settings"
     bl_label = "Disable Selected"
+    bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context: Context) -> set[str]:
         active = ScenePropertyGroup.get_group(context.scene).get_active()
@@ -307,6 +314,7 @@ class EnableSelectedFromSceneSettings(Operator):
     """Enable the active scene settings on the selected objects if the settings exist"""
     bl_idname = "enable_selected_from_scene_settings"
     bl_label = "Enable Selected"
+    bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context: Context) -> set[str]:
         active = ScenePropertyGroup.get_group(context.scene).get_active()
@@ -324,6 +332,7 @@ class DisableHiddenFromSceneSettings(Operator):
     """Disable the active scene settings on the hidden objects if the settings exist"""
     bl_idname = "disable_hidden_from_scene_settings"
     bl_label = "Disable Hidden"
+    bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context: Context) -> set[str]:
         active = ScenePropertyGroup.get_group(context.scene).get_active()
@@ -343,6 +352,7 @@ class UnhideFromSceneSettings(Operator):
     """Unhide objects which are in the active scene settings"""
     bl_idname = "unhide_selected_from_scene_settings"
     bl_label = "Reveal Hidden"
+    bl_options = {'REGISTER', 'UNDO'}
 
     select: bpy.props.BoolProperty(name="Select", description="Select the objects", default=True)
 
