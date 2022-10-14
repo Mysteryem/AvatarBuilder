@@ -15,6 +15,7 @@ register, unregister = register_submodule_factory(
     __name__,
     [
         'op_build_avatar',
+        'shape_key_ops',
         'ui_object',
         'ui_scene',
         'extensions'
