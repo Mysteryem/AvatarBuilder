@@ -581,3 +581,6 @@ class ObjectPropertyGroup(IdPropertyGroup, PropertyGroup):
             return self.get_synced_settings(scene)
         else:
             return self.get_active_settings()
+
+
+register, unregister = register_module_classes_factory(__name__, globals())

@@ -370,3 +370,6 @@ class UnhideFromSceneSettings(Operator):
                         if self.select:
                             obj.select_set(state=True, view_layer=vl)
         return {'FINISHED'}
+
+
+register, unregister = register_module_classes_factory(__name__, globals())

@@ -196,3 +196,6 @@ def draw_shape_key_ops(shape_keys_box_col: UILayout, settings: ShapeKeySettings,
 
         # Common for all ops
         active_op_col.prop(active_op, 'ignore_regex')
+
+
+register, unregister = register_module_classes_factory(__name__, globals())

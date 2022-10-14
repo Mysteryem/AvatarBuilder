@@ -422,3 +422,6 @@ class ObjectBuildSettingsSync(ObjectBuildSettingsBase, Operator):
                 self.set_active_index(context, index)
                 return {'FINISHED'}
         return {'CANCELLED'}
+
+
+register, unregister = register_module_classes_factory(__name__, globals())
