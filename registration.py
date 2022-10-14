@@ -175,7 +175,7 @@ def register_classes_factory(classes):
 def register_module_classes_factory(calling_module_name, calling_module_globals):
     # TODO: Alternative could be to iterate through dir(sys.modules[calling_module_name])
     #  or by importing the module
-    print(f"Looking for classes to register in {calling_module_name}")
+    print(f"Looking for classes that can be registered in {calling_module_name}")
     classes: list[type] = []
     id_prop_groups: list[type[IdPropertyGroup]] = []
     for attribute in calling_module_globals.values():
@@ -187,7 +187,7 @@ def register_module_classes_factory(calling_module_name, calling_module_globals)
                 print(f"\tFound {attribute.__name__} in {calling_module_name} via bpy.types.PropertyGroup")
                 classes.append(attribute)
                 if issubclass(attribute, IdPropertyGroup):
-                    print(f"\t\tIt is also an {IdPropertyGroup.__name__} and will be registered on"
+                    print(f"\t\tIt is also an {IdPropertyGroup.__name__} that will be registered on"
                           f" {attribute._registration_type} as {attribute._registration_name}")
                     id_prop_groups.append(attribute)
             elif issubclass(attribute, bpy.types.bpy_struct):

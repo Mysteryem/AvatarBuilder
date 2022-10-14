@@ -155,6 +155,3 @@ class CatsTranslate(Operator):
                 return {'CANCELLED'}
             else:
                 return set_string_result
-
-
-register, unregister = register_module_classes_factory(__name__, globals())
