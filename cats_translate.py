@@ -1,4 +1,4 @@
-from typing import cast, Optional, Protocol
+from typing import cast, Optional, Protocol, Union, overload
 import inspect
 
 import bpy
@@ -14,7 +14,15 @@ CATS_ADDON_NAME = "Cats Blender Plugin"
 
 
 class TranslateFunction(Protocol):
+    @overload
     def __call__(self, to_translate: str, is_shape_key=True, calling_op: Operator = None) -> Optional[str]:
+        ...
+
+    @overload
+    def __call__(self, to_translate: list[str], is_shape_key=True, calling_op: Operator = None) -> dict[str, str]:
+        ...
+
+    def __call__(self, to_translate: Union[str, list[str]], is_shape_key=True, calling_op: Operator = None) -> Union[Optional[str], dict[str, str]]:
         ...
 
 
@@ -30,7 +38,20 @@ def cats_exists() -> bool:
     return hasattr(bpy.ops, 'cats_common')
 
 
-def cats_translate(to_translate: str, is_shape_key=True, calling_op: Operator = None) -> Optional[str]:
+@overload
+def cats_translate(to_translate: str, is_shape_key: bool = False, calling_op: Operator = None
+                   ) -> Optional[str]:
+    ...
+
+
+@overload
+def cats_translate(to_translate: list[str], is_shape_key: bool = False, calling_op: Operator = None
+                   ) -> Optional[dict[str, str]]:
+    ...
+
+
+def cats_translate(to_translate: Union[str, list[str]], is_shape_key: bool = False, calling_op: Operator = None
+                   ) -> Optional[Union[str, dict[str, str]]]:
     """Translate a string using Cats"""
     # TODO: does cats_exists() need to be checked? e.g. what happens if we create the _cats_translate function, but then
     #  disable/remove/update Cats?
@@ -80,17 +101,27 @@ def _cats_setup(calling_operator: Optional[Operator]):
                     and len(inspect.signature(translate_module.update_dictionary).parameters) == 3
             ):
                 # Define the translate function
-                def temp_cats_translate(to_translate: str, is_shape_key=True, calling_op: Operator = None) -> Optional[str]:
+                def temp_cats_translate(to_translate: Union[str, list[str]], is_shape_key=True, calling_op: Operator = None):
                     # While the Cats functions have options for if shape keys are being translated, all they do is
                     # force google translations when bpy.context.scene.use_google_only is True. use_google_only defaults
                     # to False and is how we want to do our translations always.
-                    translate_module.update_dictionary([to_translate], False, calling_op)
-                    # TODO: Cats sets the second argument, add_space to True when translating shape keys, not sure why
-                    translation, success = translate_module.translate(to_translate, is_shape_key, False)
-                    if success:
-                        return translation
+                    if isinstance(to_translate, list):
+                        translate_module.update_dictionary(to_translate, False, calling_op)
+                        translated = {}
+                        for s in to_translate:
+                            translation, success = translate_module.translate(s, is_shape_key, False)
+                            if success:
+                                translated[s] = translation
+                        return translated
                     else:
-                        return None
+                        translate_module.update_dictionary([to_translate], False, calling_op)
+                        # TODO: Cats sets the second argument, add_space to True when translating shape keys, not sure
+                        #  why
+                        translation, success = translate_module.translate(to_translate, is_shape_key, False)
+                        if success:
+                            return translation
+                        else:
+                            return None
 
                 # Test out the translate function and if no exceptions occur, set it as cats_translate
                 try:

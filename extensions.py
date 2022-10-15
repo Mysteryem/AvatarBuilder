@@ -4,7 +4,7 @@ from itertools import chain
 from dataclasses import dataclass
 
 from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
-from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key
+from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key, Mesh
 
 from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup, CollectionPropBase
 
@@ -526,6 +526,42 @@ class ObjectBuildSettings(PropertyGroup):
     mesh_settings: PointerProperty(type=MeshSettings)
 
 
+class MmdShapeMapping(PropertyGroup):
+    def update_name(self, context):
+        """Update name used in filtering and sorting"""
+        self.name = self.model_shape + self.mmd_name + self.cats_translation_name
+
+    model_shape: StringProperty(
+        name="Shape key name",
+        description="Name of the shape key on your model",
+        update=update_name
+    )
+    mmd_name: StringProperty(
+        name="Japanese MMD shape name",
+        description="The corresponding Japanese MMD shape key",
+        update=update_name
+    )
+    cats_translation_name: StringProperty(
+        name="Cats translated MMD shape name",
+        description="The Cats translation for the Japanese MMD shape name. Some VRChat MMD dances activate both the",
+        update=update_name,
+    )
+
+
+class MmdShapeMappingGroup(PropertyGroup):
+    # Collection for mmd_shape_data
+    mmd_shape_mappings: CollectionProperty(type=MmdShapeMapping)
+    mmd_shape_mappings_active_index: IntProperty(name="Active Mapping")
+
+    # noinspection PyMethodMayBeStatic,PyShadowingBuiltins
+    def object_is_mesh_with_shapes(self, object: Object):
+        return isinstance(object.data, Mesh) and object.data.shape_keys
+
+    # Linking a mesh changes the UI to allow for searching for shape keys from that mesh when setting .model_shape of
+    # each MmdShapeMapping
+    linked_mesh_object: PointerProperty(name="Search Mesh", type=Object, poll=object_is_mesh_with_shapes)
+
+
 class ScenePropertyGroup(IdPropertyGroup, PropertyGroup):
     _registration_name = f'{_PROP_PREFIX}_scene_settings_group'
     _registration_type = Scene
@@ -543,6 +579,8 @@ class ScenePropertyGroup(IdPropertyGroup, PropertyGroup):
         name="Source Scene name",
         description="Name of the scene this export scene was created from and should swap back to when deleted",
     )
+
+    mmd_shape_mapping_group: PointerProperty(type=MmdShapeMappingGroup)
 
     def get_active(self) -> Optional[SceneBuildSettings]:
         settings = self.build_settings

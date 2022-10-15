@@ -20,7 +20,8 @@ _ordered_submodule_names = [
     'shape_key_ops',
     'ui_object',
     'ui_scene',
-    'extensions'
+    'ui_mmd_shapes',
+    'extensions',
 ]
 
 
