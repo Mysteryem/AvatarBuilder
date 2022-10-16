@@ -2,7 +2,7 @@ from typing import cast, Optional, Protocol, Union, overload
 import inspect
 
 import bpy
-from bpy.types import Operator, Context
+from bpy.types import Operator, Context, OperatorProperties
 from bpy.props import StringProperty, BoolProperty
 
 from .registration import register_module_classes_factory
@@ -165,9 +165,19 @@ class CatsTranslate(Operator):
         description="Data path from the context to set to the translation",
     )
 
+    custom_description: StringProperty(name="Custom Description", options={'HIDDEN'})
+
     @classmethod
     def poll(cls, context: Context) -> bool:
         return not _cats_op_exists_but_translate_not_found and cats_exists()
+
+    @classmethod
+    def description(cls, context: Context, properties: OperatorProperties) -> str:
+        description = properties.custom_description
+        if description:
+            return description
+        else:
+            return CatsTranslate.__doc__
 
     def execute(self, context: Context) -> set[str]:
         translated = cats_translate(self.to_translate, self.is_shape_key, self)
