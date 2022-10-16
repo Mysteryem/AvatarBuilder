@@ -98,10 +98,10 @@ class MmdShapesAddMenu(Menu):
 
     def draw(self, context: Context):
         layout = self.layout
-        layout.operator(MmdMappingAdd.bl_idname, text="", icon='TRIA_UP_BAR').position = 'START'
-        layout.operator(MmdMappingAdd.bl_idname, text="", icon='TRIA_UP').position = 'BEFORE'
-        layout.operator(MmdMappingAdd.bl_idname, text="", icon='TRIA_DOWN').position = 'AFTER'
-        layout.operator(MmdMappingAdd.bl_idname, text="", icon='TRIA_DOWN_BAR').position = 'END'
+        layout.operator(MmdMappingAdd.bl_idname, text="Top", icon='TRIA_UP_BAR').position = 'TOP'
+        layout.operator(MmdMappingAdd.bl_idname, text="Before Active", icon='TRIA_UP').position = 'BEFORE'
+        layout.operator(MmdMappingAdd.bl_idname, text="After Active", icon='TRIA_DOWN').position = 'AFTER'
+        layout.operator(MmdMappingAdd.bl_idname, text="Bottom", icon='TRIA_DOWN_BAR').position = 'BOTTOM'
 
 
 class LoadDefaults(Operator):

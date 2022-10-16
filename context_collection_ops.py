@@ -78,8 +78,8 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
     bl_options = {'UNDO'}
 
     _position_items = (
-        ('END', 'End', "Add the new item to the end of the collection"),
-        ('START', 'Start', "Add the new item to the start of the collection"),
+        ('BOTTOM', 'Bottom', "Add the new item to the bottom"),
+        ('TOP', 'Top', "Add the new item to the top"),
         ('BEFORE', "Before Active", "Insert the new item before the active item"),
         ('AFTER', "After Active", "Insert the new item after the active item"),
     )
@@ -89,7 +89,7 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
     position: EnumProperty(
         name="Position",
         items=_position_items,
-        default='END',
+        default='BOTTOM',
     )
     set_as_active: BoolProperty(
         name="Set Active Index",
@@ -128,7 +128,7 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
 
         added_item_index = len(data) - 1
         new_item_index = added_item_index
-        if self.position == 'START':
+        if self.position == 'TOP':
             new_item_index = 0
             data.move(added_item_index, new_item_index)
         elif self.position == 'BEFORE':
