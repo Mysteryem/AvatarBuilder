@@ -1,5 +1,5 @@
 import bpy
-from bpy.types import Operator, Context, PropertyGroup
+from bpy.types import Operator, Context, PropertyGroup, OperatorProperties
 from bpy.props import StringProperty, EnumProperty, BoolProperty
 from types import MethodDescriptorType
 from abc import abstractmethod
@@ -77,9 +77,36 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
     bl_label = "Add"
     bl_options = {'UNDO'}
 
+    _position_items = (
+        ('END', 'End', "Add the new item to the end of the collection"),
+        ('START', 'Start', "Add the new item to the start of the collection"),
+        ('BEFORE', "Before Active", "Insert the new item before the active item"),
+        ('AFTER', "After Active", "Insert the new item after the active item"),
+    )
+    _description_lookup: dict[str, str] = {item[0]: item[2] for item in _position_items}
+
     name: StringProperty(name="New item name", description="Name of the newly created element (optional)")
-    do_set_active_index: BoolProperty(name="Set Active Index", description="Set the newly created element as active",
-                                      default=True)
+    position: EnumProperty(
+        name="Position",
+        items=_position_items,
+        default='END',
+    )
+    set_as_active: BoolProperty(
+        name="Set Active Index",
+        description="Set the newly created element as active",
+        default=True,
+    )
+
+    @classmethod
+    def description(cls, context: Context, properties: OperatorProperties) -> str:
+        lookup = cls._description_lookup
+        # noinspection PyUnresolvedReferences
+        position: str = properties.position
+        if position in lookup:
+            return lookup[position]
+        else:
+            # Shouldn't happen, but fall back to class description or otherwise docstring
+            return getattr(cls, 'bl_description', cls.__doc__)
 
     def set_new_item_name(self, data: PropCollectionType, added: E):
         """Set the name of a newly created item, defaults to settings .name to self.name"""
@@ -98,8 +125,21 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
 
         added = data.add()
         self.modify_newly_created(data, added)
-        if self.do_set_active_index:
-            self.set_active_index(context, len(data) - 1)
+
+        added_item_index = len(data) - 1
+        new_item_index = added_item_index
+        if self.position == 'START':
+            new_item_index = 0
+            data.move(added_item_index, new_item_index)
+        elif self.position == 'BEFORE':
+            new_item_index = self.get_active_index(context)
+            data.move(added_item_index, new_item_index)
+        elif self.position == 'AFTER':
+            new_item_index = self.get_active_index(context) + 1
+            data.move(added_item_index, new_item_index)
+
+        if self.set_as_active:
+            self.set_active_index(context, new_item_index)
         return {'FINISHED'}
 
 
