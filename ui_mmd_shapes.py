@@ -142,10 +142,9 @@ class ExportShapeSettings(Operator, ExportHelper):
                                          f" '{cats_translation_name}', it has been removed in the export")
                 cats_translation_name = cats_translation_name.replace(CSV_DELIMITER, "")
             lines.append(model_shape + "\t" + mmd_name + "\t" + cats_translation_name)
-        file = open(self.filepath, 'w')
-        # Python's writelines doesn't even write lines, have to add the newlines yourself...
-        file.writelines(line + "\n" for line in lines)
-        file.close()
+        with open(self.filepath, 'w', encoding='utf-8') as file:
+            # Python's writelines doesn't even write lines, have to add the newlines yourself...
+            file.writelines(line + "\n" for line in lines)
         return {'FINISHED'}
 
 
@@ -161,27 +160,29 @@ class ImportShapeSettings(Operator, ImportHelper):
     )
 
     def execute(self, context: Context) -> set[str]:
-        file = open(self.filepath, 'r')
-        lines = file.readlines()
-        parsed_lines: list[tuple[str, str, str]] = []
-        for line_no, line in enumerate(lines, start=1):
-            split = line.split(CSV_DELIMITER)
-            num_fields = len(split)
-            expected_fields = 3
-            if num_fields >= 3:
-                # Extra fields may be used for comments in the file
-                parsed_lines.append((split[0], split[1], split[2]))
-            else:
-                self.report({'WARNING'}, f"Failed to parse line {line_no}, got {num_fields} fields, but expected"
-                                         f" at least {expected_fields}")
-        mappings = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings
-        if not self.add:
-            mappings.clear()
-        for shape_name, mmd_name, cats_name in parsed_lines:
-            added = mappings.add()
-            added.model_shape = shape_name
-            added.mmd_name = mmd_name
-            added.cats_translation_name = cats_name
+        with open(self.filepath, 'r', encoding='utf-8') as file:
+            parsed_lines: list[tuple[str, str, str]] = []
+            for line_no, line in enumerate(file, start=1):
+                # Strip the newline
+                line = line.rstrip('\n')
+                split = line.split(CSV_DELIMITER)
+                num_fields = len(split)
+                expected_fields = 3
+                # Extra fields might be added in the future, which then wouldn't be supported by older versions if we
+                # checked for the exact number
+                if num_fields >= expected_fields:
+                    parsed_lines.append((split[0], split[1], split[2]))
+                else:
+                    self.report({'WARNING'}, f"Failed to parse line {line_no}, got {num_fields} fields, but expected"
+                                             f" at least {expected_fields}")
+            mappings = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings
+            if not self.add:
+                mappings.clear()
+            for shape_name, mmd_name, cats_name in parsed_lines:
+                added = mappings.add()
+                added.model_shape = shape_name
+                added.mmd_name = mmd_name
+                added.cats_translation_name = cats_name
         return {'FINISHED'}
 
 
