@@ -1,5 +1,7 @@
 import bpy
 
+from .registration import dummy_register_factory
+
 
 # TODO: Rename to something more like 'get_gret_version' and instead get gret from the addons and look at its version
 def check_gret_shape_key_apply_modifiers():
@@ -18,3 +20,6 @@ def check_gret_shape_key_apply_modifiers():
                 return identifier
         return False
     return None
+
+
+register, unregister = dummy_register_factory()

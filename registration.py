@@ -209,3 +209,11 @@ def register_module_classes_factory(calling_module_name, calling_module_globals)
         return register, unregister
     else:
         return register_classes_factory(classes)
+
+
+def dummy_register_factory():
+    def dummy(): return None
+    return dummy, dummy
+
+
+register, unregister = dummy_register_factory()

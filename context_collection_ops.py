@@ -5,6 +5,8 @@ from types import MethodDescriptorType
 from abc import abstractmethod
 from typing import Optional, Generic, TypeVar
 
+from .registration import dummy_register_factory
+
 # bpy_prop_collection_idprop isn't currently exposed in bpy.types, so it can't actually be imported. It's presence here
 # is purely to assist with development where it exists as a fake class.
 if hasattr(bpy.types, '_bpy_prop_collection_idprop'):
@@ -232,3 +234,6 @@ class CollectionMoveBase(ContextCollectionOperatorBase, Operator):
                 data.move(active_index, bottom_index)
                 self.set_active_index(context, bottom_index)
         return {'FINISHED'}
+
+
+register, unregister = dummy_register_factory()
