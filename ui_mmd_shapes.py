@@ -1,6 +1,8 @@
 from bpy.types import Panel, Operator, UIList, Context, UILayout, Mesh, Menu
-from bpy.props import BoolProperty
+from bpy.props import EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
+
+from typing import Generator, Union
 
 from . import cats_translate
 from .extensions import ScenePropertyGroup, MmdShapeMapping, MmdShapeMappingGroup
@@ -154,14 +156,23 @@ class ImportShapeSettings(Operator, ImportHelper):
     bl_label = "Import Mappings"
     bl_options = {'UNDO'}
 
-    add: BoolProperty(
-        name="Add",
-        description="Add the imported mappings to the list without clearing the list beforehand"
+    mode: EnumProperty(
+        name="Mode",
+        items=(
+            ('REPLACE', "Replace", "Replace existing mappings with the imported mappings"),
+            ('APPEND', "Append", "Append imported mappings to the end of the existing mappings"),
+            ('APPEND_NEW', "Append New", "Append imported mappings to the end of the existing mappings if the MMD name"
+                                         " from the imported mapping doesn't already exist."
+                                         "\nNote that this currently strips all comments from the imported mappings"
+                                         "(comments system needs changes)"),
+        ),
+        default='REPLACE',
+        description="What to do with the existing mappings",
     )
 
     def execute(self, context: Context) -> set[str]:
         with open(self.filepath, 'r', encoding='utf-8') as file:
-            parsed_lines: list[tuple[str, str, str]] = []
+            parsed_lines: Union[list[tuple[str, str, str]], Generator[tuple[str, str, str]]] = []
             for line_no, line in enumerate(file, start=1):
                 # Strip the newline
                 line = line.rstrip('\n')
@@ -176,8 +187,16 @@ class ImportShapeSettings(Operator, ImportHelper):
                     self.report({'WARNING'}, f"Failed to parse line {line_no}, got {num_fields} fields, but expected"
                                              f" at least {expected_fields}")
             mappings = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings
-            if not self.add:
+
+            if self.mode == 'REPLACE':
                 mappings.clear()
+            elif self.mode == 'APPEND_NEW':
+                existing_mmd_names = set(m.mmd_name for m in mappings)
+                # FIXME: For now, strip all comment lines because we don't have a good way to only include the comments
+                #  if the line they're commenting is new, because some comments might not be tied to any specific line.
+                existing_mmd_names.add("")
+                parsed_lines = (p for p in parsed_lines if p[1] not in existing_mmd_names)
+
             for shape_name, mmd_name, cats_name in parsed_lines:
                 added = mappings.add()
                 added.model_shape = shape_name
