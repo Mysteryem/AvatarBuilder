@@ -97,11 +97,19 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
         default=True,
     )
 
+    # noinspection PyUnresolvedReferences
     @classmethod
     def description(cls, context: Context, properties: OperatorProperties) -> str:
+        if not properties.is_property_set('position'):
+            last_properties = context.window_manager.operator_properties_last(cls.bl_idname)
+            if last_properties:
+                position = last_properties.position
+            else:
+                position = properties.position
+        else:
+            # When not set, this will get the default
+            position = properties.position
         lookup = cls._description_lookup
-        # noinspection PyUnresolvedReferences
-        position: str = properties.position
         if position in lookup:
             return lookup[position]
         else:
