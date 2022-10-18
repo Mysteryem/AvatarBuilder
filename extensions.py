@@ -138,6 +138,39 @@ def scene_build_settings_update_name(self: 'SceneBuildSettings', context: Contex
                     change_name_no_propagate(existing_settings, 'name_prop', existing_new_name)
 
 
+class MmdShapeKeySettings(PropertyGroup):
+    do_remap: BoolProperty(
+        name="Remap shape keys for VRChat MMD",
+        description="Remap shape keys for VRChat MMD dance worlds. Current mappings are in the MMD Shape Mappings panel"
+                    " in the 3D View",
+        default=False,
+    )
+    remap_to: EnumProperty(
+        name="Remap to",
+        items=(
+            ('JAPANESE', "Japanese", "Japanese shape keys are the most widely supported"),
+            ('CATS', "Cats Translations", "Occasionally, dances support some of the Cats translations of the Japanese"
+                                          " shape keys. It is recommended to instead use the original Japanese due to"
+                                          " the wider support."),
+        ),
+        default='JAPANESE',
+    )
+    avoid_double_activation: BoolProperty(
+        name="Avoid Double Activation",
+        description="Some VRChat MMD dances activate both the original Japanese and the Cats translation. With this"
+                    " enabled, if you end up with both the Japanese and Cats translation as shapes on a Mesh, the one"
+                    " you are not remapping to will be renamed to avoid both of the shapes being activated at the same"
+                    " time.",
+        default=True,
+    )
+    limit_to_body: BoolProperty(
+        name="Body Mesh Only",
+        description="Only perform remapping on a mesh called Body. VRChat MMD dance worlds usually require that the"
+                    " mesh with shape keys on is called Body",
+        default=True
+    )
+
+
 class SceneBuildSettings(PropertyGroup):
     # Shown in UI
     # Create export scene as f"Export {build_settings.name} scene"
@@ -194,10 +227,7 @@ class SceneBuildSettings(PropertyGroup):
         default=4,
         min=1,
     )
-
-
-_DELETE_ = 'DELETE_'
-_MERGE_ = 'MERGE_'
+    mmd_settings: PointerProperty(type=MmdShapeKeySettings)
 
 
 def _draw_pattern_prop(layout: UILayout, _shape_keys: Key, item: "ShapeKeyOp", label: str):
@@ -218,6 +248,10 @@ class ShapeKeyOpData:
     list_label: str
     draw_props: Callable[[UILayout, Key, "ShapeKeyOp", str], Any]
     menu_label: str
+
+
+_DELETE_ = 'DELETE_'
+_MERGE_ = 'MERGE_'
 
 
 class ShapeKeyOp(PropertyGroup):
@@ -543,7 +577,7 @@ class MmdShapeMapping(PropertyGroup):
     )
     cats_translation_name: StringProperty(
         name="Cats translated MMD shape name",
-        description="The Cats translation for the Japanese MMD shape name. Some VRChat MMD dances activate both the",
+        description="The Cats translation for the Japanese MMD shape name",
         update=update_name,
     )
 

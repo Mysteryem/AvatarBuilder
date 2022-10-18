@@ -35,6 +35,7 @@ from .extensions import (
     UVSettings,
     VertexColorSettings,
     VertexGroupSettings,
+    MmdShapeKeySettings,
 )
 from .integration import check_gret_shape_key_apply_modifiers
 from .registration import register_module_classes_factory
@@ -805,6 +806,113 @@ def validate_build(context: Context, active_scene_settings: SceneBuildSettings) 
     )
 
 
+def mmd_remap(scene_property_group: ScenePropertyGroup, mmd_settings: MmdShapeKeySettings, mesh_objects: list[Object]):
+    if mmd_settings.do_remap:
+        mmd_mappings = scene_property_group.mmd_shape_mapping_group.mmd_shape_mappings
+
+        # Must have a model_shape name, since that's what we will match against
+        valid_mmd_mappings = (m for m in mmd_mappings if m.model_shape)
+
+        remap_to_japanese = mmd_settings.remap_to == 'JAPANESE'
+        if remap_to_japanese:
+            # Must have an mmd_name, since that's what we're mapping to
+            valid_mmd_mappings = [m for m in valid_mmd_mappings if m.mmd_name]
+        else:
+            # Must have a cats translation name, since that's what we're mapping to
+            valid_mmd_mappings = [m for m in valid_mmd_mappings if m.cats_translation_name]
+
+        if not valid_mmd_mappings:
+            return
+
+        shape_lookup = {}
+        for mapping in valid_mmd_mappings:
+            model_shape = mapping.model_shape
+            if model_shape in shape_lookup:
+                existing = shape_lookup[model_shape]
+                print(f"Already mapping {model_shape} to {(existing.mmd_name, existing.cats_translation_name)},"
+                      f" ignoring the additional mapping to {(mapping.mmd_name, mapping.cats_translation_name)}")
+            else:
+                shape_lookup[model_shape] = mapping
+
+        limit_to_body = mmd_settings.limit_to_body
+        if limit_to_body:
+            # Only perform mappings on the mesh called 'Body'
+            mesh_objects = (m for m in mesh_objects if m.name == 'Body')
+
+        for mesh_obj in mesh_objects:
+            shape_keys = cast(Mesh, mesh_obj.data).shape_keys
+
+            if shape_keys:
+                key_blocks = shape_keys.key_blocks
+                # Get the original shape key names to shapes in advance to simplify things
+                orig_shape_names_to_shapes = {shape.name: shape for shape in key_blocks}
+
+                avoid_names = set()
+                if mmd_settings.avoid_double_activation:
+                    # When using an mmd_shape, the equivalent Cats translation must be avoided and vice versa, otherwise
+                    # some mmd dances may end up activating both the mmd_shape and its Cats translation equivalent
+                    if remap_to_japanese:
+                        # TODO: Do we want to include Cats translations that aren't used by this mesh? Then the option
+                        #  would be less about avoiding double activation and more about avoiding potentially any
+                        #  unwanted activation
+                        # cats_names = (s.cats_translation_name for s in shape_lookup.values())
+                        # avoid_names = set(filter(bool, cats_names))
+                        # Only the names for shapes that are actually used
+                        avoid_names = (shape_lookup[shape_name].cats_translation_name for shape_name in orig_shape_names_to_shapes if shape_name in shape_lookup)
+                    else:
+                        # If we were to instead check against even the mmd_names that aren't used by this mesh:
+                        # japanese_names = (s.mmd_name for s in shape_lookup.values())
+                        # avoid_names = set(filter(bool, japanese_names))
+
+                        # Very unlikely that an mmd_name will end up as a conflict unless an avatar with Japanese
+                        # shape keys is set to map to the Cats translations
+                        avoid_names = (shape_lookup[shape_name].mmd_name for shape_name in orig_shape_names_to_shapes if shape_name in shape_lookup)
+
+                desired_names = {}
+                used_names = set()
+                for shape in key_blocks:
+                    shape_name = shape.name
+                    if shape_name in shape_lookup:
+                        mapping = shape_lookup[shape_name]
+                        if remap_to_japanese:
+                            map_to = mapping.mmd_name
+                        else:
+                            map_to = mapping.cats_translation_name
+                        desired_name = map_to if map_to else shape_name
+                    else:
+                        # No mapping for this shape key
+                        desired_name = shape_name
+                    # Check against avoid_names for names we need to avoid
+                    # Check against used_names because each shape key must have a unique name
+                    desired_name_orig = desired_name
+                    number = 1
+                    while desired_name in avoid_names or desired_name in used_names:
+                        # TODO: More control over how we prefix/suffix to avoid conflicts with shape key names we must
+                        #  avoid
+                        desired_name = f"{desired_name_orig}.{number:03d}"
+                        number += 1
+                    used_names.add(desired_name)
+                    desired_names[shape] = desired_name
+
+                for shape, desired_name in desired_names.items():
+                    if shape.name != desired_name:
+                        # Unlike most types in Blender, if you rename a ShapeKey to one that already exists, the shape
+                        # key that was renamed will be given a different, unique name, instead of the existing ShapeKey
+                        # being renamed.
+                        # For this reason, if we want to rename a ShapeKey to the same name as a ShapeKey that already
+                        # exists, the ShapeKey that already exists has to be renamed to something else first.
+                        if desired_name in key_blocks:
+                            number = 1
+                            # Since we guarantee beforehand that all the names will end up unique, this name won't end
+                            # up used.
+                            temporary_new_name = f"{desired_name}.{number:03d}"
+                            while temporary_new_name in key_blocks:
+                                number += 1
+                                temporary_new_name = f"{desired_name}.{number:03d}"
+                            key_blocks[desired_name].name = temporary_new_name
+                        shape.name = desired_name
+
+
 class BuildAvatarOp(Operator):
     bl_idname = "build_avatar"
     bl_label = "Build Avatar"
@@ -822,7 +930,8 @@ class BuildAvatarOp(Operator):
 
     def execute(self, context) -> set[str]:
         scene = context.scene
-        active_scene_settings = ScenePropertyGroup.get_group(context.scene).get_active()
+        scene_property_group = ScenePropertyGroup.get_group(context.scene)
+        active_scene_settings = scene_property_group.get_active()
 
         try:
             validated_build = validate_build(context, active_scene_settings)
@@ -1066,6 +1175,8 @@ class BuildAvatarOp(Operator):
             no_shape_key_meshes = []
             no_shape_key_meshes_auto_smooth = False
 
+            mesh_objs_after_joining = []
+
             for helper in meshes_after_joining:
                 mesh_obj = helper.copy_object
                 # Individual mesh objects can exclude themselves from this operation
@@ -1085,6 +1196,8 @@ class BuildAvatarOp(Operator):
                     else:
                         no_shape_key_meshes.append(mesh_obj)
                         no_shape_key_meshes_auto_smooth |= mesh_data.use_auto_smooth
+                else:
+                    mesh_objs_after_joining.append(mesh_obj)
 
             shape_keys_tuple = (validated_build.shape_keys_mesh_name, shape_key_meshes, shape_key_meshes_auto_smooth)
             no_shape_keys_tuple = (validated_build.no_shape_keys_mesh_name, no_shape_key_meshes, no_shape_key_meshes_auto_smooth)
@@ -1115,14 +1228,21 @@ class BuildAvatarOp(Operator):
                     # Rename the combined object
                     combined_object.name = name
 
+                    mesh_objs_after_joining.append(combined_object)
+
                     for to_remove_name in mesh_names_to_remove:
                         to_remove = bpy.data.meshes.get(to_remove_name)
                         if to_remove:
                             bpy.data.meshes.remove(to_remove)
+        else:
+            mesh_objs_after_joining = [helper.copy_object for helper in meshes_after_joining]
 
             # TODO: Join the meshes and rename the resulting mesh according to the scene settings.
             #  If an object already exists with the target name, set that object's
             #  existing_object_settings_for_scene.target_object_name to the target name if it hasn't been set to something
+
+        # Remap shape keys to MMD shape key names if enabled
+        mmd_remap(scene_property_group, active_scene_settings.mmd_settings, mesh_objs_after_joining)
 
         # Swap to the export scene
         context.window.scene = export_scene
