@@ -1087,7 +1087,7 @@ class BuildAvatarOp(Operator):
             type: Literal['MESH', 'ARMATURE']
             desired_names: dict[str, list[ObjectHelper]]
             after_joining_list: list[ObjectHelper]
-            get_func: Callable[[str], ID]
+            get_func: Callable[[str], Union[Armature, Mesh]]
             remove_func: Callable[[Union[Armature, Mesh]], None]
 
         meshes_tuple = JoinGroup(
@@ -1186,10 +1186,9 @@ class BuildAvatarOp(Operator):
                 # If the separate attribute of the helper hasn't been set, it will be None
                 if ignore_reduce_to_two is None:
                     # If no mesh objects were combined into this one, get whether to ignore from its own settings
-                    ignore_reduce_to_two = helper.settings.ignore_reduce_to_two_meshes
+                    ignore_reduce_to_two = helper.settings.mesh_settings.ignore_reduce_to_two_meshes
                 if not ignore_reduce_to_two:
-                    # noinspection PyTypeChecker
-                    mesh_data = mesh_obj.data
+                    mesh_data = cast(Mesh, mesh_obj.data)
                     if mesh_data.shape_keys:
                         shape_key_meshes.append(mesh_obj)
                         shape_key_meshes_auto_smooth |= mesh_data.use_auto_smooth
@@ -1207,8 +1206,7 @@ class BuildAvatarOp(Operator):
                     mesh_names_to_remove = [m.data.name for m in mesh_objects[1:]]
 
                     combined_object = mesh_objects[0]
-                    # noinspection PyTypeChecker
-                    mesh_data = combined_object.data
+                    mesh_data = cast(Mesh, combined_object.data)
                     # Set mesh autosmooth if any of the joined meshes used it
                     mesh_data.use_auto_smooth = auto_smooth
 
