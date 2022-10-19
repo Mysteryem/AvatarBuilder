@@ -2,6 +2,7 @@ from bpy.types import Panel, Operator, UIList, Context, UILayout, Mesh, Menu
 from bpy.props import EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
+import os
 from typing import Generator, Union
 
 from . import cats_translate
@@ -205,6 +206,37 @@ class ImportShapeSettings(Operator, ImportHelper):
         return {'FINISHED'}
 
 
+class ImportPresetMenu(Menu):
+    """Load preset MMD Mappings created from Miku Append v1.10, Mirai Akari v1.0, Shishiro Botan and a few miscellaneous
+    models"""
+    bl_idname = 'mmd_mappings_presets'
+    bl_label = "Import Preset"
+
+    PRESETS_DIRECTORY = "resources"
+    MOST_COMMON = "mmd_mappings_most_common.csv"
+    VERY_COMMON = "mmd_mappings_very_common.csv"
+    COMMON = "mmd_mappings_common.csv"
+    FULL = "mmd_mappings_full.csv"
+
+    RESOURCE_DIR = os.path.join(os.path.dirname(__file__), "resources")
+
+    def draw(self, context: Context):
+        layout = self.layout
+        # Don't open the file selection window (invoke), go straight to calling execute
+        layout.operator_context = 'EXEC_DEFAULT'
+        file_names_text_and_icon = (
+            (ImportPresetMenu.MOST_COMMON, "Most Common (recommended for basic MMD support", 'SOLO_OFF'),
+            (ImportPresetMenu.VERY_COMMON, "Common (recommended for more full MMD support)", 'SOLO_ON'),
+            (ImportPresetMenu.COMMON, "Common + Miku Append + Misc", 'NONE'),
+            (ImportPresetMenu.FULL, "All (Miku + Akari + Botan + Misc)", 'NONE'),
+        )
+        for file_name, text, icon in file_names_text_and_icon:
+            filepath = os.path.join(ImportPresetMenu.RESOURCE_DIR, file_name)
+            options = layout.operator(ImportShapeSettings.bl_idname, text=text, icon=icon)
+            options.mode = 'APPEND'
+            options.filepath = filepath
+
+
 class CatsTranslateAll(Operator):
     """Translate all shapes with Cats"""
     bl_idname = "mmd_shapes_translate_all"
@@ -290,6 +322,8 @@ class MmdShapeMappingsPanel(Panel):
         vertical_buttons_col.operator(MmdMappingMove.bl_idname, text="", icon="TRIA_DOWN_BAR").type = 'BOTTOM'
         vertical_buttons_col.separator()
         vertical_buttons_col.operator(ImportShapeSettings.bl_idname, text="", icon="IMPORT")
+        vertical_buttons_col.menu(ImportPresetMenu.bl_idname, text="", icon="PRESET")
+        vertical_buttons_col.separator()
         vertical_buttons_col.operator(ExportShapeSettings.bl_idname, text="", icon="EXPORT")
 
         if not cats_translate.cats_exists():
