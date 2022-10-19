@@ -3,13 +3,14 @@ from bpy.props import EnumProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 import os
-from typing import Generator, Union
+from typing import Generator, Union, cast
 
 from . import cats_translate
 from .extensions import ScenePropertyGroup, MmdShapeMapping, MmdShapeMappingGroup
 from .registration import register_module_classes_factory
 from .context_collection_ops import (
     CollectionAddBase,
+    CollectionClearBase,
     CollectionMoveBase,
     CollectionRemoveBase,
     ContextCollectionOperatorBase,
@@ -20,6 +21,10 @@ from .context_collection_ops import (
 # Not using commas because they can be easily used in shape key names. Technically tabs can too via scripting, but they
 # show up as boxes in Blender's UI
 CSV_DELIMITER = '\t'
+
+# TODO: Replace the '#' prefix with a customisable StringProperty in-case users want to use shape keys starting
+#  with the default of '#', or replace it with a separate StringProperty
+COMMENT_PREFIX = '#'
 
 
 class MmdMappingList(UIList):
@@ -36,10 +41,8 @@ class MmdMappingList(UIList):
                 temp_shape_keys = linked_mesh.shape_keys
                 if temp_shape_keys:
                     shape_keys = temp_shape_keys
-        # TODO: Replace the '#' prefix with a customisable StringProperty in-case users want to use shape keys starting
-        #  with the default of '#'
         model_shape = item.model_shape
-        if model_shape.startswith('#'):
+        if model_shape.startswith(COMMENT_PREFIX):
             layout.prop(item, 'model_shape', emboss=False, text="")
             # The row ends up a slightly different height to non-comment rows if we don't put something in a column_flow
             column_flow = layout.column_flow(columns=1, align=True)
@@ -95,6 +98,51 @@ class MmdMappingMove(MmdMappingControlBase, CollectionMoveBase):
     bl_idname = 'mmd_shape_mapping_move'
 
 
+class MmdMappingsClear(MmdMappingControlBase, CollectionClearBase):
+    """Delete all shape key mappings"""
+    bl_idname = 'mmd_shape_mappings_clear'
+
+
+class MmdMappingsClearShapeNames(MmdMappingControlBase, Operator):
+    """Clear the Shape Key for each shape key mapping"""
+    bl_idname = 'mmd_shape_mappings_clear_shape_keys'
+    bl_label = "Clear Shape Keys"
+    bl_options = {'UNDO'}
+
+    def execute(self, context: Context) -> set[str]:
+        mapping: MmdShapeMapping
+        for mapping in self.get_collection(context):
+            if not mapping.model_shape.startswith(COMMENT_PREFIX):
+                mapping.model_shape = ''
+        return {'FINISHED'}
+
+
+class MmdMappingsAddFromSearchMesh(MmdMappingControlBase, Operator):
+    """Add a mapping for each Shape Key in the Search Mesh. Will not add mappings that already exist"""
+    bl_idname = 'mmd_shape_mappings_add_from_search_mesh'
+    bl_label = "Add From Search Mesh"
+    bl_options = {'UNDO'}
+
+    @classmethod
+    def poll(cls, context: Context) -> bool:
+        return ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.linked_mesh_object is not None
+
+    def execute(self, context: Context) -> set[str]:
+        data = self.get_collection(context)
+        mapping: MmdShapeMapping
+        existing_mappings = {mapping.model_shape for mapping in data}
+        me = cast(Mesh, ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.linked_mesh_object.data)
+        shape_keys = me.shape_keys
+        if shape_keys:
+            # Skip the first shape key, the reference ('basis') key
+            for key in shape_keys.key_blocks[1:]:
+                shape_key_name = key.name
+                if shape_key_name not in existing_mappings:
+                    mapping = data.add()
+                    mapping.model_shape = shape_key_name
+        return {'FINISHED'}
+
+
 class MmdShapesAddMenu(Menu):
     bl_idname = "mmd_shape_mapping_add"
     bl_label = "Add"
@@ -107,14 +155,20 @@ class MmdShapesAddMenu(Menu):
         layout.operator(MmdMappingAdd.bl_idname, text="Bottom", icon='TRIA_DOWN_BAR').position = 'BOTTOM'
 
 
-class LoadDefaults(Operator):
-    """Load default mmd shape data."""
-    bl_idname = "mmd_shapes_load_defaults"
-    bl_label = "Load Default Mappings"
-    bl_options = {'UNDO'}
+class MmdShapesSpecialsMenu(Menu):
+    bl_idname = 'mmd_shape_mapping_specials'
+    bl_label = "MMD Shape Mapping Specials"
 
-    def execute(self, context: Context) -> set[str]:
-        return {'FINISHED'}
+    def draw(self, context: Context):
+        layout = self.layout
+        layout.operator(MmdMappingsAddFromSearchMesh.bl_idname, icon='ADD')
+        layout.separator()
+        layout.operator(MmdMappingsClear.bl_idname, text="Delete All Mappings", icon='X')
+        layout.separator()
+        layout.operator(MmdMappingsClearShapeNames.bl_idname, text="Clear All Shape Keys")
+        layout.separator()
+        layout.operator(MmdMappingMove.bl_idname, text="Move To Top", icon="TRIA_UP_BAR").type = 'TOP'
+        layout.operator(MmdMappingMove.bl_idname, text="Move To Bottom", icon="TRIA_DOWN_BAR").type = 'BOTTOM'
 
 
 class ExportShapeSettings(Operator, ExportHelper):
@@ -316,10 +370,10 @@ class MmdShapeMappingsPanel(Panel):
         vertical_buttons_col.operator_menu_hold(MmdMappingAdd.bl_idname, text="", icon="ADD", menu=MmdShapesAddMenu.bl_idname)
         vertical_buttons_col.operator(MmdMappingRemove.bl_idname, text="", icon="REMOVE")
         vertical_buttons_col.separator()
-        vertical_buttons_col.operator(MmdMappingMove.bl_idname, text="", icon="TRIA_UP_BAR").type = 'TOP'
+        vertical_buttons_col.menu(MmdShapesSpecialsMenu.bl_idname, text="", icon='DOWNARROW_HLT')
+        vertical_buttons_col.separator()
         vertical_buttons_col.operator(MmdMappingMove.bl_idname, text="", icon="TRIA_UP").type = 'UP'
         vertical_buttons_col.operator(MmdMappingMove.bl_idname, text="", icon="TRIA_DOWN").type = 'DOWN'
-        vertical_buttons_col.operator(MmdMappingMove.bl_idname, text="", icon="TRIA_DOWN_BAR").type = 'BOTTOM'
         vertical_buttons_col.separator()
         vertical_buttons_col.operator(ImportShapeSettings.bl_idname, text="", icon="IMPORT")
         vertical_buttons_col.menu(ImportPresetMenu.bl_idname, text="", icon="PRESET")

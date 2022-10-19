@@ -180,6 +180,19 @@ class CollectionRemoveBase(ContextCollectionOperatorBase, Operator):
 
 
 # noinspection PyAbstractClass
+class CollectionClearBase(ContextCollectionOperatorBase, Operator):
+    """Clear the collection"""
+    bl_label = "Clear"
+    bl_options = {'UNDO'}
+
+    def execute(self, context: Context) -> set[str]:
+        data = self.get_collection(context)
+        if data is not None:
+            data.clear()
+        return {'FINISHED'}
+
+
+# noinspection PyAbstractClass
 class CollectionMoveBase(ContextCollectionOperatorBase, Operator):
     """Move the active item in the collection"""
     bl_label = "Move"
