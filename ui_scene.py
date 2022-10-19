@@ -4,7 +4,7 @@ from typing import cast
 from bpy.props import EnumProperty
 
 from .registration import register_module_classes_factory
-from .extensions import ScenePropertyGroup, ObjectPropertyGroup
+from .extensions import ScenePropertyGroup, ObjectPropertyGroup, MmdShapeKeySettings
 from .op_build_avatar import BuildAvatarOp
 from .ui_object import ObjectBuildSettingsAdd
 from .context_collection_ops import (
@@ -38,6 +38,14 @@ class ScenePanel(Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Avatar Builder"
+
+    @staticmethod
+    def draw_mmd(layout: UILayout, mmd_settings: MmdShapeKeySettings):
+        layout.prop(mmd_settings, 'do_remap')
+        if mmd_settings.do_remap:
+            layout.prop(mmd_settings, 'limit_to_body')
+            layout.prop(mmd_settings, 'remap_to')
+            layout.prop(mmd_settings, 'avoid_double_activation')
 
     def draw(self, context: Context):
         layout = self.layout
@@ -89,6 +97,7 @@ class ScenePanel(Panel):
                     sub.alert = False
                 sub.use_property_split = False
                 sub.prop(scene_settings, 'ignore_hidden_objects')
+                self.draw_mmd(sub, scene_settings.mmd_settings)
                 sub.operator(BuildAvatarOp.bl_idname)
 
 
