@@ -593,7 +593,12 @@ class MmdShapeMappingGroup(PropertyGroup):
 
     # Linking a mesh changes the UI to allow for searching for shape keys from that mesh when setting .model_shape of
     # each MmdShapeMapping
-    linked_mesh_object: PointerProperty(name="Search Mesh", type=Object, poll=object_is_mesh_with_shapes)
+    linked_mesh_object: PointerProperty(
+        name="Search Mesh",
+        type=Object,
+        poll=object_is_mesh_with_shapes,
+        description="Pick a mesh to enable searching from when entering Shape Keys into mappings",
+    )
 
 
 class ScenePropertyGroup(IdPropertyGroup, PropertyGroup):
