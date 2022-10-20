@@ -100,6 +100,7 @@ class ObjectPanel(Panel):
         object_box_col = object_box.column()
         object_box_col.label(text="Object", icon="OBJECT_DATA")
         object_box_col.prop(settings, 'target_object_name')
+        object_box_col.prop(settings, 'join_order')
 
     @staticmethod
     def draw_armature_box(properties_col: UILayout, settings: ArmatureSettings, obj: Object):

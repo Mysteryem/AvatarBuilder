@@ -562,6 +562,18 @@ class ObjectBuildSettings(PropertyGroup):
                     "All objects with the same name will be joined together (if they're the same type)\n"
                     "Leave blank to keep the current name"
     )
+    join_order: IntProperty(
+        name="Join Order",
+        # Generally you would only want to decrease this value, so
+        default=10,
+        description="When joining objects together, the objects being joined will be joined in the order of their Join"
+                    " Order."
+                    " The object with the lowest value Join Order will be the object that the others will be joined"
+                    " into."
+                    " Join Order affects the order of shape keys/material slots/etc. on the combined mesh."
+                    " The combined mesh will inherit the lowest Join Order of its parts."
+                    " If there is a tie for Join Order, the order will be based on the object's name instead"
+    )
     armature_settings: PointerProperty(type=ArmatureSettings)
     mesh_settings: PointerProperty(type=MeshSettings)
 

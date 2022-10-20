@@ -682,6 +682,7 @@ def set_build_name_for_existing_object_about_to_be_renamed(name: str):
 class ObjectHelper:
     """Helper class"""
     orig_object: Object
+    orig_object_name: str
     settings: ObjectBuildSettings
     desired_name: str
     copy_object: Union[Object, None] = None
@@ -723,7 +724,12 @@ def validate_build(context: Context, active_scene_settings: SceneBuildSettings) 
                 desired_name = object_settings.target_object_name
                 if not desired_name:
                     desired_name = obj.name
-                helper_tuple = ObjectHelper(obj, object_settings, desired_name)
+                helper_tuple = ObjectHelper(
+                    orig_object=obj,
+                    orig_object_name=obj.name,
+                    settings=object_settings,
+                    desired_name=desired_name,
+                )
                 objects_for_build.append(helper_tuple)
 
     # Get desired object names and validate that there won't be any attempt to join Objects of different types
@@ -912,6 +918,14 @@ def mmd_remap(scene_property_group: ScenePropertyGroup, mmd_settings: MmdShapeKe
                                 temporary_new_name = f"{desired_name}.{number:03d}"
                             key_blocks[desired_name].name = temporary_new_name
                         shape.name = desired_name
+
+
+def _get_join_sort_key(helper: ObjectHelper) -> tuple:
+    """Ordering for joining objects together"""
+    # settings.join_order is likely to be the same for most objects being sorted
+    # orig_object_name should be unique per helper and have been set directly from an Object's .name, which is
+    # guaranteed to be unique so the entire tuple should therefore be unique
+    return helper.settings.join_order, helper.orig_object_name
 
 
 class BuildAvatarOp(Operator):
@@ -1115,22 +1129,24 @@ class BuildAvatarOp(Operator):
 
             names_to_remove: list[str] = []
             for name, object_helpers in join_dict.items():
-                objects = [helper.copy_object for helper in object_helpers]
-                combined_object_helper = object_helpers[0]
+                sorted_object_helpers = sorted(object_helpers, key=_get_join_sort_key)
+                objects = [helper.copy_object for helper in sorted_object_helpers]
+                combined_object_helper = sorted_object_helpers[0]
                 combined_object = combined_object_helper.copy_object
                 context_override = {
                     'selected_editable_objects': objects,
                     'active_object': combined_object,
                     'scene': export_scene
                 }
-                if len(object_helpers) > 1:
+                if len(sorted_object_helpers) > 1:
                     # The data of the objects that join the combined object get left behind, we'll delete them and do so
                     # safely in-case Blender decides to delete them in the future
                     names_to_remove.extend(o.data.name for o in objects[1:])
 
                     if object_type == 'MESH':
                         # If any of the objects being joined were set to ignore, the combined mesh will be too
-                        ignore_reduce_to_two = any(h.settings.mesh_settings.ignore_reduce_to_two_meshes for h in object_helpers)
+                        ignore_reduce_to_two = any(
+                            h.settings.mesh_settings.ignore_reduce_to_two_meshes for h in sorted_object_helpers)
                         combined_object_helper.joined_settings_ignore_reduce_to_two_meshes = ignore_reduce_to_two
 
                         # TODO: Clean up all these comprehensions
@@ -1170,10 +1186,9 @@ class BuildAvatarOp(Operator):
         # Join meshes based on whether they have shape keys
         # The ignore_reduce_to_two_meshes setting will need to only be True if it was True for all the joined meshes
         if active_scene_settings.reduce_to_two_meshes:
-            shape_key_meshes = []
-            # TODO: autosmooth settings
+            shape_key_helpers = []
             shape_key_meshes_auto_smooth = False
-            no_shape_key_meshes = []
+            no_shape_key_helpers = []
             no_shape_key_meshes_auto_smooth = False
 
             mesh_objs_after_joining = []
@@ -1191,28 +1206,31 @@ class BuildAvatarOp(Operator):
                 if not ignore_reduce_to_two:
                     mesh_data = cast(Mesh, mesh_obj.data)
                     if mesh_data.shape_keys:
-                        shape_key_meshes.append(mesh_obj)
+                        shape_key_helpers.append(helper)
                         shape_key_meshes_auto_smooth |= mesh_data.use_auto_smooth
                     else:
-                        no_shape_key_meshes.append(mesh_obj)
+                        no_shape_key_helpers.append(helper)
                         no_shape_key_meshes_auto_smooth |= mesh_data.use_auto_smooth
                 else:
                     mesh_objs_after_joining.append(mesh_obj)
 
-            shape_keys_tuple = (validated_build.shape_keys_mesh_name, shape_key_meshes, shape_key_meshes_auto_smooth)
-            no_shape_keys_tuple = (validated_build.no_shape_keys_mesh_name, no_shape_key_meshes, no_shape_key_meshes_auto_smooth)
+            shape_keys_tuple = (validated_build.shape_keys_mesh_name, shape_key_helpers, shape_key_meshes_auto_smooth)
+            no_shape_keys_tuple = (
+                validated_build.no_shape_keys_mesh_name, no_shape_key_helpers, no_shape_key_meshes_auto_smooth)
 
-            for name, mesh_objects, auto_smooth in (shape_keys_tuple, no_shape_keys_tuple):
-                if mesh_objects:
-                    mesh_names_to_remove = [m.data.name for m in mesh_objects[1:]]
+            for name, mesh_helpers, auto_smooth in (shape_keys_tuple, no_shape_keys_tuple):
+                if mesh_helpers:
+                    sorted_mesh_helpers = sorted(mesh_helpers, key=_get_join_sort_key)
+                    sorted_meshes = [h.copy_object for h in sorted_mesh_helpers]
+                    mesh_names_to_remove = [m.data.name for m in sorted_meshes[1:]]
 
-                    combined_object = mesh_objects[0]
+                    combined_object = sorted_meshes[0]
                     mesh_data = cast(Mesh, combined_object.data)
                     # Set mesh autosmooth if any of the joined meshes used it
                     mesh_data.use_auto_smooth = auto_smooth
 
                     context_override = {
-                        'selected_editable_objects': mesh_objects,
+                        'selected_editable_objects': sorted_meshes,
                         'active_object': combined_object,
                         'scene': export_scene
                     }
@@ -1220,8 +1238,9 @@ class BuildAvatarOp(Operator):
                     # Join the objects
                     bpy.ops.object.join(context_override)
 
-                    # Since we're about to rename the combined object, if there is an existing object with that name, the
-                    # existing object will have its name changed. If that object were to not have
+                    # Since we're about to rename the combined object, if there is an existing object with that name,
+                    # the existing object will have its name changed. If that object were to not have its build_name
+                    # set, then it would be built into a differently named object the next time Build Avatar is called
                     set_build_name_for_existing_object_about_to_be_renamed(name)
 
                     # Rename the combined object
