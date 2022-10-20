@@ -39,6 +39,7 @@ from .extensions import (
 )
 from .integration import check_gret_shape_key_apply_modifiers
 from .registration import register_module_classes_factory
+from . import utils
 
 
 def merge_shapes_into_first(mesh_obj: Object, shapes_to_merge: list[tuple[ShapeKey, list[ShapeKey]]]):
@@ -1241,6 +1242,52 @@ class BuildAvatarOp(Operator):
 
         # Remap shape keys to MMD shape key names if enabled
         mmd_remap(scene_property_group, active_scene_settings.mmd_settings, mesh_objs_after_joining)
+
+        if active_scene_settings.do_limit_total:
+            # Annoyingly, bpy.ops.object.vertex_group_limit_total doesn't work with any useful context overrides when in
+            # OBJECT mode, since it gets all selected objects in the view layer.
+            # Our other options are:
+            # • Setting each object into a Paint mode or sculpt mode and then overriding context.active_object
+            # • Overriding the space_data to a space_properties and overriding context.object
+            # A second issue, is that we want to use the BONE_DEFORM group_select_mode, but the operator will
+            # only let us use it if context.active_object could have deform weights (has an armature modifier), so, even
+            # though there's no useful context override, we still need to supply one with .object set to an Object that
+            # can use the BONE_DEFORM group_select_mode.
+            # A third issue, is that the operator's poll method checks context.object for whether it supports vertex
+            # groups
+
+            # Find all mesh Objects that could have deform weights
+            # Create a function to filter meshes that don't have an armature modifier
+            def any_armature_mod_filter(mesh_obj):
+                return any(mod.type == 'ARMATURE' for mod in mesh_obj.modifiers)
+
+            deform_meshes: list[Object] = list(filter(any_armature_mod_filter, mesh_objs_after_joining))
+
+            if deform_meshes:
+                # Create a temporary view layer
+                vl = export_scene.view_layers.new(name='temp')
+                try:
+                    # Override .object so that bpy.ops.object.vertex_group_limit_total.poll succeeds
+                    # Override .active_object so that 'BONE_DEFORM' is an available group_select_mode
+                    # Override .view_layer so that the Objects operated on are only the ones we selected in our temporary
+                    # view_layer
+                    first_obj = deform_meshes[0]
+                    override = {'object': first_obj, 'active_object': first_obj, 'view_layer': vl}
+
+                    # Deselect any objects that were already selected
+                    for m in vl.objects.selected:
+                        m.select_set(state=False, view_layer=vl)
+
+                    # Select only the meshes where we're going to limit the number of weights per vertex
+                    for m in deform_meshes:
+                        m.select_set(state=True, view_layer=vl)
+
+                    # Run the operator to limit weights
+                    utils.op_override(bpy.ops.object.vertex_group_limit_total, override, context,
+                                      group_select_mode='BONE_DEFORM', limit=active_scene_settings.limit_num_groups)
+                finally:
+                    # Always delete the temporary view layer
+                    scene.view_layers.remove(vl)
 
         # Swap to the export scene
         context.window.scene = export_scene
