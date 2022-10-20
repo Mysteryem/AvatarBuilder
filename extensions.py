@@ -154,6 +154,7 @@ class MmdShapeKeySettings(PropertyGroup):
                                           " the wider support."),
         ),
         default='JAPANESE',
+        description="Pick which names to remap to",
     )
     avoid_double_activation: BoolProperty(
         name="Avoid Double Activation",
@@ -164,7 +165,7 @@ class MmdShapeKeySettings(PropertyGroup):
         default=True,
     )
     limit_to_body: BoolProperty(
-        name="Body Mesh Only",
+        name="'Body' Mesh Only",
         description="Only perform remapping on a mesh called Body. VRChat MMD dance worlds usually require that the"
                     " mesh with shape keys on is called Body",
         default=True
@@ -187,12 +188,23 @@ class SceneBuildSettings(PropertyGroup):
 
     reduce_to_two_meshes: BoolProperty(
         name="Reduce to two meshes",
-        description="Reduce to two meshes as a final step, one mesh that has shape keys and a second mesh that doesn't have shape keys",
+        description="Reduce to two meshes after individual object processing. One mesh that has shape keys and a second"
+                    " mesh that doesn't have shape keys",
         default=True
     )
-    shape_keys_mesh_name: StringProperty(default="Body")
-    no_shape_keys_mesh_name: StringProperty(default="MainBody")
-    ignore_hidden_objects: BoolProperty(name="Ignore hidden objects", default=True)
+    shape_keys_mesh_name: StringProperty(
+        default="Body",
+        description="Name to give to the mesh with shape keys",
+    )
+    no_shape_keys_mesh_name: StringProperty(
+        default="MainBody",
+        description="Name to give to the mesh without shape keys",
+    )
+    ignore_hidden_objects: BoolProperty(
+        name="Ignore hidden objects",
+        default=True,
+        description="Ignore hidden Objects from the build"
+    )
     # TODO: Needs UI and needs to actually be used
     remove_settings_from_built_avatar: BoolProperty(name="Remove settings from built avatar", default=True)
     # TODO: Add the option below to join mesh UVMaps by index instead of name
@@ -215,15 +227,16 @@ class SceneBuildSettings(PropertyGroup):
     #     default='INDEX',
     #     description="Specify how UV Maps of meshes should be combined when meshes are joined together",
     # )
+    # TODO: Try smartly limiting vertex group weights (dissolving weights into parents or parents of parents if the
+    #  vertex is also in that group)
     do_limit_total: BoolProperty(
         name="Limit Total Weights",
-        description="Limit the number of weights per vertex."
+        description="Limit the number of deform weights per vertex."
                     "\nVRChat's max is 4, Unity's default max is 4, other software may vary"
     )
     limit_num_groups: IntProperty(
         name="Number of weights",
-        description="Limit the number of weights per vertex."
-                    ,
+        description="Limit the number of weights per vertex.",
         default=4,
         min=1,
     )
@@ -363,6 +376,7 @@ class ShapeKeyOp(PropertyGroup):
     type: EnumProperty(
         name="Type",
         items=TYPE_ITEMS,
+        options={'HIDDEN'},
     )
     delete_after_name: StringProperty(
         name="Delete after",
@@ -444,6 +458,7 @@ class ArmatureSettings(PropertyGroup):
             ('YES', "Enabled", ""),
             ('NO', "Disabled", ""),
         ],
+        default='MODIFIER',
         description="Intended for use to override modifier settings when exporting for VRM, which requires a T-pose."
                     "\n\nWhen a model has been exported in an A-pose, put into a T-pose in Unity and exported as a VRM,"
                     " putting that VRM back into the original A-pose can result in a different appearance to how the"
@@ -463,13 +478,12 @@ class ShapeKeySettings(PropertyGroup):
             ('DELETE_ALL', "Delete All", "Delete all the shape keys"),
             ('CUSTOM', "Custom", "Merge or delete shape keys according to a series of custom operations"),
         ],
-        default='KEEP'
+        default='KEEP',
+        description="Operation to apply to the shape keys of this mesh",
     )
     shape_key_ops: PointerProperty(type=ShapeKeyOps)
     # TODO: BoolProperty to remove shape keys that do next to nothing
     # TODO: FloatProperty to specify how much movement is still considered nothing
-    # TODO: BoolProperty to do a special mmd convert: translate according to user dictionary and rename conflicts with
-    #  Cats translation names operation
 
 
 class UVSettings(PropertyGroup):
@@ -485,14 +499,6 @@ class VertexGroupSettings(PropertyGroup):
         default=True,
         description="Remove vertex groups that don't have an associated deform bone"
     )
-    do_limit_total: BoolProperty("")
-    limit_num_groups: IntProperty(
-        name="Number of weights",
-        description="Limit the number of weights per vertex.",
-        default=4,
-        min=1,
-    )
-    # TODO: Try smartly limiting vertex group weights
 
 
 class VertexColorSettings(PropertyGroup):
