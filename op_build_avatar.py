@@ -461,7 +461,7 @@ def build_mesh_shape_keys(obj: Object, me: Mesh, settings: ShapeKeySettings):
             del mix_shape_co
             return
         elif main_op == 'CUSTOM':
-            for op in settings.shape_key_ops:
+            for op in settings.shape_key_ops.data:
                 build_mesh_shape_key_op(obj, shape_keys, op)
         elif main_op == 'KEEP':
             # Nothing to do
@@ -1306,7 +1306,7 @@ class BuildAvatarOp(Operator):
                                       group_select_mode='BONE_DEFORM', limit=active_scene_settings.limit_num_groups)
                 finally:
                     # Always delete the temporary view layer
-                    scene.view_layers.remove(vl)
+                    export_scene.view_layers.remove(vl)
 
         # Swap to the export scene
         context.window.scene = export_scene
