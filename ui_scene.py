@@ -43,12 +43,15 @@ class ScenePanel(Panel):
     def draw_mmd(layout: UILayout, mmd_settings: MmdShapeKeySettings):
         layout.prop(mmd_settings, 'do_remap')
         if mmd_settings.do_remap:
-            layout.prop(mmd_settings, 'limit_to_body')
-            layout.prop(mmd_settings, 'remap_to')
-            layout.prop(mmd_settings, 'avoid_double_activation')
+            col = layout.column()
+            col.use_property_split = True
+            col.prop(mmd_settings, 'limit_to_body')
+            col.prop(mmd_settings, 'remap_to')
+            col.prop(mmd_settings, 'avoid_double_activation')
 
     def draw(self, context: Context):
         layout = self.layout
+        layout.use_property_decorate = False
         group = ScenePropertyGroup.get_group(context.scene)
         col = layout.column()
         if group.is_export_scene:
@@ -83,22 +86,28 @@ class ScenePanel(Panel):
             scene_settings = group.get_active()
             if scene_settings:
                 box = col.box()
-                sub = box.column()
-                sub.alignment = 'RIGHT'
-                sub.prop(scene_settings, 'reduce_to_two_meshes')
+                box_col = box.column()
+                box_col.prop(scene_settings, 'ignore_hidden_objects')
+                box_col.prop(scene_settings, 'reduce_to_two_meshes')
                 if scene_settings.reduce_to_two_meshes:
-                    sub = box.column()
-                    sub.enabled = scene_settings.reduce_to_two_meshes
+                    sub = box_col.column()
                     sub.use_property_split = True
                     sub.alert = not scene_settings.shape_keys_mesh_name
                     sub.prop(scene_settings, 'shape_keys_mesh_name', icon="MESH_DATA", text="Shape keys")
                     sub.alert = not scene_settings.no_shape_keys_mesh_name
                     sub.prop(scene_settings, 'no_shape_keys_mesh_name', icon="MESH_DATA", text="No shape keys")
                     sub.alert = False
-                sub.use_property_split = False
-                sub.prop(scene_settings, 'ignore_hidden_objects')
-                self.draw_mmd(sub, scene_settings.mmd_settings)
-                sub.operator(BuildAvatarOp.bl_idname)
+                self.draw_mmd(box_col, scene_settings.mmd_settings)
+
+                box_col.prop(scene_settings, 'do_limit_total')
+                if scene_settings.do_limit_total:
+                    sub = box_col.column()
+                    sub.use_property_split = True
+                    sub.prop(scene_settings, 'limit_num_groups')
+
+
+                # And finally the button for actually running Build Avatar
+                box_col.operator(BuildAvatarOp.bl_idname, icon='SHADERFX')
 
 
 class SceneBuildSettingsBase(ContextCollectionOperatorBase):
