@@ -33,10 +33,10 @@ def _get_all_module_names(ordered_submodule_names):
     ordered_submodule_names_set = set(all_submodule_names)
     # Prefix seems to be required to import submodules of submodules (not that we have any yet)
     package_prefix = __name__ + "."
-    for mod_info in pkgutil.walk_packages(path=[__file__], prefix=package_prefix):
+    for mod_info in pkgutil.walk_packages(path=__path__, prefix=package_prefix):
         no_prefix_name = mod_info.name[len(package_prefix):]
         if no_prefix_name not in ordered_submodule_names_set:
-            all_submodule_names.append(mod_info.name)
+            all_submodule_names.append(no_prefix_name)
     return all_submodule_names
 
 
