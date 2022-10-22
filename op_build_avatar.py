@@ -12,6 +12,7 @@ from bpy.types import (
     Context,
     ID,
     Key,
+    Material,
     Mesh,
     MeshUVLoopLayer,
     Modifier,
@@ -19,6 +20,7 @@ from bpy.types import (
     Operator,
     Scene,
     ShapeKey,
+    ViewLayer,
 )
 
 from .extensions import (
@@ -585,22 +587,81 @@ def build_mesh_vertex_colors(me: Mesh, settings: VertexColorSettings):
             me.vertex_colors.remove(vc)
 
 
-def build_mesh_materials(me: Mesh, settings: MaterialSettings):
+def build_mesh_materials(obj: Object, me: Mesh, settings: MaterialSettings):
+    assert obj.data == me
+    # Force all slots to DATA to simplify things
+    # As each copy object will have its own unique data, this should be fine to do
+    material_slots = obj.material_slots
+    for slot in material_slots:
+        if slot.link != 'DATA':
+            # Get the material of the slot
+            mat = slot.material
+            # Change to the slot to DATA
+            slot.link = 'DATA'
+            # Set the material (updating the material in the DATA (mesh))
+            slot.material = mat
+
+    materials = me.materials
+
+    # TODO: Option to remove unused materials
     # TODO: Remap materials instead (and option to combine materials mapped to the same other material into one
     #  material slot)
     # TODO: Support materials defined on the Object rather than Mesh (MaterialSlot.link), note that deleting slots
     #  still appears to be done by deleting the material from the object
     # Remove all but one material
-    if settings.keep_only_material:
-        only_material_name = settings.keep_only_material
-        materials = me.materials
-        if only_material_name not in materials:
-            raise ValueError(f"Could not find '{only_material_name}' in {repr(materials)}")
-        # Iterate in reverse so that indices remain the same for materials we're yet to check
-        for idx in reversed(range(len(materials))):
-            material = materials[idx]
-            if material.name != only_material_name:
-                materials.pop(index=idx)
+    main_op = settings.materials_main_op
+    if main_op == 'KEEP_SINGLE':
+        material_name = settings.keep_only_material
+        if material_name:
+            material = materials.get(material_name)
+            if material:
+                materials.clear()
+                materials.append(material)
+            else:
+                raise ValueError(f"Could not find '{material_name}' in {repr(materials)}")
+    elif main_op == 'REMAP_SINGLE':
+        material = settings.remap_single_material
+        if material:
+            materials.clear()
+            materials.append(material)
+    elif main_op == 'REMAP':
+        # Using zip to stop iteration as soon as either iterator runs out of elements
+        for idx, remap in zip(range(len(materials)), settings.materials_remap.data):
+            materials[idx] = remap.to_mat
+
+    # TODO: We might want to clean up any polygon material indices that are out of bounds of the number of materials
+
+    if len(materials) > 1:
+        # Combine any duplicate materials into the first slot for that material, we do this because joining meshes does
+        # this automatically and if this mesh doesn't get joined, we want the behaviour to be the same as if it did get
+        # joined
+        duplicates: dict[Material, list[int]] = {}
+        for idx, mat in enumerate(materials):
+            if mat in duplicates:
+                duplicates[mat].append(idx)
+            else:
+                duplicates[mat] = [idx]
+        duplicate_lists = []
+        for mat, idx_list in duplicates.items():
+            if len(idx_list) > 1:
+                first_duplicate_idx = idx_list[0]
+                other_duplicate_idx = idx_list[1:]
+                pair = (first_duplicate_idx, other_duplicate_idx)
+                duplicate_lists.append(pair)
+        if duplicate_lists:
+            # Note: material_index is refactored into an int Attribute in Blender 3.4, access may be faster via the
+            # attribute in that version
+            material_indices = np.empty(len(me.polygons), dtype=np.short)
+            me.polygons.foreach_get('material_index', material_indices)
+            # Map the materials indices to the first duplicate material
+            # Get the unique material indices so that we only need to operate on a very small array when mapping instead
+            # of the full array of material indices
+            unique_mat_indices, inverse = np.unique(material_indices, return_inverse=True)
+            for to_idx, from_indices in duplicate_lists:
+                for idx in from_indices:
+                    unique_mat_indices[unique_mat_indices == idx] = to_idx
+            material_indices = unique_mat_indices[inverse]
+            me.polygons.foreach_set('material_index', material_indices)
 
 
 def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: MeshSettings):
@@ -617,7 +678,7 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: MeshSetti
 
     build_mesh_vertex_colors(me, settings.vertex_color_settings)
 
-    build_mesh_materials(me, settings.material_settings)
+    build_mesh_materials(obj, me, settings.material_settings)
 
     # This could be done just prior to joining meshes together, but I think it's ok to do here
     # There probably shouldn't be an option to turn this off
@@ -721,6 +782,12 @@ def validate_build(context: Context, active_scene_settings: SceneBuildSettings) 
             group = ObjectPropertyGroup.get_group(obj)
             object_settings = group.get_synced_settings(scene)
             if object_settings and object_settings.include_in_build:
+                # Ensure all objects (and their copies) will be in object mode. Since the operator's .poll fails if
+                # context.mode != 'OBJECT', this will generally only happen if some script has changed the active object
+                # without leaving the current sculpt/weight-paint or other mode that only allows one object at a time.
+                if obj.mode != 'OBJECT':
+                    override = {'active_object': obj}
+                    utils.op_override(bpy.ops.object.mode_set, override, context, mode='OBJECT')
                 desired_name = object_settings.target_object_name
                 if not desired_name:
                     desired_name = obj.name
@@ -936,6 +1003,8 @@ class BuildAvatarOp(Operator):
 
     @classmethod
     def poll(cls, context) -> bool:
+        if context.mode != 'OBJECT':
+            return False
         active = ScenePropertyGroup.get_group(context.scene).get_active()
         if active is None:
             return False
@@ -1283,15 +1352,15 @@ class BuildAvatarOp(Operator):
             deform_meshes: list[Object] = list(filter(any_armature_mod_filter, mesh_objs_after_joining))
 
             if deform_meshes:
-                # Create a temporary view layer
-                vl = export_scene.view_layers.new(name='temp')
-                try:
+                with utils.temp_view_layer(export_scene) as vl:
                     # Override .object so that bpy.ops.object.vertex_group_limit_total.poll succeeds
                     # Override .active_object so that 'BONE_DEFORM' is an available group_select_mode
                     # Override .view_layer so that the Objects operated on are only the ones we selected in our temporary
                     # view_layer
+                    # Passing in .scene override too in case something tries to get the scene
                     first_obj = deform_meshes[0]
-                    override = {'object': first_obj, 'active_object': first_obj, 'view_layer': vl}
+                    override = {'object': first_obj, 'active_object': first_obj, 'view_layer': vl,
+                                'scene': export_scene}
 
                     # Deselect any objects that were already selected
                     for m in vl.objects.selected:
@@ -1304,9 +1373,29 @@ class BuildAvatarOp(Operator):
                     # Run the operator to limit weights
                     utils.op_override(bpy.ops.object.vertex_group_limit_total, override, context,
                                       group_select_mode='BONE_DEFORM', limit=active_scene_settings.limit_num_groups)
-                finally:
-                    # Always delete the temporary view layer
-                    export_scene.view_layers.remove(vl)
+
+        if mesh_objs_after_joining:
+            # Remove unused material slots, currently, this can't be disabled. Note that joining meshes automatically
+            # merges duplicate material slots into the first of the duplicate slots, so we replicate this merging
+            # behaviour even if a mesh isn't joined. This means that any originally duplicate material slot will now be
+            # unused.
+            #
+            # .poll checks if .object is a type that has materials
+            # exec checks .active_object and raises an error if it's in edit mode, we'll override it just in-case
+            # exec then gets .view_layer
+            #   gets active to check mode and then gets all selected objects
+            # exec then gets all objects from .view_layer that .poll is valid for and aren't in edit mode
+            # Passing in .scene override too in case something tries to get the scene
+            with utils.temp_view_layer(export_scene) as vl:
+                vl: ViewLayer
+                for o in vl.objects.selected:
+                    o.select_set(state=False, view_layer=vl)
+                for o in mesh_objs_after_joining:
+                    o.select_set(state=True, view_layer=vl)
+                obj0 = mesh_objs_after_joining[0]
+                vl.objects.active = obj0
+                override = {'object': obj0, 'active_object': obj0, 'view_layer': vl, 'scene': export_scene}
+                utils.op_override(bpy.ops.object.material_slot_remove_unused, override, context)
 
         # Swap to the export scene
         context.window.scene = export_scene

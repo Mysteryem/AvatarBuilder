@@ -1,6 +1,8 @@
 import bpy
-from bpy.types import Context
+from bpy.types import Context, Scene, ViewLayer, ID, ImagePreview
+
 from typing import Any, Protocol, Literal, Optional
+from contextlib import contextmanager
 from .registration import dummy_register_factory
 
 
@@ -58,5 +60,27 @@ else:
             args.append(undo)
 
         return operator(*args, **operator_args)
+
+
+@contextmanager
+def temp_view_layer(scene: Scene) -> ViewLayer:
+    """Some operators have no usable context overrides aside from .view_layer. This context manager creates a temporary
+    view layer that can then be passed"""
+    temp = scene.view_layers.new(name="temp")
+    try:
+        yield temp
+    finally:
+        scene.view_layers.remove(temp)
+
+
+def get_preview(id: ID) -> ImagePreview:
+    if bpy.app.version >= (3, 0):
+        # .preview can be None in 3.0+, the new preview_ensure() method can be used.
+        # noinspection PyUnresolvedReferences
+        preview = id.preview_ensure()
+    else:
+        preview = id.preview
+    return preview
+
 
 register, unregister = dummy_register_factory()

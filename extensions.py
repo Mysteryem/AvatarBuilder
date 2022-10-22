@@ -4,7 +4,7 @@ from itertools import chain
 from dataclasses import dataclass
 
 from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
-from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key, Mesh
+from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key, Mesh, Material
 
 from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup, CollectionPropBase
 
@@ -509,15 +509,127 @@ class VertexColorSettings(PropertyGroup):
     )
 
 
+class MaterialRemapElement(PropertyGroup):
+    # Note that when meshes are joined together, if a material is in multiple slots, the polygons assigned the same
+    # material across multiple slots will all be assigned to the first slot that material is in, therefore, we should
+    # always merge materials when they are being remapped to the same material
+    # TODO: Can we do something whereby we work with or display a UI for all slots of the mesh/object?
+    from_mat: StringProperty()
+    # to_mat should be a Pointer so that if a material is only used by a remap, it doesn't count as an orphan, since
+    # the remap wants to use it
+    to_mat: PointerProperty(type=Material, name="To")
+    to_mat_str: StringProperty(name="Internal use", options={'HIDDEN'})
+
+
+class MaterialRemap(CollectionPropBase[MaterialRemapElement], PropertyGroup):
+    data: CollectionProperty(type=MaterialRemapElement)
+
+
 class MaterialSettings(PropertyGroup):
-    # TODO: Extend to being able to re-map materials from one to another
+    def materials_main_op_update(self, context):
+        # When switching out from a main op that uses pointer properties, set the equivalent string properties and set
+        # the pointer properties to None so that they don't keep being a user for the pointed to ID
+        # When switching to a main op that uses pointer properties, try to set the pointers to the IDs specified by the
+        # string properties (if the string properties have been set)
+        if self.materials_main_op == 'REMAP_SINGLE':
+            # New value is REMAP_SINGLE, attempt to set remap_single_material based on the stored string
+            material_str = self.remap_single_material_str
+            if material_str:
+                self.remap_single_material = bpy.data.materials.get(material_str)
+        else:
+            # New value is not REMAP_SINGLE, if remap_single_material is set, clear it and set remap_single_material_str
+            mat = self.remap_single_material
+            if mat:
+                try:
+                    mat_name = mat.name
+                except ReferenceError:
+                    # Safety check in-case the material no longer exists
+                    # '' will never be in bpy.data.materials
+                    mat_name = ''
+                if mat_name in bpy.data.materials:
+                    # As another safety check, only set the string property if the material could be found by name
+                    self.remap_single_material_str = mat_name
+                self.remap_single_material = None
+
+        if self.materials_main_op == 'REMAP':
+            # Refresh length of mappings collection
+            data = self.materials_remap.data
+            material_slots = context.object.material_slots
+            num_mappings = len(data)
+            num_slots = len(material_slots)
+            if num_mappings != num_slots:
+                if num_mappings > num_slots:
+                    # Remove the excess mappings
+                    # Iterate in reverse so that we remove the last element each time, so that the indices don't change
+                    # while iterating
+                    for i in reversed(range(num_slots, num_mappings)):
+                        data.remove(i)
+                else:
+                    # For each missing mapping, add a new mapping and set it to the current material in the
+                    # corresponding slot
+                    for slot in material_slots[num_mappings:num_slots]:
+                        added = data.add()
+                        added.to_mat = slot.material
+            # Restore pointers from strings
+            for remap in data:
+                mat_str = remap.to_mat_str
+                if mat_str:
+                    remap.to_mat = bpy.data.materials.get(mat_str)
+        else:
+            for remap in self.materials_remap.data:
+                mat = remap.to_mat
+                if mat:
+                    try:
+                        # Huh, PyCharm bug. It sees that to_mat is set to None later on and for some reason thinks it
+                        # is therefore also None here, despite the fact that mat is reassigned in each iteration.
+                        # noinspection PyUnresolvedReferences
+                        mat_name = mat.name
+                    except ReferenceError:
+                        # Safety check in-case the material no longer exists
+                        # '' will never be in bpy.data.materials
+                        mat_name = ''
+                    if mat_name in bpy.data.materials:
+                        # As another safety check, only set the string property if the material could be found by name
+                        remap.to_mat_str = mat_name
+                    remap.to_mat = None
+
+    materials_main_op: EnumProperty(
+        name="Operation",
+        items=(
+            ('KEEP', "None", "Do nothing, keep materials as they currently are"),
+            # (use an int to refer to the slot)
+            ('KEEP_SINGLE', "Keep 1", "Keep only one existing material"),
+            ('REMAP_SINGLE', "Remap To 1", "Replace all materials with a single, different material"),
+            ('REMAP', "Remap All", "Individually replace each material with a different one"),
+        ),
+        description="Operation to apply to materials. Note that duplicate materials will always be combined in order to"
+                    " keep material behaviour consistent because Blender will combine duplicate materials automatically"
+                    " when joining meshes. If you want two of the same material in different slots, e.g. one slot will"
+                    " be used as a toggle in Unity, either make a copy of the material in advance or remap the"
+                    " duplicate to its own unique material using the Remap All operation.",
+        update=materials_main_op_update,
+    )
     keep_only_material: StringProperty(
         name="Material to keep",
-        description="Name of the only Material to keep on the mesh"
+        description="Name of the only Material to keep on the mesh",
     )
-    # materials_remap
-    remap_materials: BoolProperty(default=False)
-    # materials_remap: CollectionProperty(type=<custom type needed?>)
+    # Used to keep reference to a material (by name) without needing to keep a Pointer. If the user changes the main op
+    # from REMAP_SINGLE to something else, we don't want to leave the PointerProperty around since it counts as a user
+    # of the Material is references, instead, we can store the name into this String property. When changing the main op
+    # back to REMAP_SINGLE, we can attempt to restore the PointerProperty
+    remap_single_material_str: StringProperty(name="Internal use", options={'HIDDEN'})
+
+    def remap_single_material_update(self, context):
+        if self.remap_single_material:
+            self.remap_single_material_str = self.remap_single_material.name
+        else:
+            self.remap_single_material_str = ''
+    remap_single_material: PointerProperty(
+        type=Material,
+        name="Material",
+        description="Material to replace"
+    )
+    materials_remap: PointerProperty(type=MaterialRemap)
 
 
 class ModifierSettings(PropertyGroup):

@@ -1,7 +1,7 @@
 from typing import Union, cast, Optional
 from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator, Object, Mesh, PropertyGroup
 
-from . import shape_key_ops
+from . import shape_key_ops, ui_material_remap, utils
 from .registration import register_module_classes_factory
 from .extensions import (
     ArmatureSettings,
@@ -182,11 +182,24 @@ class ObjectPanel(Panel):
         uv_layers_box_col.prop_search(settings, 'keep_only_uv_map', me, 'uv_layers', icon="GROUP_UVS")
 
     @staticmethod
-    def draw_materials_box(properties_col: UILayout, settings: MaterialSettings, me: Mesh):
+    def draw_materials_box(properties_col: UILayout, settings: MaterialSettings, obj: Object):
         materials_box = properties_col.box()
         materials_box_col = materials_box.column()
         materials_box_col.label(text="Materials", icon="MATERIAL_DATA")
-        materials_box_col.prop_search(settings, 'keep_only_material', me, 'materials')
+        materials_box_col.prop(settings, 'materials_main_op')
+
+        main_op = settings.materials_main_op
+        if main_op == 'KEEP_SINGLE':
+            # Unfortunately, prop_search does not support icon_value
+            materials_box_col.prop_search(settings, 'keep_only_material', obj, 'material_slots')
+        elif main_op == 'REMAP_SINGLE':
+            mat = settings.remap_single_material
+            if mat:
+                materials_box_col.prop(settings, 'remap_single_material', icon_value=utils.get_preview(mat).icon_id)
+            else:
+                materials_box_col.prop(settings, 'remap_single_material')
+        elif main_op == 'REMAP':
+            ui_material_remap.draw_material_remap_list(materials_box_col, obj, settings.materials_remap)
 
     def draw_mesh_boxes(self, properties_col: UILayout, settings: MeshSettings, obj: Object):
         me = cast(Mesh, obj.data)
@@ -207,7 +220,7 @@ class ObjectPanel(Panel):
         if me.uv_layers:
             self.draw_uv_layers_box(properties_col, settings.uv_settings, me)
         if me.materials:
-            self.draw_materials_box(properties_col, settings.material_settings, me)
+            self.draw_materials_box(properties_col, settings.material_settings, obj)
 
     def draw(self, context: Context):
         # guaranteed to be SpaceProperties by the bl_space_type
