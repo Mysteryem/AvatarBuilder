@@ -190,8 +190,37 @@ class ObjectPanel(Panel):
 
         main_op = settings.materials_main_op
         if main_op == 'KEEP_SINGLE':
-            # Unfortunately, prop_search does not support icon_value
-            materials_box_col.prop_search(settings, 'keep_only_material', obj, 'material_slots')
+            slot_index = settings.keep_only_mat_slot
+            mat_slots = obj.material_slots
+            num_slots = len(mat_slots)
+            # 0.4 split with a label in the first part of the split and an operator in the second part of the split
+            # seems to match properties with non-empty text displayed with UILayout.use_property_split
+            split = materials_box_col.split(factor=0.4, align=True)
+            # Only applies to the label, not sure if there's a way to align the text within a .operator
+            split.alignment = 'RIGHT'
+            split.label(text="Material")
+            # For some reason .alert causes .alignment to be ignored, so we have to put the operator in a
+            # sub-layout, so we can set .alert on that instead
+            sub = split.row()
+            if num_slots != 0:
+                if 0 <= slot_index < num_slots:
+                    mat = mat_slots[slot_index].material
+                    if mat:
+                        sub.operator(ui_material_remap.KeepOnlyMaterialSlotSearch.bl_idname, text=mat.name,
+                                     icon_value=utils.get_preview(mat).icon_id)
+                    else:
+                        sub.operator(ui_material_remap.KeepOnlyMaterialSlotSearch.bl_idname, text="(empty slot)",
+                                     icon='MATERIAL_DATA')
+                else:
+                    sub.alert = True
+                    sub.operator(ui_material_remap.KeepOnlyMaterialSlotSearch.bl_idname, text="(invalid slot)",
+                                 icon='ERROR')
+            else:
+                # Generally this will never be displayed because the Materials box is only drawn if the mesh's materials
+                # list isn't empty
+                sub.alert = True
+                sub.operator(ui_material_remap.KeepOnlyMaterialSlotSearch.bl_idname, text="(no material slots)",
+                             icon='ERROR')
         elif main_op == 'REMAP_SINGLE':
             mat = settings.remap_single_material
             if mat:

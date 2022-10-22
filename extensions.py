@@ -597,21 +597,20 @@ class MaterialSettings(PropertyGroup):
         name="Operation",
         items=(
             ('KEEP', "None", "Do nothing, keep materials as they currently are"),
-            # (use an int to refer to the slot)
-            ('KEEP_SINGLE', "Keep 1", "Keep only one existing material"),
-            ('REMAP_SINGLE', "Remap To 1", "Replace all materials with a single, different material"),
-            ('REMAP', "Remap All", "Individually replace each material with a different one"),
+            ('KEEP_SINGLE', "Keep One", "Keep only one existing material"),
+            ('REMAP_SINGLE', "Remap All", "Replace all materials with a single, different material"),
+            ('REMAP', "Remap", "Individually replace each material with a different one"),
         ),
         description="Operation to apply to materials. Note that duplicate materials will always be combined in order to"
-                    " keep material behaviour consistent because Blender will combine duplicate materials automatically"
-                    " when joining meshes. If you want two of the same material in different slots, e.g. one slot will"
-                    " be used as a toggle in Unity, either make a copy of the material in advance or remap the"
-                    " duplicate to its own unique material using the Remap All operation.",
+                    " keep material behaviour consistent with Blender combining duplicate materials automatically when"
+                    " joining meshes. If you want two of the same material in different slots, e.g. one slot will be"
+                    " used as a toggle in Unity, either make a copy of the material in advance or remap the duplicate"
+                    " to its own unique material using the Remap All operation",
         update=materials_main_op_update,
     )
-    keep_only_material: StringProperty(
-        name="Material to keep",
-        description="Name of the only Material to keep on the mesh",
+    keep_only_mat_slot: IntProperty(
+        name="Material slot index to keep",
+        options={'HIDDEN'},
     )
     # Used to keep reference to a material (by name) without needing to keep a Pointer. If the user changes the main op
     # from REMAP_SINGLE to something else, we don't want to leave the PointerProperty around since it counts as a user

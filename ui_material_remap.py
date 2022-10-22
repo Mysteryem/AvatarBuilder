@@ -1,8 +1,69 @@
-from bpy.types import Operator, Context, UILayout, Object
+from bpy.types import Operator, Context, UILayout, Object, Event, SpaceProperties
+from bpy.props import EnumProperty
+
+from sys import intern
+from typing import Union
 
 from .extensions import MaterialRemap, ObjectPropertyGroup
 from .registration import register_module_classes_factory
 from . import utils
+
+
+_MAT_SLOT_ITEMS_CACHE = []
+
+
+# self seems to be a sort of partial operator, it has access to only
+# ['__doc__', '__module__', '__slots__', 'bl_rna', 'rna_type', 'slots_enum']
+# when used as the items of the slots_enum property in KeepOnlyMaterialSlotSearch
+def _material_slot_items(self, context: Context):
+    global _MAT_SLOT_ITEMS_CACHE
+    obj = context.object
+    items: list[tuple[str, str, str, Union[str, int], int]] = []
+    for idx, slot in enumerate(obj.material_slots):
+        unique_id = str(idx)
+        mat = slot.material
+        if mat:
+            label = intern(mat.name)
+            icon = utils.get_preview(mat).icon_id
+        else:
+            label = "(empty slot)"
+            icon = 'MATERIAL_DATA'
+        items.append((unique_id, label, label, icon, idx))
+    # It's important to always have at least one item
+    if not items:
+        items.append(('0', "(no material slots)", "Mesh has no material slots", 'ERROR', 0))
+    if items != _MAT_SLOT_ITEMS_CACHE:
+        _MAT_SLOT_ITEMS_CACHE = items
+    return items
+
+
+class KeepOnlyMaterialSlotSearch(Operator):
+    """Pick Material Slot"""
+    bl_idname = 'keep_only_material_slot_search'
+    bl_label = "Pick Material Slot"
+    bl_property = 'slots_enum'
+
+    slots_enum: EnumProperty(items=_material_slot_items, options={'HIDDEN'})
+
+    def execute(self, context: Context) -> set[str]:
+        obj = context.object
+        # Get the index of the EnumProperty
+        material_slot_index = self.properties['slots_enum']
+        # Set the keep_only_mat_slot index property
+        group = ObjectPropertyGroup.get_group(obj)
+        object_settings = group.get_displayed_settings(context.scene)
+        object_settings.mesh_settings.material_settings.keep_only_mat_slot = material_slot_index
+        region = context.region
+        if region and isinstance(context.space_data, SpaceProperties):
+            # We've changed the keep_only_mat_slot property, update the UI region so that it displays the new value
+            # immediately. Without this, the UI won't show the property's new value until another part of the ui causes
+            # a redraw (this can be as simple as mousing over a property)
+            region.tag_redraw()
+        return {'FINISHED'}
+
+    def invoke(self, context: Context, event: Event) -> set[str]:
+        context.window_manager.invoke_search_popup(self)
+        return {'FINISHED'}
 
 
 class RefreshRemapList(Operator):

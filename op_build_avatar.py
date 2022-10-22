@@ -603,22 +603,19 @@ def build_mesh_materials(obj: Object, me: Mesh, settings: MaterialSettings):
 
     materials = me.materials
 
-    # TODO: Option to remove unused materials
-    # TODO: Remap materials instead (and option to combine materials mapped to the same other material into one
-    #  material slot)
-    # TODO: Support materials defined on the Object rather than Mesh (MaterialSlot.link), note that deleting slots
-    #  still appears to be done by deleting the material from the object
     # Remove all but one material
     main_op = settings.materials_main_op
     if main_op == 'KEEP_SINGLE':
-        material_name = settings.keep_only_material
-        if material_name:
-            material = materials.get(material_name)
+        slot_index = settings.keep_only_mat_slot
+        if 0 <= slot_index < len(materials):
+            material = materials[slot_index]
             if material:
                 materials.clear()
                 materials.append(material)
-            else:
-                raise ValueError(f"Could not find '{material_name}' in {repr(materials)}")
+        else:
+            # TODO: Refactor these functions into methods of the operator so they can report warnings/errors
+            # self.report({'WARNING'}, f"Invalid material slot index '{slot_index}' for {repr(obj)}")
+            pass
     elif main_op == 'REMAP_SINGLE':
         material = settings.remap_single_material
         if material:
