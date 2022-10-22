@@ -331,6 +331,11 @@ class MmdShapeMappingsPanel(Panel):
     bl_region_type = "UI"
     bl_category = "Avatar Builder"
 
+    @classmethod
+    def poll(cls, context: Context) -> bool:
+        # Don't show the Panel in export scenes
+        return not ScenePropertyGroup.get_group(context.scene).is_export_scene
+
     def draw(self, context: Context):
         layout = self.layout
         group = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group
