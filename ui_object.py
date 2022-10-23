@@ -285,29 +285,33 @@ class ObjectPanel(Panel):
             active_object_settings: Union[ObjectBuildSettings, None]
             if active_build_settings:
                 active_object_settings = object_settings.get(active_build_settings.name)
-            else:
-                active_object_settings = None
-                if scene_group.build_settings:
-                    # Only happens if the active index is out of bounds for some reason, since we hide the panel
-                    # when there are no Build Settings
-                    header_col.label(text="Active build settings is out of bounds, this shouldn't normally happen,"
-                                          " select one in the list in the 3D View and the active build settings index"
-                                          " will update automatically")
-                    # TODO: Draw button to 'fix' out of bounds index
-            if active_object_settings:
-                if active_build_settings:
+                if active_object_settings:
                     row.separator()
                     row.label(text="", icon="SETTINGS")
                     row.prop(active_build_settings, "name_prop", icon="SCENE_DATA", emboss=False, text="")
                     row.use_property_split = True
                     row.prop(active_object_settings, "include_in_build", text="")
+                else:
+                    options = row.operator(ObjectBuildSettingsAdd.bl_idname, text="Add to Avatar Builder", icon="ADD")
+                    options.name = active_build_settings.name
             else:
-                row.operator(ObjectBuildSettingsAdd.bl_idname, text="Add to Avatar Builder", icon="ADD")
+                active_object_settings = None
+                # If there are any SceneBuildSettings:
+                if scene_group.build_settings:
+                    # Only happens if the active index is out of bounds for some reason, since we hide the panel
+                    # when there are no Build Settings
+                    header_col.label(text="Active build settings is out of bounds, this shouldn't normally happen.")
+                    header_col.label(text="Select one in the list in the 3D View or Auto Fix")
+                    # Button to set the active index to 0
+                    options = header_col.operator('wm.context_set_int', text="Auto Fix", icon='SHADERFX')
+                    options.data_path = 'scene.' + scene_group.path_from_id('build_settings_active_index')
+                    options.value = 0
+                    options.relative = False
         else:
             list_row = row.row(align=False)
             list_row.template_list(ObjectBuildSettingsUIList.bl_idname, "", group, 'object_settings', group, 'object_settings_active_index', rows=3)
             vertical_buttons_col = row.column(align=True)
-            vertical_buttons_col.operator(ObjectBuildSettingsAdd.bl_idname, text="", icon="ADD")
+            vertical_buttons_col.operator(ObjectBuildSettingsAdd.bl_idname, text="", icon="ADD").name = ''
             vertical_buttons_col.operator(ObjectBuildSettingsRemove.bl_idname, text="", icon="REMOVE")
             vertical_buttons_col.separator()
             vertical_buttons_col.operator(ObjectBuildSettingsMove.bl_idname, text="", icon="TRIA_UP").type = 'UP'
