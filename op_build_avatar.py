@@ -111,43 +111,22 @@ def merge_shapes_into_first(mesh_obj: Object, shapes_to_merge: list[tuple[ShapeK
         mesh_obj.shape_key_remove(shape)
 
 
-# def verify_mesh(obj: Object, me: Mesh, settings: ObjectBuildSettings) -> (bool, str):
-#     """Verify that a mesh's settings are valid for building"""
-#     shape_keys = me.shape_keys
-#     if shape_keys:
-#         key_blocks = shape_keys.key_blocks
-#
-#         delete_after_name = settings.delete_shape_keys_after
-#         if delete_after_name and not delete_after_name in key_blocks:
-#             return False, f"Shape key to delete after '{delete_after_name}' could not be found"
-#
-#         delete_before_name = settings.delete_shape_keys_before
-#         if delete_before_name and not delete_before_name in key_blocks:
-#             return False, f"Shape key to delete before '{delete_before_name}' could not be found"
-
-# Want to use Object[Mesh], but will fail in Blender
-# Perhaps we can:
-# In blender:
-# T = TypeVar('T')
-# Object = Annotated[Object, T]
-
-def remove_all_uv_layers_except(mesh_obj: Object, *uv_layers: Union[str, MeshUVLoopLayer]):
-    me = mesh_obj.data
-    if isinstance(me, Mesh):
-        mesh_uv_layers = me.uv_layers
+def remove_all_uv_layers_except(me: Mesh, *uv_layers: Union[str, MeshUVLoopLayer]):
+    mesh_uv_layers = me.uv_layers
+    # Indices are iterated in reverse, so that when a uv layer is removed, the remaining indices remain unchanged
+    indices_to_remove = reversed(range(len(mesh_uv_layers)))
+    if uv_layers:
+        # Find the indices of the layers we want to keep
         uv_layer_idx_to_keep = set()
-        # print(mesh_obj)
         for uv_layer in uv_layers:
             if isinstance(uv_layer, MeshUVLoopLayer):
                 uv_layer = uv_layer.name
-            # print(uv_layer)
             uv_layer_index = mesh_uv_layers.find(uv_layer)
             uv_layer_idx_to_keep.add(uv_layer_index)
-        uv_layers_to_remove = [mesh_uv_layers[i].name for i in range(len(mesh_uv_layers)) if i not in uv_layer_idx_to_keep]
-        # print(uv_layers_to_remove)
-        for uv_layer in uv_layers_to_remove:
-            # print(f'Removing {uv_layer}')
-            mesh_uv_layers.remove(mesh_uv_layers[uv_layer])
+        # Filter out the indices of layers we want to keep
+        indices_to_remove = (i for i in indices_to_remove if i not in uv_layer_idx_to_keep)
+    for i in indices_to_remove:
+        mesh_uv_layers.remove(mesh_uv_layers[i])
 
 
 # All modifier types that are eModifierTypeType_NonGeometrical
@@ -482,10 +461,55 @@ def build_mesh_shape_keys(obj: Object, me: Mesh, settings: ShapeKeySettings):
             del reference_key_co
 
 
-def build_mesh_uvs(obj: Object, settings: UVSettings):
-    # Remove other uv maps
-    if settings.keep_only_uv_map:
-        remove_all_uv_layers_except(obj, settings.keep_only_uv_map)
+def build_mesh_uvs(me: Mesh, settings: UVSettings):
+    uv_layers = me.uv_layers
+    # Remove all but the specified uv maps
+    if uv_layers:
+        # warning = None
+        uv_maps_to_keep = settings.uv_maps_to_keep
+        if uv_maps_to_keep == 'FIRST':
+            # Keep only the first uv map
+            remove_all_uv_layers_except(me, uv_layers[0].name)
+        elif uv_maps_to_keep == 'SINGLE':
+            # Keep only the single specified uv map
+            single_uv_map = settings.keep_only_uv_map
+            # warning = None
+            # if single_uv_map:
+            #     if single_uv_map not in uv_layers:
+            #         warning = f"Could not find {single_uv_map} in uv maps of {helper.orig_object!r}"
+            # else:
+            #     warning = (f"The single UV Map to keep for {helper.orig_object!r} is empty."
+            #                f" All UV Maps have been removed.")
+            remove_all_uv_layers_except(me, single_uv_map)
+        elif uv_maps_to_keep == 'LIST':
+            # Keep only the uv maps that have been specified in the list
+            keep_uv_map_list = settings.keep_uv_map_list
+            # if keep_uv_map_list:
+            #     not_found = []
+            #     found = []
+            #     for element in settings.keep_uv_map_list:
+            #         uv_map = element.name
+            #         if uv_map in uv_layers:
+            #             found.append(uv_map)
+            #         else:
+            #             not_found.append(uv_map)
+            #     if found:
+            #         if not_found:
+            #             warning = f"Could not find the UV maps {', '.join(not_found)} in {helper.orig_object!r}"
+            #     else:
+            #         warning = f"Could not find any of the UV maps to keep for {helper.orig_object!r}, all the UV maps" \
+            #                   f" of the built object {helper.copy_object!r} have been removed"
+            # else:
+            #     warning = f"The list of UV maps to keep for {helper.orig_object!r} is empty, all of its UV maps have" \
+            #               f" been removed"
+            remove_all_uv_layers_except(me, *(e.name for e in keep_uv_map_list))
+        elif uv_maps_to_keep == 'NONE':
+            # Remove all uv maps. Not sure if this would ever be needed, but it's here in-case the user were to try to
+            # use the LIST mode to remove all uv maps. Since LIST mode doesn't allow removing all uv maps, this NONE
+            # option is provided separately
+            remove_all_uv_layers_except(me)
+        # if warning:
+        #     self.report({'WARNING'}, warning)
 
 
 def build_mesh_modifiers(original_scene: Scene, obj: Object, me: Mesh, settings: ModifierSettings):
@@ -668,7 +692,7 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: MeshSetti
 
     build_mesh_modifiers(original_scene, obj, me, settings.modifier_settings)
 
-    build_mesh_uvs(obj, settings.uv_settings)
+    build_mesh_uvs(me, settings.uv_settings)
 
     # Must be done after applying modifiers, as modifiers may use vertex groups to affect their behaviour
     build_mesh_vertex_groups(obj, settings.vertex_group_settings)

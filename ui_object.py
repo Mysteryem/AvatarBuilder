@@ -1,7 +1,7 @@
 from typing import Union, cast, Optional
 from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator, Object, Mesh, PropertyGroup
 
-from . import shape_key_ops, ui_material_remap, utils
+from . import shape_key_ops, ui_material_remap, utils, ui_uv_maps
 from .registration import register_module_classes_factory
 from .extensions import (
     ArmatureSettings,
@@ -179,7 +179,16 @@ class ObjectPanel(Panel):
         uv_layers_box = properties_col.box()
         uv_layers_box_col = uv_layers_box.column()
         uv_layers_box_col.label(text="UV Layers", icon="GROUP_UVS")
-        uv_layers_box_col.prop_search(settings, 'keep_only_uv_map', me, 'uv_layers', icon="GROUP_UVS")
+        uv_layers_box_col.prop(settings, 'uv_maps_to_keep')
+        # Guaranteed to not be empty because we only call this function when it's non-empty
+        uv_layers = me.uv_layers
+        uv_maps_to_keep = settings.uv_maps_to_keep
+        if uv_maps_to_keep == 'FIRST':
+            uv_layers_box_col.prop(uv_layers[0], 'name', emboss=False)
+        elif uv_maps_to_keep == 'SINGLE':
+            uv_layers_box_col.prop_search(settings, 'keep_only_uv_map', me, 'uv_layers', icon="GROUP_UVS")
+        elif uv_maps_to_keep == 'LIST':
+            ui_uv_maps.draw_uv_map_list(uv_layers_box_col, settings.keep_uv_map_list)
 
     @staticmethod
     def draw_materials_box(properties_col: UILayout, settings: MaterialSettings, obj: Object):

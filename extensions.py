@@ -486,10 +486,33 @@ class ShapeKeySettings(PropertyGroup):
     # TODO: FloatProperty to specify how much movement is still considered nothing
 
 
+class KeepUVMapList(CollectionPropBase[PropertyGroup], PropertyGroup):
+    # We only need the .name property, so we can use a plain PropertyGroup
+    data: CollectionProperty(type=PropertyGroup)
+
+
 class UVSettings(PropertyGroup):
     # TODO: Extend this to a collection property so that multiple can be kept
-    # UV Layer to keep
+    # UV Layers to keep
+    uv_maps_to_keep: EnumProperty(
+        name="UV Maps To Keep",
+        items=(
+            # All as the default so that newly created settings don't mess with the uv maps
+            ('KEEP_ALL', "All", "Keep all the UV Maps"),
+            # First should cover the majority of use cases
+            ('FIRST', "First", "Keep the first UV Map"),
+            # Single can be useful if a model is intended to be atlased differently (or not at all) for certain
+            # platforms
+            ('SINGLE', "Single", "Keep a single UV Map"),
+            # For full control, a list is available
+            # TODO: Also reorder by the order in the list
+            ('LIST', "Choose", "Choose which UV Maps to keep. Duplicates entries will be ignored"),
+            ('NONE', "None", "Delete all the UV Maps")
+        ),
+        description="Operation "
+    )
     keep_only_uv_map: StringProperty(name="UV Map to keep", description="Name of the only UV map to keep on this mesh")
+    keep_uv_map_list: PointerProperty(type=KeepUVMapList)
 
 
 class VertexGroupSettings(PropertyGroup):
