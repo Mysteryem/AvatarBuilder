@@ -62,7 +62,7 @@ class ScenePanel(Panel):
             row = col.row()
             row.template_list(SceneBuildSettingsUIList.bl_idname, "", group, 'build_settings', group, 'build_settings_active_index')
             vertical_buttons_col = row.column(align=True)
-            vertical_buttons_col.operator(SceneBuildSettingsAdd.bl_idname, text="", icon="ADD")
+            vertical_buttons_col.operator(SceneBuildSettingsAdd.bl_idname, text="", icon="ADD").name = ''
             vertical_buttons_col.operator(SceneBuildSettingsRemove.bl_idname, text="", icon="REMOVE")
             vertical_buttons_col.separator()
             vertical_buttons_col.operator(SceneBuildSettingsMove.bl_idname, text="", icon="TRIA_UP").type = 'UP'
