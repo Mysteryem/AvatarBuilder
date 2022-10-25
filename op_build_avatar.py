@@ -89,7 +89,9 @@ def merge_shapes_into_first(mesh_obj: Object, shapes_to_merge: list[tuple[ShapeK
 
         # When all shapes have the same vertex group, we can ignore the vertex group and leave it on the combined shape,
         # otherwise, we must apply the vertex group on each shape and remove the vertex group from the combined shape
-        all_shapes_have_same_vertex_group = len({shape.vertex_group for shape in shapes}) == 1
+        shape_iter = iter(shapes)
+        first_vg = next(shape_iter).vertex_group
+        all_shapes_have_same_vertex_group = all(shape.vertex_group == first_vg for shape in shape_iter)
         if not all_shapes_have_same_vertex_group:
             raise ValueError("Not Yet Implemented. Currently, all shape keys must have the same vertex group to be merged.")
 
