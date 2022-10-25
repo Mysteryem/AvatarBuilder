@@ -42,6 +42,7 @@ class KeepOnlyMaterialSlotSearch(Operator):
     bl_idname = 'keep_only_material_slot_search'
     bl_label = "Pick Material Slot"
     bl_property = 'slots_enum'
+    bl_options = {'UNDO', 'INTERNAL'}
 
     slots_enum: EnumProperty(items=_material_slot_items, options={'HIDDEN'})
 
