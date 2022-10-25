@@ -1,5 +1,5 @@
 import bpy
-from bpy.types import Context, Scene, ViewLayer, ID, ImagePreview
+from bpy.types import Context, Scene, ViewLayer, ID, ImagePreview, Key, ShapeKey
 
 from typing import Any, Protocol, Literal, Optional
 from contextlib import contextmanager
@@ -81,6 +81,41 @@ def get_preview(id: ID) -> ImagePreview:
     else:
         preview = id.preview
     return preview
+
+
+class ReverseRelativeShapeKeyMap:
+    def __init__(self, shape_keys: Key):
+        reverse_relative_map = {}
+
+        basis_key = shape_keys.reference_key
+        for key in shape_keys.key_blocks:
+            # Special handling for basis shape key to treat it as if its always relative to itself
+            relative_key = basis_key if key == basis_key else key.relative_key
+            keys_relative_to_relative_key = reverse_relative_map.get(relative_key)
+            if keys_relative_to_relative_key is None:
+                keys_relative_to_relative_key = {key}
+                reverse_relative_map[relative_key] = keys_relative_to_relative_key
+            else:
+                keys_relative_to_relative_key.add(key)
+        self.reverse_relative_map = reverse_relative_map
+
+    def get_relative_recursive_keys(self, shape_key) -> set[ShapeKey]:
+        shape_set = set()
+
+        # Pretty much a depth-first search, but with loop prevention
+        def inner_recursive_loop(key, checked_set):
+            # Prevent infinite loops by maintaining a set of shapes that we've checked
+            if key not in checked_set:
+                # Need to add the current key to the set of shapes we've checked before the recursive call
+                checked_set.add(key)
+                keys_relative_to_shape_key_inner = self.reverse_relative_map.get(key)
+                if keys_relative_to_shape_key_inner:
+                    for relative_to_inner in keys_relative_to_shape_key_inner:
+                        shape_set.add(relative_to_inner)
+                        inner_recursive_loop(relative_to_inner, checked_set)
+
+        inner_recursive_loop(shape_key, set())
+        return shape_set
 
 
 register, unregister = dummy_register_factory()

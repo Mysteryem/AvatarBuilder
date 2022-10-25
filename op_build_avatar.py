@@ -184,6 +184,81 @@ def run_gret_shape_key_apply_modifiers(obj: Object, modifier_names_to_apply: set
         raise RuntimeError("Gret addon not found or version incompatible")
 
 
+def smart_delete_shape_keys(obj: Object, shape_keys: Key, to_delete: set[ShapeKey]):
+    """Delete shape keys and adjust any shape keys relative to or recursively relative to the deleted shape keys"""
+    reference_key = shape_keys.reference_key
+    if reference_key in to_delete:
+        raise ValueError("Reference key cannot be deleted safely using Shape Key ops")
+
+    # Any shapes not being deleted that are relative to a shape that is being deleted need to have their relative key
+    # changed to a shape that isn't being deleted. In order to make this change, the relative movement of the shape key
+    # needs to be retargeted for the new relative key (automatically set to the reference key if we don't set it
+    # ourselves).
+    reverse_relative_shapes = utils.ReverseRelativeShapeKeyMap(shape_keys)
+    # Avoid creating the arrays unless we actually need them, in-case the mesh being operated on is very large
+    reference_co = None
+    shape_co = None
+    to_delete_co = None
+    co_length = len(reference_key.data) * 3
+    co_dtype = np.single
+    for shape_to_delete in to_delete:
+        # Get all shapes keys relative to or recursively relative to the shape being deleted
+        shapes_relative_to = reverse_relative_shapes.get_relative_recursive_keys(shape_to_delete)
+        # Exclude any shapes that we're also going to be deleting to minimise the amount of work we need to do
+        shapes_needing_modification = shapes_relative_to - to_delete
+
+        if shapes_needing_modification:
+            # Movement of a shape, s = s - s.relative_key
+            #   m(s) = s - s.r
+            # When we delete s.r, the new relative_to shape will become the reference key
+            #   m(s') = s - ref
+            # To keep the movement the same, we need to add some amount, x, to the shape, s
+            #   s - s.r = s + x - ref
+            # Rearranging
+            #   -s.r = x - ref
+            #   x = ref - s.r
+            # Note that s.r is shape_to_delete, so the amount to add to s is
+            #   ref - shape_to_delete
+
+            # Get the co (vertex coordinates) for the reference shape key
+            # Since it doesn't change, we only need to get it once
+            if reference_co is None:
+                reference_co = np.empty(co_length, dtype=co_dtype)
+                reference_key.data.foreach_get('co', reference_co)
+
+            # Create the array for storing the difference between the shape's relative key and its new relative key
+            # (the reference key). This array will be re-used for each shape key to delete.
+            if to_delete_co is None:
+                to_delete_co = np.empty(co_length, dtype=co_dtype)
+
+            # Create the array for storing the co of the shape key being modified. This array will be re-used for each
+            # shape key relative to the shape key to delete.
+            if shape_co is None:
+                shape_co = np.empty(co_length, dtype=co_dtype)
+
+            # Get the co of the shape to delete
+            shape_to_delete.data.foreach_get('co', to_delete_co)
+
+            # Get the difference between the reference key and the shape to delete (and store it into to_delete_co,
+            # since we won't need its value again)
+            difference_co = np.subtract(reference_co, to_delete_co, out=to_delete_co)
+            for shape_to_modify in shapes_needing_modification:
+                # Get the co of the shape
+                shape_to_modify.data.foreach_get('co', shape_co)
+                # Add the difference between the reference key and the shape's relative key (or recursively relative
+                # key)
+                shape_co += difference_co
+                # Set the shape key to the updated co
+                shape_to_modify.data.foreach_set('co', shape_co)
+
+    # Delete the shape keys now that we're done using them, to avoid any issues where we might try to use a shape key
+    # that we've already deleted
+    for shape in to_delete:
+        # Removing the shape will automatically set shape keys that were relative to it, to be relative to the reference
+        # key instead
+        obj.shape_key_remove(shape)
+
+
 def build_mesh_shape_key_op(obj: Object, shape_keys: Key, op: ShapeKeyOp):
     # TODO: Replace ignore_regex with 'IGNORE_' ops. See ShapeKeyOp comments for details. Note that key_blocks would
     #  need to be passed between subsequent calls to this function in that case.
@@ -235,9 +310,9 @@ def build_mesh_shape_key_op(obj: Object, shape_keys: Key, op: ShapeKeyOp):
             # Limit the deleted keys to those available
             keys_to_delete.intersection_update(available_key_blocks)
 
-            # Remove all the shape keys being deleted
-            for key in keys_to_delete:
-                obj.shape_key_remove(key)
+            # Remove all the shape keys being deleted, automatically adjusting any shape keys relative to or recursively
+            # relative the shape keys being deleted
+            smart_delete_shape_keys(obj, shape_keys, keys_to_delete)
 
         elif op_type in ShapeKeyOp.MERGE_OPS_DICT:
             grouping = op.merge_grouping
