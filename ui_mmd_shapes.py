@@ -1,5 +1,5 @@
 from bpy.types import Panel, Operator, UIList, Context, UILayout, Mesh, Menu, Event, OperatorProperties
-from bpy.props import EnumProperty, IntProperty, BoolProperty
+from bpy.props import EnumProperty, IntProperty, BoolProperty, StringProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 import os
@@ -22,7 +22,7 @@ from .context_collection_ops import (
 class ShowMappingComment(Operator):
     bl_idname = 'mmd_shape_comment_modify'
     bl_label = "Comment:"
-    bl_options = {'INTERNAL'}
+    bl_options = {'INTERNAL', 'UNDO', 'REGISTER'}
 
     use_active: BoolProperty(
         name="Use active",
@@ -38,6 +38,11 @@ class ShowMappingComment(Operator):
     is_menu: BoolProperty(
         name="Is drawn in menu",
         default=False,
+        options={'HIDDEN'},
+    )
+    comment: StringProperty(
+        name="Comment",
+        description="Comment for the mapping",
         options={'HIDDEN'},
     )
 
@@ -68,7 +73,8 @@ class ShowMappingComment(Operator):
                 if mmd_name:
                     return f"Edit comment for {mmd_name}"
                 else:
-                    return f"Edit the comment of the active mapping"
+                    return (f"Edit the comment of the active mapping. If a mapping consists of only a comment, the"
+                            f" comment will be displayed across every column")
             else:
                 return comment
         else:
@@ -78,16 +84,41 @@ class ShowMappingComment(Operator):
                 return f"ERROR: mapping {index} not found"
 
     def draw(self, context: Context):
-        mapping = self.get_mapping(self.use_active, self.index, context)
-        if mapping:
-            self.layout.prop(mapping, 'comment')
+        comment = self.comment
+        layout = self.layout
+        layout.activate_init = True
+        # Roughly expands to fit the comment with some extra space for additional typing
+        # These are purely magic numbers
+        layout.ui_units_x = min(max(10, len(comment) // 2), 40)
+        layout.prop(self, 'comment', text="")
 
     # The popup from invoke_popup won't show unless we actually have an execute function
     def execute(self, context: Context) -> set[str]:
-        return {'CANCELLED'}
+        mapping = self.get_mapping(self.use_active, self.index, context)
+        if mapping:
+            mapping.comment = self.comment
+        return {'FINISHED'}
 
     def invoke(self, context: Context, event: Event) -> set[str]:
-        return context.window_manager.invoke_popup(self)
+        # self.comment may default to the previous value, instead of the default value, if not set, which we don't want,
+        # so check whether self.comment has been set
+        if not self.properties.is_property_set('comment'):
+            mapping = self.get_mapping(self.use_active, self.index, context)
+            if mapping:
+                self.comment = mapping.comment
+            else:
+                if self.use_active:
+                    self.comment = "ERROR: active mapping not found"
+                else:
+                    self.comment = f"ERROR: mapping {self.index} not found"
+
+        # invoke_props_popup updates the property whenever we make changes, but it ignores ui_units_x and scale_x, so
+        # comment input sucks because the input text box is so small
+        # With invoke_props_dialog we can resize the input text box, but it only updates the property if/when we click
+        # ok, which is a bit annoying, but I think it's better than barely being able to read the input text box most of
+        # the time
+        # return context.window_manager.invoke_props_popup(self, event)
+        return context.window_manager.invoke_props_dialog(self)
 
 
 class MmdMappingList(UIList):
@@ -131,9 +162,9 @@ class MmdMappingList(UIList):
             if comment:
                 mmd_row = column_flow.row(align=True)
                 mmd_row.prop(item, 'mmd_name', text="")
-                # TODO: If this is disabled, can we still mouse over it to read the description?
-                # maybe try 'INFO'
-                mmd_row.operator(ShowMappingComment.bl_idname, text="", icon='HELP', emboss=False).index = index
+                options = mmd_row.operator(ShowMappingComment.bl_idname, text="", icon='INFO', emboss=False)
+                options.index = index
+                options.use_active = False
             else:
                 column_flow.prop(item, 'mmd_name', text="")
 
