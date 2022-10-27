@@ -732,9 +732,15 @@ class MmdShapeMapping(PropertyGroup):
         description="The Cats translation for the Japanese MMD shape name",
         update=update_name,
     )
+    comment: StringProperty(
+        name="Comment",
+        description="Comment for the MMD mapping"
+    )
 
 
 class MmdShapeMappingGroup(PropertyGroup):
+    # TODO: Replace with making this class extend registration.CollectionPropBase, requiring mmd_shape_mappings and its
+    #  active_index to be renamed
     # Collection for mmd_shape_data
     mmd_shape_mappings: CollectionProperty(type=MmdShapeMapping)
     mmd_shape_mappings_active_index: IntProperty(name="Active Mapping")

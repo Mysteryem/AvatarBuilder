@@ -1,9 +1,9 @@
-from bpy.types import Panel, Operator, UIList, Context, UILayout, Mesh, Menu
-from bpy.props import EnumProperty
+from bpy.types import Panel, Operator, UIList, Context, UILayout, Mesh, Menu, Event, OperatorProperties
+from bpy.props import EnumProperty, IntProperty, BoolProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 import os
-from typing import Generator, Union, cast
+from typing import Generator, Union, cast, NamedTuple
 import csv
 
 from . import cats_translate
@@ -19,13 +19,75 @@ from .context_collection_ops import (
 )
 
 
-# Not using commas because they can be easily used in shape key names. Technically tabs can too via scripting, but they
-# show up as boxes in Blender's UI
-CSV_DELIMITER = '\t'
+class ShowMappingComment(Operator):
+    bl_idname = 'mmd_shape_comment_modify'
+    bl_label = "Comment:"
+    bl_options = {'INTERNAL'}
 
-# TODO: Replace the '#' prefix with a customisable StringProperty in-case users want to use shape keys starting
-#  with the default of '#', or replace it with a separate StringProperty
-COMMENT_PREFIX = '#'
+    use_active: BoolProperty(
+        name="Use active",
+        description="Use the active mapping. When False, get the mapping by index instead",
+        default=False,
+        options={'HIDDEN'},
+    )
+    index: IntProperty(
+        name="Index",
+        description="Index of the mapping to show the comment of",
+        options={'HIDDEN'},
+    )
+    is_menu: BoolProperty(
+        name="Is drawn in menu",
+        default=False,
+        options={'HIDDEN'},
+    )
+
+    @staticmethod
+    def get_mapping(use_active: bool, index: int, context: Context):
+        shape_mapping_group = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group
+        if use_active:
+            index = shape_mapping_group.mmd_shape_mappings_active_index
+        data = shape_mapping_group.mmd_shape_mappings
+        if 0 <= index < len(data):
+            return data[index]
+        else:
+            return None
+
+    @classmethod
+    def description(cls, context: Context, properties: OperatorProperties) -> str:
+        # noinspection PyUnresolvedReferences
+        use_active = properties.use_active
+        # noinspection PyUnresolvedReferences
+        index = properties.index
+        mapping = cls.get_mapping(use_active, index, context)
+        if mapping:
+            comment = mapping.comment
+            # noinspection PyUnresolvedReferences
+            is_menu = properties.is_menu
+            if is_menu or not comment:
+                mmd_name = mapping.mmd_name
+                if mmd_name:
+                    return f"Edit comment for {mmd_name}"
+                else:
+                    return f"Edit the comment of the active mapping"
+            else:
+                return comment
+        else:
+            if use_active:
+                return "ERROR: active mapping not found"
+            else:
+                return f"ERROR: mapping {index} not found"
+
+    def draw(self, context: Context):
+        mapping = self.get_mapping(self.use_active, self.index, context)
+        if mapping:
+            self.layout.prop(mapping, 'comment')
+
+    # The popup from invoke_popup won't show unless we actually have an execute function
+    def execute(self, context: Context) -> set[str]:
+        return {'CANCELLED'}
+
+    def invoke(self, context: Context, event: Event) -> set[str]:
+        return context.window_manager.invoke_popup(self)
 
 
 class MmdMappingList(UIList):
@@ -42,22 +104,40 @@ class MmdMappingList(UIList):
                 temp_shape_keys = linked_mesh.shape_keys
                 if temp_shape_keys:
                     shape_keys = temp_shape_keys
-        model_shape = item.model_shape
-        if model_shape.startswith(COMMENT_PREFIX):
-            layout.prop(item, 'model_shape', emboss=False, text="")
+        comment = item.comment
+        if not item.mmd_name and not item.model_shape and not item.cats_translation_name and comment:
+            # We only have a comment, so only draw the comment
+            layout.prop(item, 'comment', emboss=False, text="", icon='INFO')
             # The row ends up a slightly different height to non-comment rows if we don't put something in a column_flow
             column_flow = layout.column_flow(columns=1, align=True)
             column_flow.label(text="")
         else:
             row = layout.row(align=True)
+            # First drawing an icon ensures there is always a part of the row that can be clicked on to only set that
+            # row as active
             row.label(text="", icon='DECORATE')
+            # Split the remaining row into 3 columns
             column_flow = row.column_flow(columns=3, align=True)
+
+            # First column for the name of the shape key on the model
             if shape_keys:
                 # Annoyingly, we can't get rid of the icon, only replace it with a different one
                 column_flow.prop_search(item, 'model_shape', shape_keys, 'key_blocks', text="")
             else:
                 column_flow.prop(item, 'model_shape', text="")
-            column_flow.prop(item, 'mmd_name', text="")
+
+            # Second column for the MMD name plus optional comment
+            comment = item.comment
+            if comment:
+                mmd_row = column_flow.row(align=True)
+                mmd_row.prop(item, 'mmd_name', text="")
+                # TODO: If this is disabled, can we still mouse over it to read the description?
+                # maybe try 'INFO'
+                mmd_row.operator(ShowMappingComment.bl_idname, text="", icon='HELP', emboss=False).index = index
+            else:
+                column_flow.prop(item, 'mmd_name', text="")
+
+            # Third column for the Cats translation
             cats_row = column_flow.row(align=True)
             cats_row.prop(item, 'cats_translation_name', text="", emboss=False)
             op_row = cats_row.row(align=True)
@@ -113,8 +193,7 @@ class MmdMappingsClearShapeNames(MmdMappingControlBase, Operator):
     def execute(self, context: Context) -> set[str]:
         mapping: MmdShapeMapping
         for mapping in self.get_collection(context):
-            if not mapping.model_shape.startswith(COMMENT_PREFIX):
-                mapping.model_shape = ''
+            mapping.model_shape = ''
         return {'FINISHED'}
 
 
@@ -168,6 +247,10 @@ class MmdShapesSpecialsMenu(Menu):
         layout.separator()
         layout.operator(MmdMappingsClearShapeNames.bl_idname, text="Clear All Shape Keys")
         layout.separator()
+        options = layout.operator(ShowMappingComment.bl_idname, text="Set Comment", icon='TEXT')
+        options.use_active = True
+        options.is_menu = True
+        layout.separator()
         layout.operator(MmdMappingMove.bl_idname, text="Move To Top", icon="TRIA_UP_BAR").type = 'TOP'
         layout.operator(MmdMappingMove.bl_idname, text="Move To Bottom", icon="TRIA_DOWN_BAR").type = 'BOTTOM'
 
@@ -195,6 +278,16 @@ class ExportShapeSettings(Operator, ExportHelper):
         return {'FINISHED'}
 
 
+class ParsedCsvLine(NamedTuple):
+    model_shape: str = ""
+    mmd_name: str = ""
+    cats_translation: str = ""
+    comment: str = ""
+
+    def is_only_comment(self):
+        return self.comment and not self.model_shape and not self.mmd_name and not self.cats_translation
+
+
 class ImportShapeSettings(Operator, ImportHelper):
     """Import a .csv containing mmd shape data"""
     bl_idname = "mmd_shapes_import"
@@ -219,27 +312,31 @@ class ImportShapeSettings(Operator, ImportHelper):
         # Note: newline should be '' when using csv.reader
         with open(self.filepath, 'r', encoding='utf-8', newline='') as file:
             reader = csv.reader(file)
-            parsed_lines: Union[list[tuple[str, str, str]], Generator[tuple[str, str, str]]] = []
+            parsed_lines: Union[list[ParsedCsvLine], Generator[ParsedCsvLine]] = []
+
             for line_no, line_list in enumerate(reader, start=1):
                 num_fields = len(line_list)
-                expected_fields = 3
-                # Extra fields might be added in the future, which then wouldn't be supported by older versions if we
-                # checked for the exact number
-                if num_fields >= expected_fields:
-                    parsed_lines.append((line_list[0], line_list[1], line_list[2]))
+                expected_fields = len(ParsedCsvLine._fields)
+                if num_fields > expected_fields:
+                    # If there are extra fields, get only as many as we're expecting
+                    parsed_line = ParsedCsvLine(*line_list[:expected_fields])
                 else:
-                    self.report({'WARNING'}, f"Failed to parse line {line_no}, got {num_fields} fields, but expected"
-                                             f" at least {expected_fields}")
+                    # If there aren't enough fields, default values for the missing fields will be used
+                    parsed_line = ParsedCsvLine(*line_list)
+
+                parsed_lines.append(parsed_line)
+                if num_fields < expected_fields:
+                    self.report({'WARNING'}, f"Line {line_no} only had {num_fields} fields, (expecting at least"
+                                             f" {expected_fields}).")
             mappings = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings
 
             if self.mode == 'REPLACE':
                 mappings.clear()
             elif self.mode == 'APPEND_NEW':
                 existing_mmd_names = set(m.mmd_name for m in mappings)
-                # FIXME: For now, strip all comment lines because we don't have a good way to only include the comments
-                #  if the line they're commenting is new, because some comments might not be tied to any specific line.
-                existing_mmd_names.add("")
-                parsed_lines = (p for p in parsed_lines if p[1] not in existing_mmd_names)
+                # We don't want to exclude lines that have no mapping, e.g. lines that are only comments
+                existing_mmd_names.remove("")
+                parsed_lines = (p for p in parsed_lines if p.mmd_name not in existing_mmd_names)
 
             for shape_name, mmd_name, cats_name in parsed_lines:
                 added = mappings.add()
