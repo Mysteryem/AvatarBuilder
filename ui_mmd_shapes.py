@@ -260,9 +260,6 @@ class MmdMappingsAddMmdFromSearchMesh(MmdMappingControlBase, Operator):
     bl_idname = 'mmd_shape_mappings_add_mmd_from_search_mesh'
     bl_label = "Add MMD From Search Mesh"
     bl_options = {'UNDO'}
-    # Multi-line docstrings don't work well as operator descriptions, so set it via bl_description
-    bl_description = ("Load MMD Shapes from Search Mesh. Make sure that your Search Mesh is from an imported MMD model"
-                      " and still has its Japanese Shape Key names. Will not add mappings that already exist")
 
     @classmethod
     def poll(cls, context: Context) -> bool:

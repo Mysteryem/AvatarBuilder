@@ -73,48 +73,33 @@ def prefix_classes(classes):
                 prefix = f"{_BL_ID_PREFIX}_"
             if not cls.bl_idname.startswith(prefix):
                 cls.bl_idname = prefix + cls.bl_idname
-        # if prefix_id:
-        #     cls.bl_idname = _BL_ID_PREFIX + cls.bl_idname
-        # elif hasattr(cls, 'bl_idname'):
-        #     raise ValueError(f"{cls} has bl_idname, but it was not set to be prefixed!")
 
-# from inspect import isclass
-# from pkgutil import iter_modules
-# from pathlib import Path
-# from importlib import import_module
 
-# bl_classes = []
+# Probably gets all the possible classes (without getting subclasses of subclasses etc.), seems to include:
+# Operator, Macro, KeyingSetInfo, Panel, Menu and Node
+# _CLASSES_WITH_DESCRIPTION = tuple(
+#     t for t in bpy.types.bpy_struct.__subclasses__()
+#     if hasattr(t, 'bl_rna')
+#     and any(p.identifier == 'bl_description' for p in t.bl_rna.properties)
+# )
+# We'll just use the ones we care about for now
+_CLASSES_WITH_DESCRIPTION = (Operator, Panel, Menu)
 
-# package_dir = Path(__file__).resolve().parent
-# for _, module_name, _ in pkgutil.walk_packages(package_dir):
-#     module = import_module(f"{__name__}.{module_name}")
-#     for attribute_name in dir(module):
-#         attribute = getattr(module, attribute_name)
-#
-#         if isclass(attribute) and hasattr(attribute, 'bl_idname'):
-#             bl_classes.append(attribute)
 
-# TODO: maybe replace this with a method that looks through the current variables for classes that have
-#  bl_idname
-# bl_classes = [
-#     SceneBuildSettingsControl,
-#     SceneBuildSettingsUIList,
-#     SceneBuildSettingsMenu,
-#     SceneBuildSettings,
-#     ScenePropertyGroup,
-#     ScenePanel,
-#     BuildAvatarOp,
-#     DeleteExportScene,
-#     ObjectBuildSettingsControl,
-#     ObjectBuildSettingsUIList,
-#     ObjectBuildSettings,
-#     ObjectPropertyGroup,
-#     ObjectPanel,
-# ]
-
-# prefix_classes(bl_classes)
-
-# _register_classes, _unregister_classes = bpy.utils.register_classes_factory(bl_classes)
+def fix_descriptions(classes):
+    """For classes that can use docstrings as descriptions, Blender doesn't strip leading spaces from each line which
+    can make the descriptions look bad when displayed in UI. This function will strip leading spaces from each line of
+    cls.__doc__ and set that modified description into bl_description iff bl_description does not already exist"""
+    for cls in classes:
+        # Operator, Menu and Panel has bl_description. UIList does not.
+        if issubclass(cls, _CLASSES_WITH_DESCRIPTION):
+            if not hasattr(cls, 'bl_description'):
+                doc = cls.__doc__
+                if doc:
+                    lines = doc.splitlines()
+                    reformatted_doc = "\n".join(line.lstrip() for line in lines)
+                    if reformatted_doc != doc:
+                        cls.bl_description = reformatted_doc
 
 
 T = TypeVar('T', bound='IdPropertyGroup')
@@ -168,8 +153,14 @@ class CollectionPropBase(Generic[E]):
 
 
 def register_classes_factory(classes):
-    prefix_classes(classes)
-    return bpy.utils.register_classes_factory(classes)
+    bpy_register, bpy_unregister = bpy.utils.register_classes_factory(classes)
+
+    def combined_register():
+        prefix_classes(classes)
+        fix_descriptions(classes)
+        bpy_register()
+
+    return combined_register, bpy_unregister
 
 
 def register_module_classes_factory(calling_module_name, calling_module_globals):
