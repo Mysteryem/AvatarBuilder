@@ -229,7 +229,7 @@ class MmdMappingsClearShapeNames(MmdMappingControlBase, Operator):
 
 
 class MmdMappingsAddFromSearchMesh(MmdMappingControlBase, Operator):
-    """Add a mapping for each Shape Key in the Search Mesh. Will not add mappings that already exist"""
+    """Load Shape Keys from Search Mesh. Will not add mappings that already exist"""
     bl_idname = 'mmd_shape_mappings_add_from_search_mesh'
     bl_label = "Add From Search Mesh"
     bl_options = {'UNDO'}
@@ -254,6 +254,36 @@ class MmdMappingsAddFromSearchMesh(MmdMappingControlBase, Operator):
         return {'FINISHED'}
 
 
+class MmdMappingsAddMmdFromSearchMesh(MmdMappingControlBase, Operator):
+    """Load MMD Shapes from Search Mesh. Make sure that your Search Mesh is from an imported MMD model
+     and still has its Japanese Shape Key names. Will not add mappings that already exist"""
+    bl_idname = 'mmd_shape_mappings_add_mmd_from_search_mesh'
+    bl_label = "Add MMD From Search Mesh"
+    bl_options = {'UNDO'}
+    # Multi-line docstrings don't work well as operator descriptions, so set it via bl_description
+    bl_description = ("Load MMD Shapes from Search Mesh. Make sure that your Search Mesh is from an imported MMD model"
+                      " and still has its Japanese Shape Key names. Will not add mappings that already exist")
+
+    @classmethod
+    def poll(cls, context: Context) -> bool:
+        return ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.linked_mesh_object is not None
+
+    def execute(self, context: Context) -> set[str]:
+        data = self.get_collection(context)
+        mapping: MmdShapeMapping
+        existing_mappings = {mapping.mmd_name for mapping in data}
+        me = cast(Mesh, ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.linked_mesh_object.data)
+        shape_keys = me.shape_keys
+        if shape_keys:
+            # Skip the first shape key, the reference ('basis') key
+            for key in shape_keys.key_blocks[1:]:
+                shape_key_name = key.name
+                if shape_key_name not in existing_mappings:
+                    mapping = data.add()
+                    mapping.mmd_name = shape_key_name
+        return {'FINISHED'}
+
+
 class MmdShapesAddMenu(Menu):
     bl_idname = "mmd_shape_mapping_add"
     bl_label = "Add"
@@ -273,6 +303,7 @@ class MmdShapesSpecialsMenu(Menu):
     def draw(self, context: Context):
         layout = self.layout
         layout.operator(MmdMappingsAddFromSearchMesh.bl_idname, icon='ADD')
+        layout.operator(MmdMappingsAddMmdFromSearchMesh.bl_idname, icon='ADD')
         layout.separator()
         layout.operator(MmdMappingsClear.bl_idname, text="Delete All Mappings", icon='X')
         layout.separator()
