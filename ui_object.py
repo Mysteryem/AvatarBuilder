@@ -99,26 +99,43 @@ class ObjectPanel(Panel):
         return ScenePropertyGroup.get_group(scene).build_settings
 
     @staticmethod
-    def draw_box(properties_col: UILayout, ui_toggle_data: PropertyGroup, ui_toggle_prop: str, **label_args):
-        box = properties_col.box()
-        box_col = box.column()
-        box_col.prop(ui_toggle_data, ui_toggle_prop, text="", icon='DISCLOSURE_TRI_RIGHT')
-        box_col.label(**label_args)
-        if getattr(ui_toggle_data, ui_toggle_prop):
+    def draw_expandable_header(properties_col: UILayout, ui_toggle_data: PropertyGroup, ui_toggle_prop: str, enabled: bool, **header_args):
+        """Draw an expandable header
+        :return: a box UILayout when expanded, otherwise None"""
+        header_row = properties_col.row(align=True)
+        header_row.alignment = 'LEFT'
+        header_row.use_property_split = False
+        is_expanded = getattr(ui_toggle_data, ui_toggle_prop)
+        expand_icon = 'DISCLOSURE_TRI_DOWN' if is_expanded else 'DISCLOSURE_TRI_RIGHT'
+        # We draw everything in the header as the toggle property so that any of it can be clicked on to expand the
+        # contents
+        header_row.prop(ui_toggle_data, ui_toggle_prop, text="", icon=expand_icon, emboss=False)
+        # Force emboss to be disabled
+        header_args['emboss'] = False
+        header_row.prop(ui_toggle_data, ui_toggle_prop, **header_args)
+        if is_expanded:
+            box = properties_col.box()
+            # If the settings are disabled, disable the box to make it extra visible that the settings are disabled
+            box.enabled = enabled
+            # Add a small gap after the box
+            properties_col.separator()
+            box_col = box.column()
             return box_col
         else:
             return None
 
     @staticmethod
-    def draw_general_object_box(properties_col: UILayout, settings: ObjectBuildSettings, ui_toggle_data: WmObjectToggles):
-        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'general', text="Object", icon='OBJECT_DATA')
+    def draw_general_object_box(properties_col: UILayout, settings: ObjectBuildSettings,
+                                ui_toggle_data: WmObjectToggles, enabled: bool):
+        box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'general', enabled, text="Object", icon='OBJECT_DATA')
         if box:
             box.prop(settings, 'target_object_name')
             box.prop(settings, 'join_order')
 
     @staticmethod
-    def draw_armature_box(properties_col: UILayout, settings: ArmatureSettings, obj: Object, ui_toggle_data: WmArmatureToggles):
-        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'pose', text="Pose", icon='ARMATURE_DATA')
+    def draw_armature_box(properties_col: UILayout, settings: ArmatureSettings, obj: Object,
+                          ui_toggle_data: WmArmatureToggles, enabled: bool):
+        box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'pose', enabled, text="Pose", icon='ARMATURE_DATA')
         if box:
             export_pose = settings.armature_export_pose
 
@@ -145,16 +162,18 @@ class ObjectPanel(Panel):
                 armature_pose_custom_col.prop(settings, 'armature_export_pose_library_marker', icon="DOT")
 
     @staticmethod
-    def draw_vertex_groups_box(properties_col: UILayout, settings: VertexGroupSettings, ui_toggle_data: WmMeshToggles):
-        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'vertex_groups', text="Vertex Groups", icon='GROUP_VERTEX')
+    def draw_vertex_groups_box(properties_col: UILayout, settings: VertexGroupSettings, ui_toggle_data: WmMeshToggles,
+                               enabled: bool):
+        box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'vertex_groups', enabled, text="Vertex Groups", icon='GROUP_VERTEX')
         if box:
             box.prop(settings, 'remove_non_deform_vertex_groups')
             # TODO: Remove empty vertex groups? Probably not very important, since it won't result in much
             #  extra data, assuming they even get exported at all
 
     @staticmethod
-    def draw_shape_keys_box(properties_col: UILayout, settings: ShapeKeySettings, me: Mesh, ui_toggle_data: WmMeshToggles):
-        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'shape_keys', text="Shape keys", icon='SHAPEKEY_DATA')
+    def draw_shape_keys_box(properties_col: UILayout, settings: ShapeKeySettings, me: Mesh,
+                            ui_toggle_data: WmMeshToggles, enabled: bool):
+        box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'shape_keys', enabled, text="Shape keys", icon='SHAPEKEY_DATA')
         if box:
             main_op_col = box.column()
             main_op_col.prop(settings, 'shape_keys_main_op')
@@ -164,8 +183,9 @@ class ObjectPanel(Panel):
                 shape_key_ops.draw_shape_key_ops(box, settings, me.shape_keys)
 
     @staticmethod
-    def draw_mesh_modifiers_box(properties_col: UILayout, settings: ModifierSettings, ui_toggle_data: WmMeshToggles):
-        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'modifiers', text="Modifiers", icon='MODIFIER_DATA')
+    def draw_mesh_modifiers_box(properties_col: UILayout, settings: ModifierSettings, ui_toggle_data: WmMeshToggles,
+                                enabled: bool):
+        box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'modifiers', enabled, text="Modifiers", icon='MODIFIER_DATA')
         if box:
             if settings.apply_non_armature_modifiers == 'APPLY_KEEP_SHAPES_GRET':
                 gret_available = check_gret_shape_key_apply_modifiers()
@@ -182,8 +202,9 @@ class ObjectPanel(Panel):
                 box.prop(settings, 'apply_non_armature_modifiers')
 
     @staticmethod
-    def draw_uv_layers_box(properties_col: UILayout, settings: UVSettings, me: Mesh, ui_toggle_data: WmMeshToggles):
-        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'uv_layers', text="UV Layers", icon='GROUP_UVS')
+    def draw_uv_layers_box(properties_col: UILayout, settings: UVSettings, me: Mesh, ui_toggle_data: WmMeshToggles,
+                           enabled: bool):
+        box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'uv_layers', enabled, text="UV Layers", icon='GROUP_UVS')
         if box:
             box.prop(settings, 'uv_maps_to_keep')
             # Guaranteed to not be empty because we only call this function when it's non-empty
@@ -197,8 +218,9 @@ class ObjectPanel(Panel):
                 ui_uv_maps.draw_uv_map_list(box, settings.keep_uv_map_list)
 
     @staticmethod
-    def draw_materials_box(properties_col: UILayout, settings: MaterialSettings, obj: Object, ui_toggle_data: WmMeshToggles):
-        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'materials', text="Materials", icon='MATERIAL_DATA')
+    def draw_materials_box(properties_col: UILayout, settings: MaterialSettings, obj: Object,
+                           ui_toggle_data: WmMeshToggles, enabled: bool):
+        box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'materials', enabled, text="Materials", icon='MATERIAL_DATA')
         if box:
             box.prop(settings, 'materials_main_op')
 
@@ -244,26 +266,27 @@ class ObjectPanel(Panel):
             elif main_op == 'REMAP':
                 ui_material_remap.draw_material_remap_list(box, obj, settings.materials_remap)
 
-    def draw_mesh_boxes(self, properties_col: UILayout, settings: MeshSettings, obj: Object, ui_toggle_data: WmMeshToggles):
+    def draw_mesh_boxes(self, properties_col: UILayout, settings: MeshSettings, obj: Object,
+                        ui_toggle_data: WmMeshToggles, enabled: bool):
         me = cast(Mesh, obj.data)
         if obj.vertex_groups:
-            self.draw_vertex_groups_box(properties_col, settings.vertex_group_settings, ui_toggle_data)
+            self.draw_vertex_groups_box(properties_col, settings.vertex_group_settings, ui_toggle_data, enabled)
         # Only draw the shape keys box if there is more than one shape key. When there's one shape key, it will be the
         # reference key, the 'Basis'.
         # Note that non-relative shape keys are not supported at this time
         # TODO: Find out if (and if so, how) Blender's FBX exporter supports non-relative shape keys
         if me.shape_keys and len(me.shape_keys.key_blocks) > 1:
-            self.draw_shape_keys_box(properties_col, settings.shape_key_settings, me, ui_toggle_data)
+            self.draw_shape_keys_box(properties_col, settings.shape_key_settings, me, ui_toggle_data, enabled)
         # We don't touch armature modifiers, so only include the modifiers box when there's at least one non-armature
         # modifier
         # Additionally, modifiers which are disabled in the viewport get removed, so only count modifiers that are
         # enabled
         if any(mod.type != 'ARMATURE' and mod.show_viewport for mod in obj.modifiers):
-            self.draw_mesh_modifiers_box(properties_col, settings.modifier_settings, ui_toggle_data)
+            self.draw_mesh_modifiers_box(properties_col, settings.modifier_settings, ui_toggle_data, enabled)
         if me.uv_layers:
-            self.draw_uv_layers_box(properties_col, settings.uv_settings, me, ui_toggle_data)
+            self.draw_uv_layers_box(properties_col, settings.uv_settings, me, ui_toggle_data, enabled)
         if me.materials:
-            self.draw_materials_box(properties_col, settings.material_settings, obj, ui_toggle_data)
+            self.draw_materials_box(properties_col, settings.material_settings, obj, ui_toggle_data, enabled)
 
     def draw(self, context: Context):
         # guaranteed to be SpaceProperties by the bl_space_type
@@ -291,7 +314,7 @@ class ObjectPanel(Panel):
         row.prop(group, 'sync_active_with_scene', icon="OBJECT_DATA", text="", invert_checkbox=True)
 
         is_synced = group.sync_active_with_scene
-        if group.sync_active_with_scene:
+        if is_synced:
             # Get active_object_settings by name of active_build_settings
             scene_group = ScenePropertyGroup.get_group(context.scene)
             active_build_settings = scene_group.get_active()
@@ -346,26 +369,29 @@ class ObjectPanel(Panel):
                 disabled_label_col.use_property_split = True
                 disabled_label_col.use_property_decorate = True
                 disabled_label_col.label(text="Disabled. Won't be included in build")
+            elif is_synced:
+                # Add a separator to move the first properties header away from the main header. This isn't needed when
+                # sync is disabled because the UIList adds extra space, similarly with when the settings are disabled
+                main_col.separator()
 
             # Display the properties for the active settings
             settings_enabled = active_object_settings.include_in_build
-            properties_col = main_column.column(align=True)
+            properties_col = main_column.column()
             properties_col.use_property_split = True
             properties_col.use_property_decorate = False
-            properties_col.enabled = settings_enabled
 
             toggles = WindowManagerPropertyGroup.get_group(context.window_manager).ui_toggles.object
 
             # Display the box for general object settings
-            self.draw_general_object_box(properties_col, active_object_settings, toggles)
+            self.draw_general_object_box(properties_col, active_object_settings, toggles, settings_enabled)
 
             # Display the box for armature settings if the object is an armature
             if obj.type == 'ARMATURE':
-                self.draw_armature_box(properties_col, active_object_settings.armature_settings, obj, toggles.armature)
+                self.draw_armature_box(properties_col, active_object_settings.armature_settings, obj, toggles.armature, settings_enabled)
             # Display the boxes for mesh settings if the object is a mesh
             elif obj.type == 'MESH':
                 mesh_settings = active_object_settings.mesh_settings
-                self.draw_mesh_boxes(properties_col, mesh_settings, obj, toggles.mesh)
+                self.draw_mesh_boxes(properties_col, mesh_settings, obj, toggles.mesh, settings_enabled)
 
             # Display a button to remove the settings from Avatar Builder when scene sync is enabled
             if is_synced:
