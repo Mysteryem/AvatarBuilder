@@ -1,5 +1,5 @@
-from bpy.types import Panel, Operator, UIList, Context, UILayout, Mesh, Menu, Event, OperatorProperties
-from bpy.props import EnumProperty, IntProperty, BoolProperty, StringProperty
+from bpy.types import Panel, Operator, UIList, Context, UILayout, Mesh, Menu, OperatorProperties, UIPopover
+from bpy.props import EnumProperty, IntProperty, BoolProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
 import os
@@ -21,8 +21,10 @@ from .context_collection_ops import (
 
 class ShowMappingComment(Operator):
     bl_idname = 'mmd_shape_comment_modify'
-    bl_label = "Comment:"
-    bl_options = {'INTERNAL', 'UNDO', 'REGISTER'}
+    # When non-empty, the label is displayed when mousing over the operator in UI. The description is then displayed
+    # below.
+    bl_label = ""
+    bl_options = {'INTERNAL'}
 
     use_active: BoolProperty(
         name="Use active",
@@ -38,11 +40,6 @@ class ShowMappingComment(Operator):
     is_menu: BoolProperty(
         name="Is drawn in menu",
         default=False,
-        options={'HIDDEN'},
-    )
-    comment: StringProperty(
-        name="Comment",
-        description="Comment for the mapping",
         options={'HIDDEN'},
     )
 
@@ -83,42 +80,26 @@ class ShowMappingComment(Operator):
             else:
                 return f"ERROR: mapping {index} not found"
 
-    def draw(self, context: Context):
-        comment = self.comment
-        layout = self.layout
-        layout.activate_init = True
-        # Roughly expands to fit the comment with some extra space for additional typing
-        # These are purely magic numbers
-        layout.ui_units_x = min(max(10, len(comment) // 2), 40)
-        layout.prop(self, 'comment', text="")
-
-    # The popup from invoke_popup won't show unless we actually have an execute function
     def execute(self, context: Context) -> set[str]:
         mapping = self.get_mapping(self.use_active, self.index, context)
         if mapping:
-            mapping.comment = self.comment
-        return {'FINISHED'}
-
-    def invoke(self, context: Context, event: Event) -> set[str]:
-        # self.comment may default to the previous value, instead of the default value, if not set, which we don't want,
-        # so check whether self.comment has been set
-        if not self.properties.is_property_set('comment'):
-            mapping = self.get_mapping(self.use_active, self.index, context)
-            if mapping:
-                self.comment = mapping.comment
+            def draw_popover(self: UIPopover, context: Context):
+                layout = self.layout
+                # active_init unfortunately doesn't seem to work with UIPopover, we'll leave it here in-case a Blender
+                # update fixes it
+                layout.activate_init = True
+                layout.prop(mapping, 'comment', text="")
+            # Roughly expands to fit the comment with some extra space for additional typing
+            # These are purely magic numbers
+            ui_units_x = min(max(10, len(mapping.comment) // 2), 40)
+            # Draw popup window that lets the user edit the comment
+            context.window_manager.popover(draw_popover, ui_units_x=ui_units_x, from_active_button=True)
+        else:
+            if self.use_active:
+                self.report({'ERROR'}, "Active mapping not found")
             else:
-                if self.use_active:
-                    self.comment = "ERROR: active mapping not found"
-                else:
-                    self.comment = f"ERROR: mapping {self.index} not found"
-
-        # invoke_props_popup updates the property whenever we make changes, but it ignores ui_units_x and scale_x, so
-        # comment input sucks because the input text box is so small
-        # With invoke_props_dialog we can resize the input text box, but it only updates the property if/when we click
-        # ok, which is a bit annoying, but I think it's better than barely being able to read the input text box most of
-        # the time
-        # return context.window_manager.invoke_props_popup(self, event)
-        return context.window_manager.invoke_props_dialog(self)
+                self.report({'ERROR'}, f"Mapping {self.index} not found")
+        return {'FINISHED'}
 
 
 class MmdMappingList(UIList):
