@@ -14,6 +14,10 @@ from .extensions import (
     ShapeKeySettings,
     UVSettings,
     VertexGroupSettings,
+    WindowManagerPropertyGroup,
+    WmObjectToggles,
+    WmArmatureToggles,
+    WmMeshToggles,
 )
 from .integration import check_gret_shape_key_apply_modifiers
 from .context_collection_ops import (
@@ -95,170 +99,171 @@ class ObjectPanel(Panel):
         return ScenePropertyGroup.get_group(scene).build_settings
 
     @staticmethod
-    def draw_general_object_box(properties_col: UILayout, settings: ObjectBuildSettings):
-        object_box = properties_col.box()
-        object_box_col = object_box.column()
-        object_box_col.label(text="Object", icon="OBJECT_DATA")
-        object_box_col.prop(settings, 'target_object_name')
-        object_box_col.prop(settings, 'join_order')
-
-    @staticmethod
-    def draw_armature_box(properties_col: UILayout, settings: ArmatureSettings, obj: Object):
-        armature_box = properties_col.box()
-        armature_box_col = armature_box.column()
-        armature_box_col.label(text="Pose", icon="ARMATURE_DATA")
-
-        export_pose = settings.armature_export_pose
-
-        armature_box_col.prop(settings, 'armature_export_pose')
-
-        armature_preserve_volume_col = armature_box_col.column()
-        armature_preserve_volume_col.enabled = export_pose != 'REST'
-        armature_preserve_volume_col.prop(settings, 'armature_export_pose_preserve_volume')
-
-        armature_pose_custom_col = armature_box_col.column()
-        armature_pose_custom_col.enabled = export_pose.startswith("CUSTOM")
-        if export_pose == 'CUSTOM_POSE_LIBRARY' and obj.pose_library:
-            pose_library = obj.pose_library
-
-            if pose_library:
-                armature_pose_custom_col.prop_search(
-                    settings,
-                    'armature_export_pose_library_marker',
-                    pose_library,
-                    'pose_markers', icon="DOT")
+    def draw_box(properties_col: UILayout, ui_toggle_data: PropertyGroup, ui_toggle_prop: str, **label_args):
+        box = properties_col.box()
+        box_col = box.column()
+        box_col.prop(ui_toggle_data, ui_toggle_prop, text="", icon='DISCLOSURE_TRI_RIGHT')
+        box_col.label(**label_args)
+        if getattr(ui_toggle_data, ui_toggle_prop):
+            return box_col
         else:
-            # TODO: elif for `export_pose == 'CUSTOM_ASSET_LIBRARY':`
-            armature_pose_custom_col.enabled = False
-            armature_pose_custom_col.prop(settings, 'armature_export_pose_library_marker', icon="DOT")
+            return None
 
     @staticmethod
-    def draw_vertex_groups_box(properties_col: UILayout, settings: VertexGroupSettings):
-        vertex_groups_box = properties_col.box()
-
-        vertex_groups_box_col = vertex_groups_box.column()
-        vertex_groups_box_col.label(text="Vertex Groups", icon="GROUP_VERTEX")
-        vertex_groups_box_col.prop(settings, 'remove_non_deform_vertex_groups')
-        # TODO: Remove empty vertex groups? Probably not very important, since it won't result in much
-        #  extra data, assuming they even get exported at all
+    def draw_general_object_box(properties_col: UILayout, settings: ObjectBuildSettings, ui_toggle_data: WmObjectToggles):
+        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'general', text="Object", icon='OBJECT_DATA')
+        if box:
+            box.prop(settings, 'target_object_name')
+            box.prop(settings, 'join_order')
 
     @staticmethod
-    def draw_shape_keys_box(properties_col: UILayout, settings: ShapeKeySettings, me: Mesh):
-        shape_keys_box = properties_col.box()
-        shape_keys_box_col = shape_keys_box.column()
-        shape_keys_box_col.label(text="Shape keys", icon="SHAPEKEY_DATA")
+    def draw_armature_box(properties_col: UILayout, settings: ArmatureSettings, obj: Object, ui_toggle_data: WmArmatureToggles):
+        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'pose', text="Pose", icon='ARMATURE_DATA')
+        if box:
+            export_pose = settings.armature_export_pose
 
-        main_op_col = shape_keys_box_col.column()
-        main_op_col.prop(settings, 'shape_keys_main_op')
+            box.prop(settings, 'armature_export_pose')
 
-        main_op = settings.shape_keys_main_op
-        if main_op == 'CUSTOM':
-            shape_key_ops.draw_shape_key_ops(shape_keys_box_col, settings, me.shape_keys)
+            armature_preserve_volume_col = box.column()
+            armature_preserve_volume_col.enabled = export_pose != 'REST'
+            armature_preserve_volume_col.prop(settings, 'armature_export_pose_preserve_volume')
 
-    @staticmethod
-    def draw_mesh_modifiers_box(properties_col: UILayout, settings: ModifierSettings):
-        mesh_modifiers_box = properties_col.box()
-        mesh_modifiers_box_col = mesh_modifiers_box.column(align=True)
-        mesh_modifiers_box_col.label(text="Modifiers", icon="MODIFIER_DATA")
-        if settings.apply_non_armature_modifiers == 'APPLY_KEEP_SHAPES_GRET':
-            gret_available = check_gret_shape_key_apply_modifiers()
-            mesh_modifiers_box_col.alert = not gret_available
-            mesh_modifiers_box_col.prop(settings, 'apply_non_armature_modifiers')
+            armature_pose_custom_col = box.column()
+            armature_pose_custom_col.enabled = export_pose.startswith("CUSTOM")
+            if export_pose == 'CUSTOM_POSE_LIBRARY' and obj.pose_library:
+                pose_library = obj.pose_library
 
-            if not gret_available:
-                if gret_available is None:
-                    mesh_modifiers_box_col.label("Gret addon operator not found")
-                else:
-                    mesh_modifiers_box_col.label("Unsupported version of Gret")
-            mesh_modifiers_box_col.alert = False
-        else:
-            mesh_modifiers_box_col.prop(settings, 'apply_non_armature_modifiers')
+                if pose_library:
+                    armature_pose_custom_col.prop_search(
+                        settings,
+                        'armature_export_pose_library_marker',
+                        pose_library,
+                        'pose_markers', icon="DOT")
+            else:
+                # TODO: elif for `export_pose == 'CUSTOM_ASSET_LIBRARY':`
+                armature_pose_custom_col.enabled = False
+                armature_pose_custom_col.prop(settings, 'armature_export_pose_library_marker', icon="DOT")
 
     @staticmethod
-    def draw_uv_layers_box(properties_col: UILayout, settings: UVSettings, me: Mesh):
-        uv_layers_box = properties_col.box()
-        uv_layers_box_col = uv_layers_box.column()
-        uv_layers_box_col.label(text="UV Layers", icon="GROUP_UVS")
-        uv_layers_box_col.prop(settings, 'uv_maps_to_keep')
-        # Guaranteed to not be empty because we only call this function when it's non-empty
-        uv_layers = me.uv_layers
-        uv_maps_to_keep = settings.uv_maps_to_keep
-        if uv_maps_to_keep == 'FIRST':
-            uv_layers_box_col.prop(uv_layers[0], 'name', emboss=False)
-        elif uv_maps_to_keep == 'SINGLE':
-            uv_layers_box_col.prop_search(settings, 'keep_only_uv_map', me, 'uv_layers', icon="GROUP_UVS")
-        elif uv_maps_to_keep == 'LIST':
-            ui_uv_maps.draw_uv_map_list(uv_layers_box_col, settings.keep_uv_map_list)
+    def draw_vertex_groups_box(properties_col: UILayout, settings: VertexGroupSettings, ui_toggle_data: WmMeshToggles):
+        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'vertex_groups', text="Vertex Groups", icon='GROUP_VERTEX')
+        if box:
+            box.prop(settings, 'remove_non_deform_vertex_groups')
+            # TODO: Remove empty vertex groups? Probably not very important, since it won't result in much
+            #  extra data, assuming they even get exported at all
 
     @staticmethod
-    def draw_materials_box(properties_col: UILayout, settings: MaterialSettings, obj: Object):
-        materials_box = properties_col.box()
-        materials_box_col = materials_box.column()
-        materials_box_col.label(text="Materials", icon="MATERIAL_DATA")
-        materials_box_col.prop(settings, 'materials_main_op')
+    def draw_shape_keys_box(properties_col: UILayout, settings: ShapeKeySettings, me: Mesh, ui_toggle_data: WmMeshToggles):
+        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'shape_keys', text="Shape keys", icon='SHAPEKEY_DATA')
+        if box:
+            main_op_col = box.column()
+            main_op_col.prop(settings, 'shape_keys_main_op')
 
-        main_op = settings.materials_main_op
-        if main_op == 'KEEP_SINGLE':
-            slot_index = settings.keep_only_mat_slot
-            mat_slots = obj.material_slots
-            num_slots = len(mat_slots)
-            # 0.4 split with a label in the first part of the split and an operator in the second part of the split
-            # seems to match properties with non-empty text displayed with UILayout.use_property_split
-            split = materials_box_col.split(factor=0.4, align=True)
-            # Only applies to the label, not sure if there's a way to align the text within a .operator
-            split.alignment = 'RIGHT'
-            split.label(text="Material")
-            # For some reason .alert causes .alignment to be ignored, so we have to put the operator in a
-            # sub-layout, so we can set .alert on that instead
-            sub = split.row()
-            if num_slots != 0:
-                if 0 <= slot_index < num_slots:
-                    mat = mat_slots[slot_index].material
-                    if mat:
-                        sub.operator(ui_material_remap.KeepOnlyMaterialSlotSearch.bl_idname, text=mat.name,
-                                     icon_value=utils.get_preview(mat).icon_id)
+            main_op = settings.shape_keys_main_op
+            if main_op == 'CUSTOM':
+                shape_key_ops.draw_shape_key_ops(box, settings, me.shape_keys)
+
+    @staticmethod
+    def draw_mesh_modifiers_box(properties_col: UILayout, settings: ModifierSettings, ui_toggle_data: WmMeshToggles):
+        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'modifiers', text="Modifiers", icon='MODIFIER_DATA')
+        if box:
+            if settings.apply_non_armature_modifiers == 'APPLY_KEEP_SHAPES_GRET':
+                gret_available = check_gret_shape_key_apply_modifiers()
+                box.alert = not gret_available
+                box.prop(settings, 'apply_non_armature_modifiers')
+
+                if not gret_available:
+                    if gret_available is None:
+                        box.label("Gret addon operator not found")
                     else:
-                        sub.operator(ui_material_remap.KeepOnlyMaterialSlotSearch.bl_idname, text="(empty slot)",
-                                     icon='MATERIAL_DATA')
-                else:
-                    sub.alert = True
-                    sub.operator(ui_material_remap.KeepOnlyMaterialSlotSearch.bl_idname, text="(invalid slot)",
-                                 icon='ERROR')
+                        box.label("Unsupported version of Gret")
+                box.alert = False
             else:
-                # Generally this will never be displayed because the Materials box is only drawn if the mesh's materials
-                # list isn't empty
-                sub.alert = True
-                sub.operator(ui_material_remap.KeepOnlyMaterialSlotSearch.bl_idname, text="(no material slots)",
-                             icon='ERROR')
-        elif main_op == 'REMAP_SINGLE':
-            mat = settings.remap_single_material
-            if mat:
-                materials_box_col.prop(settings, 'remap_single_material', icon_value=utils.get_preview(mat).icon_id)
-            else:
-                materials_box_col.prop(settings, 'remap_single_material')
-        elif main_op == 'REMAP':
-            ui_material_remap.draw_material_remap_list(materials_box_col, obj, settings.materials_remap)
+                box.prop(settings, 'apply_non_armature_modifiers')
 
-    def draw_mesh_boxes(self, properties_col: UILayout, settings: MeshSettings, obj: Object):
+    @staticmethod
+    def draw_uv_layers_box(properties_col: UILayout, settings: UVSettings, me: Mesh, ui_toggle_data: WmMeshToggles):
+        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'uv_layers', text="UV Layers", icon='GROUP_UVS')
+        if box:
+            box.prop(settings, 'uv_maps_to_keep')
+            # Guaranteed to not be empty because we only call this function when it's non-empty
+            uv_layers = me.uv_layers
+            uv_maps_to_keep = settings.uv_maps_to_keep
+            if uv_maps_to_keep == 'FIRST':
+                box.prop(uv_layers[0], 'name', emboss=False)
+            elif uv_maps_to_keep == 'SINGLE':
+                box.prop_search(settings, 'keep_only_uv_map', me, 'uv_layers', icon="GROUP_UVS")
+            elif uv_maps_to_keep == 'LIST':
+                ui_uv_maps.draw_uv_map_list(box, settings.keep_uv_map_list)
+
+    @staticmethod
+    def draw_materials_box(properties_col: UILayout, settings: MaterialSettings, obj: Object, ui_toggle_data: WmMeshToggles):
+        box = ObjectPanel.draw_box(properties_col, ui_toggle_data, 'materials', text="Materials", icon='MATERIAL_DATA')
+        if box:
+            box.prop(settings, 'materials_main_op')
+
+            main_op = settings.materials_main_op
+            if main_op == 'KEEP_SINGLE':
+                slot_index = settings.keep_only_mat_slot
+                mat_slots = obj.material_slots
+                num_slots = len(mat_slots)
+                # 0.4 split with a label in the first part of the split and an operator in the second part of the split
+                # seems to match properties with non-empty text displayed with UILayout.use_property_split
+                split = box.split(factor=0.4, align=True)
+                # Only applies to the label, not sure if there's a way to align the text within a .operator
+                split.alignment = 'RIGHT'
+                split.label(text="Material")
+                # For some reason .alert causes .alignment to be ignored, so we have to put the operator in a
+                # sub-layout, so we can set .alert on that instead
+                sub = split.row()
+                if num_slots != 0:
+                    if 0 <= slot_index < num_slots:
+                        mat = mat_slots[slot_index].material
+                        if mat:
+                            sub.operator(ui_material_remap.KeepOnlyMaterialSlotSearch.bl_idname, text=mat.name,
+                                         icon_value=utils.get_preview(mat).icon_id)
+                        else:
+                            sub.operator(ui_material_remap.KeepOnlyMaterialSlotSearch.bl_idname, text="(empty slot)",
+                                         icon='MATERIAL_DATA')
+                    else:
+                        sub.alert = True
+                        sub.operator(ui_material_remap.KeepOnlyMaterialSlotSearch.bl_idname, text="(invalid slot)",
+                                     icon='ERROR')
+                else:
+                    # Generally this will never be displayed because the Materials box is only drawn if the mesh's materials
+                    # list isn't empty
+                    sub.alert = True
+                    sub.operator(ui_material_remap.KeepOnlyMaterialSlotSearch.bl_idname, text="(no material slots)",
+                                 icon='ERROR')
+            elif main_op == 'REMAP_SINGLE':
+                mat = settings.remap_single_material
+                if mat:
+                    box.prop(settings, 'remap_single_material', icon_value=utils.get_preview(mat).icon_id)
+                else:
+                    box.prop(settings, 'remap_single_material')
+            elif main_op == 'REMAP':
+                ui_material_remap.draw_material_remap_list(box, obj, settings.materials_remap)
+
+    def draw_mesh_boxes(self, properties_col: UILayout, settings: MeshSettings, obj: Object, ui_toggle_data: WmMeshToggles):
         me = cast(Mesh, obj.data)
         if obj.vertex_groups:
-            self.draw_vertex_groups_box(properties_col, settings.vertex_group_settings)
+            self.draw_vertex_groups_box(properties_col, settings.vertex_group_settings, ui_toggle_data)
         # Only draw the shape keys box if there is more than one shape key. When there's one shape key, it will be the
         # reference key, the 'Basis'.
         # Note that non-relative shape keys are not supported at this time
         # TODO: Find out if (and if so, how) Blender's FBX exporter supports non-relative shape keys
         if me.shape_keys and len(me.shape_keys.key_blocks) > 1:
-            self.draw_shape_keys_box(properties_col, settings.shape_key_settings, me)
+            self.draw_shape_keys_box(properties_col, settings.shape_key_settings, me, ui_toggle_data)
         # We don't touch armature modifiers, so only include the modifiers box when there's at least one non-armature
         # modifier
         # Additionally, modifiers which are disabled in the viewport get removed, so only count modifiers that are
         # enabled
         if any(mod.type != 'ARMATURE' and mod.show_viewport for mod in obj.modifiers):
-            self.draw_mesh_modifiers_box(properties_col, settings.modifier_settings)
+            self.draw_mesh_modifiers_box(properties_col, settings.modifier_settings, ui_toggle_data)
         if me.uv_layers:
-            self.draw_uv_layers_box(properties_col, settings.uv_settings, me)
+            self.draw_uv_layers_box(properties_col, settings.uv_settings, me, ui_toggle_data)
         if me.materials:
-            self.draw_materials_box(properties_col, settings.material_settings, obj)
+            self.draw_materials_box(properties_col, settings.material_settings, obj, ui_toggle_data)
 
     def draw(self, context: Context):
         # guaranteed to be SpaceProperties by the bl_space_type
@@ -349,16 +354,18 @@ class ObjectPanel(Panel):
             properties_col.use_property_decorate = False
             properties_col.enabled = settings_enabled
 
+            toggles = WindowManagerPropertyGroup.get_group(context.window_manager).ui_toggles.object
+
             # Display the box for general object settings
-            self.draw_general_object_box(properties_col, active_object_settings)
+            self.draw_general_object_box(properties_col, active_object_settings, toggles)
 
             # Display the box for armature settings if the object is an armature
             if obj.type == 'ARMATURE':
-                self.draw_armature_box(properties_col, active_object_settings.armature_settings, obj)
+                self.draw_armature_box(properties_col, active_object_settings.armature_settings, obj, toggles.armature)
             # Display the boxes for mesh settings if the object is a mesh
             elif obj.type == 'MESH':
                 mesh_settings = active_object_settings.mesh_settings
-                self.draw_mesh_boxes(properties_col, mesh_settings, obj)
+                self.draw_mesh_boxes(properties_col, mesh_settings, obj, toggles.mesh)
 
             # Display a button to remove the settings from Avatar Builder when scene sync is enabled
             if is_synced:

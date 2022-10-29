@@ -4,7 +4,7 @@ from itertools import chain
 from dataclasses import dataclass
 
 from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
-from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key, Mesh, Material
+from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key, Mesh, Material, WindowManager
 
 from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup, CollectionPropBase
 
@@ -816,6 +816,46 @@ class ObjectPropertyGroup(IdPropertyGroup, PropertyGroup):
             return self.get_synced_settings(scene)
         else:
             return self.get_active_settings()
+
+
+class WmMeshToggles(PropertyGroup):
+    vertex_groups: BoolProperty()
+    shape_keys: BoolProperty()
+    modifiers: BoolProperty()
+    uv_layers: BoolProperty()
+    vertex_colors: BoolProperty()
+    materials: BoolProperty()
+
+
+class WmArmatureToggles(PropertyGroup):
+    pose: BoolProperty()
+
+
+class WmObjectToggles(PropertyGroup):
+    general: BoolProperty()
+    mesh: PointerProperty(type=WmMeshToggles)
+    armature: PointerProperty(type=WmArmatureToggles)
+
+
+class WmSceneToggles(PropertyGroup):
+    # General stuff such as whether to ignore hidden objects
+    # general: BoolProperty()
+    # TODO: Might want to separate vrchat options, e.g., one section for performance stuff and another for mmd and other
+    # vrchat: BoolProperty()
+    # unity: BoolProperty()
+    pass
+
+
+class UiToggles(PropertyGroup):
+    scene: PointerProperty(type=WmSceneToggles)
+    object: PointerProperty(type=WmObjectToggles)
+
+
+class WindowManagerPropertyGroup(IdPropertyGroup, PropertyGroup):
+    """Property group for UI toggles (and anything else that might want to be attached to the WindowManager"""
+    _registration_name = f'{_PROP_PREFIX}_wm_group'
+    _registration_type = WindowManager
+    ui_toggles: PointerProperty(type=UiToggles)
 
 
 register, unregister = register_module_classes_factory(__name__, globals())
