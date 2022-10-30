@@ -103,25 +103,40 @@ class ObjectPanel(Panel):
         """Draw an expandable header
         :return: a box UILayout when expanded, otherwise None"""
         header_row = properties_col.row(align=True)
-        header_row.alignment = 'LEFT'
         header_row.use_property_split = False
         is_expanded = getattr(ui_toggle_data, ui_toggle_prop)
         expand_icon = 'DISCLOSURE_TRI_DOWN' if is_expanded else 'DISCLOSURE_TRI_RIGHT'
         # We draw everything in the header as the toggle property so that any of it can be clicked on to expand the
-        # contents
+        # contents.
+        # To debug the clickable regions of the header, set emboss to True in each .prop call.
         header_row.prop(ui_toggle_data, ui_toggle_prop, text="", icon=expand_icon, emboss=False)
+
+        # If we left align the entire header row, it won't expand to fill the entire width, meaning the user
+        # can't click on anywhere in the header to expand it, so we create a sub_row that is left aligned and draw
+        # the header text there
+        sub_row = header_row.row(align=True)
+        sub_row.alignment = 'LEFT'
         # Force emboss to be disabled
         header_args['emboss'] = False
-        header_row.prop(ui_toggle_data, ui_toggle_prop, **header_args)
+        sub_row.prop(ui_toggle_data, ui_toggle_prop, **header_args)
+
+        # We then need a third element to expand and fill the rest of the header, ensuring that the entire header can be
+        # clicked on.
+        # Text needs to be non-empty to actually expand, this does cut the header text off slightly when the Panel is
+        # made very narrow, but this will have to do.
+        # toggle=1 will hide the tick box
+        header_row.prop(ui_toggle_data, ui_toggle_prop, text=" ", toggle=1, emboss=False)
         if is_expanded:
+            # Create a box that the properties will be drawn in
             box = properties_col.box()
             # If the settings are disabled, disable the box to make it extra visible that the settings are disabled
             box.enabled = enabled
-            # Add a small gap after the box
+            # Add a small gap after the box to help separate it from the next header
             properties_col.separator()
-            box_col = box.column()
-            return box_col
+            # Create a column within the box for the properties to go in and return it
+            return box.column()
         else:
+            # The header isn't expanded, so don't return anything for properties to go in
             return None
 
     @staticmethod
@@ -395,8 +410,8 @@ class ObjectPanel(Panel):
 
             # Display a button to remove the settings from Avatar Builder when scene sync is enabled
             if is_synced:
-                #final_col = layout.column()
-                #properties_col.enabled = True
+                # Separator to move the Remove button slightly away from the properties headers
+                main_column.separator()
                 final_col = main_column.column(align=True)
                 final_col.operator(ObjectBuildSettingsRemove.bl_idname, text="Remove from Avatar Builder", icon="TRASH")
 
