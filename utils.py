@@ -1,9 +1,35 @@
 import bpy
 from bpy.types import Context, Scene, ViewLayer, ID, ImagePreview, Key, ShapeKey
 
+from types import MethodDescriptorType
 from typing import Any, Protocol, Literal, Optional
 from contextlib import contextmanager
 from .registration import dummy_register_factory
+
+
+# bpy_prop_collection_idprop isn't currently exposed in bpy.types, so it can't actually be imported. It's presence here
+# is purely to assist with development where it exists as a fake class.
+if hasattr(bpy.types, '_bpy_prop_collection_idprop'):
+    # noinspection PyProtectedMember,PyPep8Naming
+    from bpy.types import _bpy_prop_collection_idprop as PropCollectionType
+else:
+    # We can actually get the class from the bpy_prop_collection subclasses
+    # Start with bpy_prop_collection as a fallback
+    PropCollectionType = bpy.types.bpy_prop_collection
+    # Iterate through the subclasses (there should only be one)
+    for subclass in bpy.types.bpy_prop_collection.__subclasses__():
+        # Attempt to match against the name and available method descriptors
+        if (
+                subclass.__name__ == 'bpy_prop_collection_idprop' and
+                isinstance(getattr(subclass, 'add', None), MethodDescriptorType) and
+                isinstance(getattr(subclass, 'remove', None), MethodDescriptorType) and
+                isinstance(getattr(subclass, 'move', None), MethodDescriptorType)
+        ):
+            PropCollectionType = subclass
+            break
+    if PropCollectionType == bpy.types.bpy_prop_collection:
+        print(f"Could not find bpy_prop_collection_idprop, type checks for {__name__} will fall back to"
+              f" {bpy.types.bpy_prop_collection}")
 
 
 _EXECUTION_CONTEXTS = Literal[
