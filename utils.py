@@ -144,4 +144,15 @@ class ReverseRelativeShapeKeyMap:
         return shape_set
 
 
+def id_property_group_copy(from_owner, to_owner, id_prop_name):
+    # About 3 times faster than
+    #   to_owner[id_prop_name] = from_owner[id_prop_name]
+    # or
+    #   to_prop = getattr(to_owner, id_prop_name)
+    #   for k, v in getattr(from_owner, id_prop_name).items:
+    #       to_prop[k] = v
+    #
+    to_owner[id_prop_name].update(from_owner[id_prop_name])
+
+
 register, unregister = dummy_register_factory()
