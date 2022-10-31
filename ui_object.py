@@ -1,8 +1,10 @@
-from typing import Union, cast, Optional, NamedTuple
+from typing import Union, cast, Optional
 from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator, Object, Mesh, PropertyGroup, Menu
 from bpy.props import StringProperty, EnumProperty, BoolProperty
 
 from itertools import chain
+import operator
+from functools import reduce
 
 from . import shape_key_ops, ui_material_remap, utils, ui_uv_maps
 from .registration import register_module_classes_factory
@@ -42,8 +44,13 @@ _MESH_MODIFIERS = 'MODIFIERS'
 _MESH_UV_LAYERS = 'UV_LAYERS'
 _MESH_MATERIALS = 'MATERIALS'
 _MESH_VERTEX_COLORS = 'VERTEX_COLORS'
-_ALL = (_GENERAL, _ARMATURE_POSE, _MESH_VERTEX_GROUPS, _MESH_SHAPE_KEYS, _MESH_MODIFIERS, _MESH_UV_LAYERS,
-        _MESH_MATERIALS, _MESH_VERTEX_COLORS)
+_ALL = 'ALL'
+_ALL_MESH = 'ALL_MESH'
+_ALL_ARMATURE = 'ALL_ARMATURE'
+_ALL_COPY_PROP_IDENTIFIERS = (
+    _GENERAL, _ARMATURE_POSE, _MESH_VERTEX_GROUPS, _MESH_SHAPE_KEYS, _MESH_MODIFIERS, _MESH_UV_LAYERS, _MESH_MATERIALS,
+    _MESH_VERTEX_COLORS, _ALL, _ALL_MESH, _ALL_ARMATURE
+)
 
 
 class CopyObjectProperties(Operator):
@@ -55,22 +62,49 @@ class CopyObjectProperties(Operator):
 
     # Icons match UI boxes in ui_object.py
     # Since we're using the 'ENUM_FLAG' option, the unique values for the items must represent a bit field
-    _general_items = ((_GENERAL, "General", "General Object settings", 'OBJECT_DATA', 1),)
-    _armature_items = ((_ARMATURE_POSE, "Pose", "Pose settings", 'ARMATURE_DATA', 2),)
+    _general_items = ((_GENERAL, "General", "General Object settings", 'OBJECT_DATA', 1 << 0),)
+    _armature_items = ((_ARMATURE_POSE, "Pose", "Pose settings", 'ARMATURE_DATA', 1 << 1),)
     _mesh_items = (
-        (_MESH_VERTEX_GROUPS, "Vertex Groups", "Vertex Group settings", 'GROUP_VERTEX', 4),
-        (_MESH_SHAPE_KEYS, "Shape Keys", "Shape Key settings", 'SHAPEKEY_DATA', 8),
-        (_MESH_MODIFIERS, "Modifiers", "Modifier settings", 'MODIFIER_DATA', 16),
-        (_MESH_UV_LAYERS, "UV Layers", "UV Layer settings", 'GROUP_UVS', 32),
-        (_MESH_MATERIALS, "Materials", "Material settings", 'MATERIAL_DATA', 64),
-        (_MESH_VERTEX_COLORS, "Vertex Colors", "Vertex Color settings", 'GROUP_VCOL', 128),
+        (_MESH_VERTEX_GROUPS, "Vertex Groups", "Vertex Group settings", 'GROUP_VERTEX', 1 << 2),
+        (_MESH_SHAPE_KEYS, "Shape Keys", "Shape Key settings", 'SHAPEKEY_DATA', 1 << 3),
+        (_MESH_MODIFIERS, "Modifiers", "Modifier settings", 'MODIFIER_DATA', 1 << 4),
+        (_MESH_UV_LAYERS, "UV Layers", "UV Layer settings", 'GROUP_UVS', 1 << 5),
+        (_MESH_MATERIALS, "Materials", "Material settings", 'MATERIAL_DATA', 1 << 6),
+        (_MESH_VERTEX_COLORS, "Vertex Colors", "Vertex Color settings", 'GROUP_VCOL', 1 << 7),
     )
 
-    _items = _general_items + _armature_items + _mesh_items
-    _mesh_items = _general_items + _mesh_items
-    _armature_items = _general_items + _armature_items
+    # Shortcuts for groups of items at a time
+    # Bitwise ORs of groups of the items. Note that if we call with operator with {_MESH_MODIFIERS} as the
+    # props_to_copy, for example, the received set will actually be {_ALL, _MESH_MODIFIERS, _ALL_MESH}. I guess Blender
+    # does a bitwise AND and checks for non-zero result, so both of the options will be present in the set. Therefore,
+    # _ALL and the other grouped items should only be used as an input to the Operator and should not be used within the
+    # Operator itself
+    _grouped_items = (
+        (
+            _ALL,
+            "All",
+            "All settings",
+            'DUPLICATE',
+            # Compute bitwise OR via a reduce operation
+            reduce(operator.or_, (item[4] for item in chain(_general_items, _armature_items, _mesh_items)), 0)
+        ),
+        (
+            _ALL_ARMATURE,
+            "All Armature",
+            "All settings for Armature Objects",
+            'ARMATURE_DATA',
+            reduce(operator.or_, (item[4] for item in chain(_general_items, _armature_items)), 0)
+        ),
+        (
+            _ALL_MESH,
+            "All Mesh",
+            "All settings for Mesh Objects",
+            'MESH_DATA',
+            reduce(operator.or_, (item[4] for item in chain(_general_items, _mesh_items)), 0)
+        )
+    )
 
-    ALL_ITEMS = {item[0] for item in _items}
+    _props_to_copy_items = _general_items + _armature_items + _mesh_items + _grouped_items
 
     paste_to_name: StringProperty(
         name="Paste To",
@@ -78,9 +112,9 @@ class CopyObjectProperties(Operator):
                     " the active Object"
     )
     props_to_copy: EnumProperty(
-        items=_items,
+        items=_props_to_copy_items,
         options={'ENUM_FLAG'},
-        default=ALL_ITEMS,
+        default={_ALL},
     )
     mode: EnumProperty(
         items=(
@@ -103,7 +137,9 @@ class CopyObjectProperties(Operator):
         layout.prop(self, 'create')
 
     def execute(self, context: Context) -> set[str]:
-        props_to_copy = self.props_to_copy
+        props_to_copy: set[str] = self.props_to_copy
+        # Remove the grouped items from the set
+        props_to_copy = props_to_copy.difference(item[0] for item in self._grouped_items)
         if not props_to_copy:
             # No properties to copy, so nothing to do. The user can change the properties, so we still need to push an
             # undo
@@ -186,13 +222,13 @@ def _generate_menu_classes() -> dict[Union[tuple[str, ...], str], type[Menu]]:
     """Since we can't provide arguments to menus, we need to create a menu for each different option.
     We can then make a lookup to get the correct menu .bl_idname based on the option.
     Additionally, the generated classes are added to the module's globals() so that registration will pick them up."""
-    lookup: dict[Union[tuple[str, ...], str], type[Menu]] = {}
+    lookup: dict[str, type[Menu]] = {}
 
     # Base class for a menu for copying properties from one object settings to another on the same object
     class CopyObjectPropsSelfMenuBase(Menu):
         bl_label = "Copy To..."
 
-        props = set(_ALL)
+        props = {_ALL}
 
         def draw(self, context: Context):
             layout = self.layout
@@ -227,7 +263,7 @@ def _generate_menu_classes() -> dict[Union[tuple[str, ...], str], type[Menu]]:
     # the menu for copying properties from one object settings to another on the same object
     class CopyObjectPropsMenuBase(Menu):
         bl_label = "Copy Properties"
-        props = _ALL
+        props = {_ALL}
         sub_menu: type[Menu]
 
         def draw(self, context: Context):
@@ -241,26 +277,13 @@ def _generate_menu_classes() -> dict[Union[tuple[str, ...], str], type[Menu]]:
 
             layout.menu(self.sub_menu.bl_idname)
 
-    class PropsChoice(NamedTuple):
-        lookup_key: Union[str, tuple[str, ...]]
-        id_string: str
-        props_set: set[str]
-
-    props_choices: list[PropsChoice] = []
-    for prop in _ALL:
-        # Append each individual choice
-        props_choices.append(PropsChoice(prop, prop, {prop}))
-    # Append the set of all choices
-    props_choices.append(PropsChoice(_ALL, 'ALL', set(_ALL)))
-
-    for props_choice in props_choices:
-        id_string = props_choice.id_string
-        props_set = props_choice.props_set
+    for prop_id in _ALL_COPY_PROP_IDENTIFIERS:
+        props_set = {prop_id}
         # Lowercase name will be appended to the bl_idnames
-        lower_name = id_string.lower()
+        lower_name = prop_id.lower()
         # PascalCase name will be appended to the name of the attribute added to the module's globals() and the
         # subclass' name
-        pascal_case_name = id_string.replace('_', ' ').title().replace(" ", "")
+        pascal_case_name = prop_id.replace('_', ' ').title().replace(" ", "")
 
         # (sub)Menu subclass for copying properties to other settings on the same object
         self_menu_name = f'CopyObjectPropsSelfMenu{pascal_case_name}'
@@ -292,7 +315,7 @@ def _generate_menu_classes() -> dict[Union[tuple[str, ...], str], type[Menu]]:
         g[copy_menu_name] = copy_menu_class
         # While we only need the .bl_idname of the class, the lookup has to have class values because registration
         # modifies the .bl_idname of registered classes to include prefixes
-        lookup[props_choice.lookup_key] = copy_menu_class
+        lookup[prop_id] = copy_menu_class
 
     return lookup
 
