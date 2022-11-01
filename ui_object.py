@@ -167,10 +167,9 @@ class CopyObjectProperties(Operator):
         elif mode == 'SELF':
             paste_objects = {copy_object}
 
-        # If we're pasting to the same Object and settings we're copying from, there's nothing to do, so we can skip
-        if copy_from_settings.name == paste_settings_name:
-            paste_objects -= {copy_object}
-            return {'FINISHED'}
+            # If we're pasting to the same Object and settings we're copying from, there's nothing to do, so we can skip
+            if copy_from_settings.name == paste_settings_name:
+                return {'FINISHED'}
 
         create = self.create
         for paste_to_obj in paste_objects:
