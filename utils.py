@@ -144,15 +144,28 @@ class ReverseRelativeShapeKeyMap:
         return shape_set
 
 
+def get_id_prop_ensure(holder, prop_name):
+    if prop_name in holder:
+        return holder[prop_name]
+    else:
+        # TODO: maybe calling .items() or .keys() or .values() would work to ensure all props on holder are created?
+        getattr(holder, prop_name)
+        return holder[prop_name]
+
+
 def id_property_group_copy(from_owner, to_owner, id_prop_name):
-    # About 3 times faster than
-    #   to_owner[id_prop_name] = from_owner[id_prop_name]
-    # or
-    #   to_prop = getattr(to_owner, id_prop_name)
-    #   for k, v in getattr(from_owner, id_prop_name).items:
-    #       to_prop[k] = v
-    #
-    to_owner[id_prop_name].update(from_owner[id_prop_name])
+    from_prop = get_id_prop_ensure(from_owner, id_prop_name)
+    if id_prop_name in to_owner:
+        # .update is about 3 times faster than direct assignment
+        #   to_owner[id_prop_name] = from_prop
+        # or per-item assignment:
+        #   to_prop = getattr(to_owner, id_prop_name)
+        #   for k, v in getattr(from_owner, id_prop_name).items:
+        #       to_prop[k] = v
+        to_owner[id_prop_name].update(from_prop)
+    else:
+        # Prop being pasted to was probably only just created or otherwise hasn't had the prop initialised yet
+        to_owner[id_prop_name] = from_prop
 
 
 register, unregister = dummy_register_factory()
