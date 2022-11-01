@@ -218,7 +218,7 @@ class CopyObjectProperties(Operator):
         return {'FINISHED'}
 
 
-def _generate_menu_classes() -> dict[Union[tuple[str, ...], str], type[Menu]]:
+def _generate_menu_classes() -> dict[str, type[Menu]]:
     """Since we can't provide arguments to menus, we need to create a menu for each different option.
     We can then make a lookup to get the correct menu .bl_idname based on the option.
     Additionally, the generated classes are added to the module's globals() so that registration will pick them up."""
@@ -320,8 +320,7 @@ def _generate_menu_classes() -> dict[Union[tuple[str, ...], str], type[Menu]]:
     return lookup
 
 
-_COPY_MENU_LOOKUP: dict[Union[tuple[str, ...], str], type[Menu]] = _generate_menu_classes()
-del _generate_menu_classes
+_COPY_MENU_LOOKUP: dict[str, type[Menu]] = _generate_menu_classes()
 
 
 class ObjectBuildSettingsUIList(UIList):
@@ -426,7 +425,9 @@ class ObjectPanel(Panel):
         # Draw menu button for copying properties to other groups or other selected objects
         menu = _COPY_MENU_LOOKUP.get(copy_type)
         if menu:
-            header_row.menu(menu.bl_idname, text="", icon="PASTEDOWN")
+            # Sub row without align so that the button appears disconnected from the third element
+            menu_row = header_row.row(align=False)
+            menu_row.menu(menu.bl_idname, text="", icon="PASTEDOWN")
 
         if is_expanded:
             # Create a box that the properties will be drawn in
@@ -632,10 +633,18 @@ class ObjectPanel(Panel):
         header_col = main_col.column()
         header_col.use_property_decorate = True
 
-        row = header_col.row(align=True)
-        row.use_property_decorate = False
-        row.prop(group, 'sync_active_with_scene', icon="SCENE_DATA", text="")
-        row.prop(group, 'sync_active_with_scene', icon="OBJECT_DATA", text="", invert_checkbox=True)
+        header_top_row = header_col.row(align=True)
+        header_top_row.use_property_decorate = False
+        header_top_row_left_buttons_col = header_top_row.column(align=True)
+        header_top_row_left_buttons_row1 = header_top_row_left_buttons_col.row(align=True)
+        header_top_row_left_buttons_row1.prop(group, 'sync_active_with_scene', icon="SCENE_DATA", text="")
+        header_top_row_left_buttons_row1.prop(group, 'sync_active_with_scene', icon="OBJECT_DATA", text="", invert_checkbox=True)
+
+        copy_menu = None
+        if obj.type == 'MESH':
+            copy_menu = _COPY_MENU_LOOKUP.get(_ALL_MESH)
+        elif obj.type == 'ARMATURE':
+            copy_menu = _COPY_MENU_LOOKUP.get(_ALL_ARMATURE)
 
         is_synced = group.sync_active_with_scene
         if is_synced:
@@ -647,13 +656,14 @@ class ObjectPanel(Panel):
             if active_build_settings:
                 active_object_settings = object_settings.get(active_build_settings.name)
                 if active_object_settings:
-                    row.separator()
-                    row.label(text="", icon="SETTINGS")
-                    row.prop(active_build_settings, "name_prop", icon="SCENE_DATA", emboss=False, text="")
-                    row.use_property_split = True
-                    row.prop(active_object_settings, "include_in_build", text="")
+                    if copy_menu:
+                        header_top_row.menu(copy_menu.bl_idname, text="", icon='PASTEDOWN')
+                    header_top_row.separator()
+                    header_top_row.prop(active_build_settings, "name_prop", icon="SCENE_DATA", emboss=False, text="")
+                    header_top_row.use_property_split = True
+                    header_top_row.prop(active_object_settings, "include_in_build", text="")
                 else:
-                    options = row.operator(ObjectBuildSettingsAdd.bl_idname, text="Add to Avatar Builder", icon="ADD")
+                    options = header_top_row.operator(ObjectBuildSettingsAdd.bl_idname, text="Add to Avatar Builder", icon="ADD")
                     options.name = active_build_settings.name
             else:
                 active_object_settings = None
@@ -669,21 +679,27 @@ class ObjectPanel(Panel):
                     options.value = 0
                     options.relative = False
         else:
-            list_row = row.row(align=False)
-            list_row.template_list(ObjectBuildSettingsUIList.bl_idname, "", group, 'object_settings', group, 'object_settings_active_index', rows=3)
-            vertical_buttons_col = row.column(align=True)
-            vertical_buttons_col.operator(ObjectBuildSettingsAdd.bl_idname, text="", icon="ADD").name = ''
-            vertical_buttons_col.operator(ObjectBuildSettingsRemove.bl_idname, text="", icon="REMOVE")
-            vertical_buttons_col.separator()
-            vertical_buttons_col.operator(ObjectBuildSettingsMove.bl_idname, text="", icon="TRIA_UP").type = 'UP'
-            vertical_buttons_col.operator(ObjectBuildSettingsMove.bl_idname, text="", icon="TRIA_DOWN").type = 'DOWN'
-
             object_settings_active_index = group.object_settings_active_index
             num_object_settings = len(object_settings)
             if num_object_settings > 0 and 0 <= object_settings_active_index < num_object_settings:
                 active_object_settings = object_settings[object_settings_active_index]
             else:
                 active_object_settings = None
+
+            if active_object_settings and copy_menu:
+                header_top_row_left_buttons_row2 = header_top_row_left_buttons_col.row()
+                # Change back to EXPAND or LEFT if we add more buttons/menus
+                header_top_row_left_buttons_row2.alignment = 'CENTER'
+                header_top_row_left_buttons_row2.menu(copy_menu.bl_idname, text="", icon='PASTEDOWN')
+
+            list_row = header_top_row.row(align=False)
+            list_row.template_list(ObjectBuildSettingsUIList.bl_idname, "", group, 'object_settings', group, 'object_settings_active_index', rows=3)
+            vertical_buttons_col = header_top_row.column(align=True)
+            vertical_buttons_col.operator(ObjectBuildSettingsAdd.bl_idname, text="", icon="ADD").name = ''
+            vertical_buttons_col.operator(ObjectBuildSettingsRemove.bl_idname, text="", icon="REMOVE")
+            vertical_buttons_col.separator()
+            vertical_buttons_col.operator(ObjectBuildSettingsMove.bl_idname, text="", icon="TRIA_UP").type = 'UP'
+            vertical_buttons_col.operator(ObjectBuildSettingsMove.bl_idname, text="", icon="TRIA_DOWN").type = 'DOWN'
 
         if active_object_settings:
             # Extra col for label when disabled
