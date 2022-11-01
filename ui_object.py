@@ -161,7 +161,8 @@ class CopyObjectProperties(Operator):
         # Get the objects we're  pasting to
         paste_objects = set()
         if mode == 'OTHER_SELECTED':
-            paste_objects = set(context.selected_objects)
+            allowed_types = ObjectPropertyGroup.ALLOWED_TYPES
+            paste_objects = set(o for o in context.selected_objects if o.type in allowed_types)
             # Exclude self
             paste_objects.discard(copy_object)
         elif mode == 'SELF':
@@ -383,7 +384,7 @@ class ObjectPanel(Panel):
 
         # TODO: Currently, we're only building these types, should we be including any others?
         # TODO: Make the set a global variable and uses it elsewhere too
-        if not obj or obj.type not in {'MESH', 'ARMATURE'}:
+        if not obj or obj.type not in ObjectPropertyGroup.ALLOWED_TYPES:
             return False
         scene = context.scene
         # Build settings must be non-empty

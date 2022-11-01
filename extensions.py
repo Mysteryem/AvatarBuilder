@@ -792,6 +792,10 @@ class ObjectPropertyGroup(IdPropertyGroup, PropertyGroup):
     _registration_name = f'{_PROP_PREFIX}_object_settings_group'
     _registration_type = Object
 
+    # Technically, we can't limit which Object types receive the PropertyGroup, but operators and other code can check
+    # against the allowed types and skip Objects that don't have a correct type
+    ALLOWED_TYPES = {'ARMATURE', 'MESH'}
+
     object_settings: CollectionProperty(type=ObjectBuildSettings)
     object_settings_active_index: IntProperty()
     sync_active_with_scene: BoolProperty(name="Toggle scene sync", default=True)
