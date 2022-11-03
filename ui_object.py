@@ -1,10 +1,11 @@
-from typing import Union, cast, Optional
+from typing import Union, cast, Optional, Iterable, Literal
 from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator, Object, Mesh, PropertyGroup, Menu
 from bpy.props import StringProperty, EnumProperty, BoolProperty
 
 from itertools import chain
 import operator
 from functools import reduce
+from dataclasses import dataclass, InitVar, field
 
 from . import shape_key_ops, ui_material_remap, utils, ui_uv_maps
 from .registration import register_module_classes_factory
@@ -35,22 +36,247 @@ from .context_collection_ops import (
 from .utils import id_property_group_copy
 
 
-# Constants used as item ids for properties to copy
-_GENERAL = 'GENERAL'
-_ARMATURE_POSE = 'POSE'
-_MESH_VERTEX_GROUPS = 'VERTEX_GROUPS'
-_MESH_SHAPE_KEYS = 'SHAPE_KEYS'
-_MESH_MODIFIERS = 'MODIFIERS'
-_MESH_UV_LAYERS = 'UV_LAYERS'
-_MESH_MATERIALS = 'MATERIALS'
-_MESH_VERTEX_COLORS = 'VERTEX_COLORS'
-_ALL = 'ALL'
-_ALL_MESH = 'ALL_MESH'
-_ALL_ARMATURE = 'ALL_ARMATURE'
-_ALL_COPY_PROP_IDENTIFIERS = (
-    _GENERAL, _ARMATURE_POSE, _MESH_VERTEX_GROUPS, _MESH_SHAPE_KEYS, _MESH_MODIFIERS, _MESH_UV_LAYERS, _MESH_MATERIALS,
-    _MESH_VERTEX_COLORS, _ALL, _ALL_MESH, _ALL_ARMATURE
+@dataclass
+class CopyPropsItem:
+    id: str
+    display_name: str
+    display_description: str
+    display_icon: str
+    unique_id: InitVar[int] = None
+    group_props: InitVar[Iterable['CopyPropsItem']] = ()
+    class_name_suffix: str = ""
+    unique_bit_field_id: Optional[int] = field(default=None, init=False)
+    # Since we're declaring an attribute called 'type' it would hide the 'type' from builtins, so we need to declare
+    # these attributes before the attribute called 'type'
+    self_menu: type[Menu] = field(default=None, init=False)
+    copy_menu: type[Menu] = field(default=None, init=False)
+    type: Literal['ALL', 'MESH', 'ARMATURE'] = 'ALL'
+
+    # Base class for a menu for copying properties from one object settings to another on the same object
+    class CopyObjectPropsSelfMenuBase(Menu):
+        bl_label = "Copy To..."
+
+        props = set()
+
+        def draw(self, context: Context):
+            layout = self.layout
+            scene = context.scene
+
+            object_group = ObjectPropertyGroup.get_group(context.object)
+            displayed_settings = object_group.get_displayed_settings(scene)
+            # We exclude the currently displayed settings as there's no point in pasting to the same settings that we're
+            # copying from
+            if displayed_settings:
+                all_build_settings_names = {displayed_settings.name}
+            else:
+                # Generally there will always be some displayed settings
+                all_build_settings_names = set()
+
+            at_least_one_drawn = False
+
+            for build_settings in chain(ScenePropertyGroup.get_group(scene).build_settings, object_group.object_settings):
+                name = build_settings.name
+                if name not in all_build_settings_names:
+                    all_build_settings_names.add(name)
+                    options = layout.operator(CopyObjectProperties.bl_idname, text=name)
+                    options.mode = 'SELF'
+                    options.paste_to_name = name
+                    options.props_to_copy = self.props
+                    at_least_one_drawn = True
+
+            if not at_least_one_drawn:
+                layout.label(text="No Other Scene Settings Found")
+
+    # Base class for a menu for copying properties from the active object to other selected objects and for displaying
+    # the menu for copying properties from one object settings to another on the same object
+    class CopyObjectPropsMenuBase(Menu):
+        bl_label = "Copy Properties"
+        props = set()
+        sub_menu: type[Menu]
+
+        def draw(self, context: Context):
+            layout = self.layout
+            options = layout.operator(CopyObjectProperties.bl_idname, text="Copy To Other Selected Objects")
+            options.mode = 'OTHER_SELECTED'
+            options.paste_to_name = ''
+            options.props_to_copy = self.props
+
+            layout.separator()
+
+            layout.menu(self.sub_menu.bl_idname)
+
+    def _post_init_bit_field_id(self, unique_id: Optional[int], group_props: Iterable['CopyPropsItem']):
+        if group_props:
+            if unique_id is not None:
+                raise ValueError("Only one of group_props or unique_id can be supplied")
+            else:
+                self.unique_bit_field_id = reduce(operator.or_, (prop.unique_bit_field_id for prop in group_props), 0)
+        else:
+            if unique_id is None:
+                raise ValueError("At least one of unique_bitfield_id or unique_id must be supplied")
+            else:
+                self.unique_bit_field_id = 1 << unique_id
+
+    def _post_init_menu_classes(self):
+        prop_id = self.id
+        props_set = {prop_id}
+        # Lowercase name will be appended to the bl_idnames
+        lower_name = prop_id.lower()
+        class_suffix = self.class_name_suffix
+
+        if not self.self_menu:
+            # (sub)Menu subclass for copying properties to other settings on the same object
+            self_menu_name = f'CopyObjectPropsSelfMenu{class_suffix}'
+            self_menu_class_attributes = dict(
+                bl_idname='object_build_settings_copy_self_' + lower_name,
+                props=props_set,
+            )
+            self_menu_class = cast(
+                type[CopyPropsItem.CopyObjectPropsSelfMenuBase],
+                type(self_menu_name, (CopyPropsItem.CopyObjectPropsSelfMenuBase,), self_menu_class_attributes)
+            )
+            self.self_menu = self_menu_class
+
+        if not self.copy_menu:
+            # Menu subclass for copying properties to other selected objects or showing the submenu for copying properties
+            # to other settings on the same object
+            copy_menu_name = f'CopyObjectPropsMenu{class_suffix}'
+            copy_menu_class_attributes = dict(
+                bl_idname='object_build_settings_copy_' + lower_name,
+                props=props_set,
+                sub_menu=self.self_menu,
+                bl_label=f"Copy {self.display_name} Properties",
+            )
+            copy_menu_class = cast(
+                type[CopyPropsItem.CopyObjectPropsMenuBase],
+                type(copy_menu_name, (CopyPropsItem.CopyObjectPropsMenuBase,), copy_menu_class_attributes)
+            )
+            self.copy_menu = copy_menu_class
+
+    def __post_init__(self, unique_id: Optional[int], group_props: Iterable['CopyPropsItem']):
+        # Set the class name suffix if not provided
+        class_name_suffix = self.class_name_suffix
+        if not class_name_suffix:
+            self.class_name_suffix = self.id.replace('_', ' ').title().replace(" ", "")
+        # Set the unique_id to a bitfield value
+        self._post_init_bit_field_id(unique_id, group_props)
+        # Since we can't provide arguments to menus, we need to create menus specifically for this option
+        # Create the Menu classes
+        self._post_init_menu_classes()
+
+    def to_enum_item(self):
+        return self.id, self.display_name, self.display_description, self.display_icon, self.unique_bit_field_id
+
+    def is_mesh(self):
+        t = self.type
+        return t == 'ALL' or t == 'MESH'
+
+    def is_armature(self):
+        t = self.type
+        return t == 'ALL' or t == 'ARMATURE'
+
+
+# Icons match the UI boxes
+_GENERAL = CopyPropsItem(
+    id='GENERAL',
+    display_name="General",
+    display_description="General Object settings",
+    display_icon='OBJECT_DATA',
+    unique_id=0,
 )
+_ARMATURE_POSE = CopyPropsItem(
+    id='POSE',
+    display_name="Pose",
+    display_description="Pose settings",
+    display_icon='ARMATURE_DATA',
+    unique_id=1,
+    type='ARMATURE',
+)
+_MESH_VERTEX_GROUPS = CopyPropsItem(
+    id='VERTEX_GROUPS',
+    display_name="Vertex Groups",
+    display_description="Vertex Group settings",
+    display_icon='GROUP_VERTEX',
+    unique_id=2,
+    type='MESH',
+)
+_MESH_SHAPE_KEYS = CopyPropsItem(
+    id='SHAPE_KEYS',
+    display_name="Shape Keys",
+    display_description="Shape Key settings",
+    display_icon='SHAPEKEY_DATA',
+    unique_id=3,
+    type='MESH',
+)
+_MESH_MODIFIERS = CopyPropsItem(
+    id='MODIFIERS',
+    display_name="Modifiers",
+    display_description="Modifier settings",
+    display_icon='MODIFIER_DATA',
+    unique_id=4,
+    type='MESH',
+)
+_MESH_UV_LAYERS = CopyPropsItem(
+    id='UV_LAYERS',
+    display_name="UV Layers",
+    display_description="UV Layer settings",
+    display_icon='GROUP_UVS',
+    unique_id=5,
+    type='MESH',
+)
+_MESH_MATERIALS = CopyPropsItem(
+    id='MATERIALS',
+    display_name="Materials",
+    display_description="Material settings",
+    display_icon='MATERIAL_DATA',
+    unique_id=6,
+    type='MESH',
+)
+_MESH_VERTEX_COLORS = CopyPropsItem(
+    id='VERTEX_COLORS',
+    display_name="Vertex Colors",
+    display_description="Vertex Color settings",
+    display_icon='GROUP_VCOL',
+    unique_id=7,
+    type='MESH'
+)
+_all_unique_copy_props = (
+    _GENERAL, _ARMATURE_POSE, _MESH_VERTEX_GROUPS, _MESH_SHAPE_KEYS, _MESH_MODIFIERS, _MESH_UV_LAYERS, _MESH_MATERIALS,
+    _MESH_VERTEX_COLORS
+)
+_mesh_items = tuple(filter(CopyPropsItem.is_mesh, _all_unique_copy_props))
+_armature_items = tuple(filter(CopyPropsItem.is_armature, _all_unique_copy_props))
+# Shortcuts for groups of items at a time
+# Bitwise ORs of groups of the items. Note that if we call with operator with {'MESH_MODIFIERS'} as the
+# props_to_copy, for example, the received set will actually be {'ALL', 'MESH_MODIFIERS', 'ALL_MESH'}. I guess Blender
+# does a bitwise AND and checks for non-zero result, so both of the options will be present in the set. Therefore,
+# _ALL and the other grouped items should only be used as an input to the Operator and should not be used within the
+# Operator itself
+_ALL = CopyPropsItem(
+    'ALL',
+    "All",
+    "All settings",
+    'DUPLICATE',
+    group_props=_all_unique_copy_props,
+)
+_ALL_ARMATURE = CopyPropsItem(
+    'ALL_ARMATURE',
+    "All Armature",
+    "All settings for Armature Objects",
+    'ARMATURE_DATA',
+    type='ARMATURE',
+    group_props=_armature_items,
+)
+_ALL_MESH = CopyPropsItem(
+    'ALL_MESH',
+    "All Mesh",
+    "All settings for Mesh Objects",
+    'MESH_DATA',
+    type='MESH',
+    group_props=_mesh_items,
+)
+_grouped_copy_props = (_ALL, _ALL_ARMATURE, _ALL_MESH)
+_all_copy_props = _all_unique_copy_props + _grouped_copy_props
 
 
 class CopyObjectProperties(Operator):
@@ -60,61 +286,15 @@ class CopyObjectProperties(Operator):
     bl_label = "Copy Properties"
     bl_options = {'REGISTER', 'UNDO'}
 
-    # Icons match UI boxes in ui_object.py
-    # Since we're using the 'ENUM_FLAG' option, the unique values for the items must represent a bit field
-    _general_items = ((_GENERAL, "General", "General Object settings", 'OBJECT_DATA', 1 << 0),)
-    _armature_items = ((_ARMATURE_POSE, "Pose", "Pose settings", 'ARMATURE_DATA', 1 << 1),)
-    _mesh_items = (
-        (_MESH_VERTEX_GROUPS, "Vertex Groups", "Vertex Group settings", 'GROUP_VERTEX', 1 << 2),
-        (_MESH_SHAPE_KEYS, "Shape Keys", "Shape Key settings", 'SHAPEKEY_DATA', 1 << 3),
-        (_MESH_MODIFIERS, "Modifiers", "Modifier settings", 'MODIFIER_DATA', 1 << 4),
-        (_MESH_UV_LAYERS, "UV Layers", "UV Layer settings", 'GROUP_UVS', 1 << 5),
-        (_MESH_MATERIALS, "Materials", "Material settings", 'MATERIAL_DATA', 1 << 6),
-        (_MESH_VERTEX_COLORS, "Vertex Colors", "Vertex Color settings", 'GROUP_VCOL', 1 << 7),
-    )
-
-    # Shortcuts for groups of items at a time
-    # Bitwise ORs of groups of the items. Note that if we call with operator with {_MESH_MODIFIERS} as the
-    # props_to_copy, for example, the received set will actually be {_ALL, _MESH_MODIFIERS, _ALL_MESH}. I guess Blender
-    # does a bitwise AND and checks for non-zero result, so both of the options will be present in the set. Therefore,
-    # _ALL and the other grouped items should only be used as an input to the Operator and should not be used within the
-    # Operator itself
-    _grouped_items = (
-        (
-            _ALL,
-            "All",
-            "All settings",
-            'DUPLICATE',
-            # Compute bitwise OR via a reduce operation
-            reduce(operator.or_, (item[4] for item in chain(_general_items, _armature_items, _mesh_items)), 0)
-        ),
-        (
-            _ALL_ARMATURE,
-            "All Armature",
-            "All settings for Armature Objects",
-            'ARMATURE_DATA',
-            reduce(operator.or_, (item[4] for item in chain(_general_items, _armature_items)), 0)
-        ),
-        (
-            _ALL_MESH,
-            "All Mesh",
-            "All settings for Mesh Objects",
-            'MESH_DATA',
-            reduce(operator.or_, (item[4] for item in chain(_general_items, _mesh_items)), 0)
-        )
-    )
-
-    _props_to_copy_items = _general_items + _armature_items + _mesh_items + _grouped_items
-
     paste_to_name: StringProperty(
         name="Paste To",
         description="Name of the settings to paste to. When empty, will default to the currently displayed settings of"
                     " the active Object"
     )
     props_to_copy: EnumProperty(
-        items=_props_to_copy_items,
+        items=tuple(map(CopyPropsItem.to_enum_item, _all_copy_props)),
         options={'ENUM_FLAG'},
-        default={_ALL},
+        default={_ALL.id},
     )
     mode: EnumProperty(
         items=(
@@ -139,7 +319,7 @@ class CopyObjectProperties(Operator):
     def execute(self, context: Context) -> set[str]:
         props_to_copy: set[str] = self.props_to_copy
         # Remove the grouped items from the set
-        props_to_copy = props_to_copy.difference(item[0] for item in self._grouped_items)
+        props_to_copy = props_to_copy.difference(item.id for item in _grouped_copy_props)
         if not props_to_copy:
             # No properties to copy, so nothing to do. The user can change the properties, so we still need to push an
             # undo
@@ -186,141 +366,36 @@ class CopyObjectProperties(Operator):
             paste_to_mesh_settings = paste_to_settings.mesh_settings
             copy_from_mesh_settings = copy_from_settings.mesh_settings
 
-            if _GENERAL in props_to_copy:
+            if _GENERAL.id in props_to_copy:
                 paste_to_settings.join_order = copy_from_settings.join_order
                 paste_to_settings.target_object_name = copy_from_settings.target_object_name
                 paste_to_mesh_settings.ignore_reduce_to_two_meshes = copy_from_mesh_settings.ignore_reduce_to_two_meshes
 
-            if _ARMATURE_POSE in props_to_copy:
+            if _ARMATURE_POSE.id in props_to_copy:
                 id_property_group_copy(copy_from_settings, paste_to_settings, 'armature_settings')
 
             def copy_mesh_group(paste_prop):
                 id_property_group_copy(copy_from_mesh_settings, paste_to_mesh_settings, paste_prop)
 
-            if _MESH_MATERIALS in props_to_copy:
+            if _MESH_MATERIALS.id in props_to_copy:
                 copy_mesh_group('material_settings')
 
-            if _MESH_MODIFIERS in props_to_copy:
+            if _MESH_MODIFIERS.id in props_to_copy:
                 copy_mesh_group('modifier_settings')
 
-            if _MESH_UV_LAYERS in props_to_copy:
+            if _MESH_UV_LAYERS.id in props_to_copy:
                 copy_mesh_group('uv_settings')
 
-            if _MESH_VERTEX_GROUPS in props_to_copy:
+            if _MESH_VERTEX_GROUPS.id in props_to_copy:
                 copy_mesh_group('vertex_group_settings')
 
-            if _MESH_SHAPE_KEYS in props_to_copy:
+            if _MESH_SHAPE_KEYS.id in props_to_copy:
                 copy_mesh_group('shape_key_settings')
 
-            if _MESH_VERTEX_COLORS in props_to_copy:
+            if _MESH_VERTEX_COLORS.id in props_to_copy:
                 copy_mesh_group('vertex_color_settings')
 
         return {'FINISHED'}
-
-
-def _generate_menu_classes() -> dict[str, type[Menu]]:
-    """Since we can't provide arguments to menus, we need to create a menu for each different option.
-    We can then make a lookup to get the correct menu .bl_idname based on the option.
-    Additionally, the generated classes are added to the module's globals() so that registration will pick them up."""
-    lookup: dict[str, type[Menu]] = {}
-
-    # Base class for a menu for copying properties from one object settings to another on the same object
-    class CopyObjectPropsSelfMenuBase(Menu):
-        bl_label = "Copy To..."
-
-        props = {_ALL}
-
-        def draw(self, context: Context):
-            layout = self.layout
-            scene = context.scene
-
-            object_group = ObjectPropertyGroup.get_group(context.object)
-            displayed_settings = object_group.get_displayed_settings(scene)
-            # We exclude the currently displayed settings as there's no point in pasting to the same settings that we're
-            # copying from
-            if displayed_settings:
-                all_build_settings_names = {displayed_settings.name}
-            else:
-                # Generally there will always be some displayed settings
-                all_build_settings_names = set()
-
-            at_least_one_drawn = False
-
-            for build_settings in chain(ScenePropertyGroup.get_group(scene).build_settings, object_group.object_settings):
-                name = build_settings.name
-                if name not in all_build_settings_names:
-                    all_build_settings_names.add(name)
-                    options = layout.operator(CopyObjectProperties.bl_idname, text=name)
-                    options.mode = 'SELF'
-                    options.paste_to_name = name
-                    options.props_to_copy = self.props
-                    at_least_one_drawn = True
-
-            if not at_least_one_drawn:
-                layout.label(text="No Other Scene Settings Found")
-
-    # Base class for a menu for copying properties from the active object to other selected objects and for displaying
-    # the menu for copying properties from one object settings to another on the same object
-    class CopyObjectPropsMenuBase(Menu):
-        bl_label = "Copy Properties"
-        props = {_ALL}
-        sub_menu: type[Menu]
-
-        def draw(self, context: Context):
-            layout = self.layout
-            options = layout.operator(CopyObjectProperties.bl_idname, text="Copy To Other Selected Objects")
-            options.mode = 'OTHER_SELECTED'
-            options.paste_to_name = ''
-            options.props_to_copy = self.props
-
-            layout.separator()
-
-            layout.menu(self.sub_menu.bl_idname)
-
-    for prop_id in _ALL_COPY_PROP_IDENTIFIERS:
-        props_set = {prop_id}
-        # Lowercase name will be appended to the bl_idnames
-        lower_name = prop_id.lower()
-        # PascalCase name will be appended to the name of the attribute added to the module's globals() and the
-        # subclass' name
-        pascal_case_name = prop_id.replace('_', ' ').title().replace(" ", "")
-
-        # (sub)Menu subclass for copying properties to other settings on the same object
-        self_menu_name = f'CopyObjectPropsSelfMenu{pascal_case_name}'
-        self_menu_class_attributes = dict(
-            bl_idname='object_build_settings_copy_self_' + lower_name,
-            props=props_set,
-        )
-        self_menu_class = cast(
-            type[CopyObjectPropsSelfMenuBase],
-            type(self_menu_name, (CopyObjectPropsSelfMenuBase,), self_menu_class_attributes)
-        )
-
-        # Menu subclass for copying properties to other selected objects or showing the submenu for copying properties
-        # to other settings on the same object
-        copy_menu_name = f'CopyObjectPropsMenu{pascal_case_name}'
-        copy_menu_class_attributes = dict(
-            bl_idname='object_build_settings_copy_' + lower_name,
-            props=props_set,
-            sub_menu=self_menu_class
-        )
-        copy_menu_class = cast(
-            type[CopyObjectPropsMenuBase],
-            type(copy_menu_name, (CopyObjectPropsMenuBase,), copy_menu_class_attributes)
-        )
-
-        # Add classes to module globals so that they will be picked up for registration
-        g = globals()
-        g[self_menu_name] = self_menu_class
-        g[copy_menu_name] = copy_menu_class
-        # While we only need the .bl_idname of the class, the lookup has to have class values because registration
-        # modifies the .bl_idname of registered classes to include prefixes
-        lookup[prop_id] = copy_menu_class
-
-    return lookup
-
-
-_COPY_MENU_LOOKUP: dict[str, type[Menu]] = _generate_menu_classes()
 
 
 class ObjectBuildSettingsUIList(UIList):
@@ -394,7 +469,7 @@ class ObjectPanel(Panel):
 
     @staticmethod
     def draw_expandable_header(properties_col: UILayout, ui_toggle_data: PropertyGroup, ui_toggle_prop: str,
-                               enabled: bool, copy_type: Union[tuple[str, ...], str], **header_args):
+                               enabled: bool, copy_type: CopyPropsItem, **header_args):
         """Draw an expandable header
         :return: a box UILayout when expanded, otherwise None"""
         header_row = properties_col.row(align=True)
@@ -423,11 +498,10 @@ class ObjectPanel(Panel):
         header_row.prop(ui_toggle_data, ui_toggle_prop, text=" ", toggle=1, emboss=False)
 
         # Draw menu button for copying properties to other groups or other selected objects
-        menu = _COPY_MENU_LOOKUP.get(copy_type)
-        if menu:
+        if copy_type:
             # Sub row without align so that the button appears disconnected from the third element
             menu_row = header_row.row(align=False)
-            menu_row.menu(menu.bl_idname, text="", icon="PASTEDOWN")
+            menu_row.menu(copy_type.copy_menu.bl_idname, text="", icon="PASTEDOWN")
 
         if is_expanded:
             # Create a box that the properties will be drawn in
@@ -642,9 +716,9 @@ class ObjectPanel(Panel):
 
         copy_menu = None
         if obj.type == 'MESH':
-            copy_menu = _COPY_MENU_LOOKUP.get(_ALL_MESH)
+            copy_menu = _ALL_MESH.copy_menu
         elif obj.type == 'ARMATURE':
-            copy_menu = _COPY_MENU_LOOKUP.get(_ALL_ARMATURE)
+            copy_menu = _ALL_ARMATURE.copy_menu
 
         is_synced = group.sync_active_with_scene
         if is_synced:
@@ -852,5 +926,38 @@ class ObjectBuildSettingsSync(ObjectBuildSettingsBase, Operator):
                 return {'FINISHED'}
         return {'CANCELLED'}
 
+
+# Using a function to avoid having to del the variables used, since, if the contents of the function were run directly
+# when loading the module, self_menu would remain in globals() if not specifically deleted and
+# register_module_classes_factory would then find self_menu as a class to register.
+def _add_copy_prop_menus_to_module():
+    g = globals()
+    used_names = set()
+    # Add CopyProp Menu classes to globals() so that register_module_classes_factory picks them up
+    for copy_prop in _all_copy_props:
+        self_menu = copy_prop.self_menu
+        self_menu_name = self_menu.__name__
+
+        if self_menu_name in used_names:
+            raise RuntimeError(f"{self_menu_name} is already in use by another class, this is a bug")
+
+        used_names.add(self_menu_name)
+
+        copy_menu = copy_prop.copy_menu
+        copy_menu_name = copy_menu.__name__
+
+        if copy_menu_name in used_names:
+            raise RuntimeError(f"{copy_menu_name} is already in use by another class, this is a bug")
+
+        used_names.add(copy_menu_name)
+
+        # Add to globals
+        g[self_menu_name] = self_menu
+        g[copy_menu_name] = copy_menu
+
+
+_add_copy_prop_menus_to_module()
+# And tidy up by deleting the function
+del _add_copy_prop_menus_to_module
 
 register, unregister = register_module_classes_factory(__name__, globals())
