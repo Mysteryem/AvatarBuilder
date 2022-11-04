@@ -117,6 +117,7 @@ class ObjectPanel(Panel):
         :return: a box UILayout when expanded, otherwise None"""
         header_row = properties_col.row(align=True)
         header_row.use_property_split = False
+        header_row.alert = not enabled
         is_expanded = getattr(ui_toggle_data, ui_toggle_prop)
         expand_icon = 'DISCLOSURE_TRI_DOWN' if is_expanded else 'DISCLOSURE_TRI_RIGHT'
         # We draw everything in the header as the toggle property so that any of it can be clicked on to expand the
@@ -149,8 +150,6 @@ class ObjectPanel(Panel):
         if is_expanded:
             # Create a box that the properties will be drawn in
             box = properties_col.box()
-            # If the settings are disabled, disable the box to make it extra visible that the settings are disabled
-            box.enabled = enabled
             # Add a small gap after the box to help separate it from the next header
             properties_col.separator()
             # Create a column within the box for the properties to go in and return it
@@ -426,6 +425,7 @@ class ObjectPanel(Panel):
                 disabled_label_col.alignment = 'RIGHT'
                 disabled_label_col.use_property_split = True
                 disabled_label_col.use_property_decorate = True
+                disabled_label_col.alert = True
                 disabled_label_col.label(text="Disabled. Won't be included in build")
             elif is_synced:
                 # Add a separator to move the first properties header away from the main header. This isn't needed when
