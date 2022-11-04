@@ -1,8 +1,8 @@
 import bpy
-from bpy.types import Context, Scene, ViewLayer, ID, ImagePreview, Key, ShapeKey
+from bpy.types import Context, Scene, ViewLayer, ID, ImagePreview, Key, ShapeKey, PropertyGroup, Bone, PoseBone
 
 from types import MethodDescriptorType
-from typing import Any, Protocol, Literal, Optional
+from typing import Any, Protocol, Literal, Optional, Union
 from contextlib import contextmanager
 from .registration import dummy_register_factory
 
@@ -144,7 +144,11 @@ class ReverseRelativeShapeKeyMap:
         return shape_set
 
 
-def get_id_prop_ensure(holder, prop_name):
+PropertyHolderType = Union[ID, PropertyGroup, Bone, PoseBone]
+"""Only ID, PropertyGroup, Bone and PoseBone types can have custom properties assigned"""
+
+
+def get_id_prop_ensure(holder: PropertyHolderType, prop_name: str):
     if prop_name in holder:
         return holder[prop_name]
     else:
@@ -153,7 +157,14 @@ def get_id_prop_ensure(holder, prop_name):
         return holder[prop_name]
 
 
-def id_property_group_copy(from_owner, to_owner, id_prop_name):
+def id_property_group_copy(from_owner: PropertyHolderType, to_owner: PropertyHolderType, id_prop_name: str):
+    """Copy a custom property (id property) from one PropertyGroup or ID type to another.
+    No checks are made that from_owner and to_owner have the same type because it is allowed for different types to have
+    the same custom property.
+    No checks are made that to_owner has the property being copied because the property may just not be initialised yet.
+    """
+    # TODO: Can we check for whether the property should exist on to_owner and that its type matches the type of the
+    #  property on from_owner, by using the rna functions/attributes?
     from_prop = get_id_prop_ensure(from_owner, id_prop_name)
     if id_prop_name in to_owner:
         # .update is about 3 times faster than direct assignment
