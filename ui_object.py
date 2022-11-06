@@ -1,7 +1,7 @@
 from typing import Union, cast, Optional
-from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator, Object, Mesh, PropertyGroup, Menu
+from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator, Object, Mesh, PropertyGroup
 
-from . import shape_key_ops, ui_material_remap, utils, ui_uv_maps
+from . import shape_key_ops, ui_material_remap, utils, ui_uv_maps, ui_vertex_group_swaps
 from .registration import register_module_classes_factory
 from .extensions import (
     ArmatureSettings,
@@ -204,6 +204,7 @@ class ObjectPanel(Panel):
                                                  COPY_MESH_VERTEX_GROUPS_SETTINGS, text="Vertex Groups",
                                                  icon='GROUP_VERTEX')
         if box:
+            ui_vertex_group_swaps.draw_vertex_group_swaps(box, settings.vertex_group_swaps)
             box.prop(settings, 'remove_non_deform_vertex_groups')
             # TODO: Remove empty vertex groups? Probably not very important, since it won't result in much
             #  extra data, assuming they even get exported at all

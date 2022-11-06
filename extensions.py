@@ -515,6 +515,19 @@ class UVSettings(PropertyGroup):
     keep_uv_map_list: PointerProperty(type=KeepUVMapList)
 
 
+class VertexGroupSwap(PropertyGroup):
+    swap_with: StringProperty()
+
+
+class VertexGroupSwapCollection(CollectionPropBase[VertexGroupSwap]):
+    data: CollectionProperty(type=VertexGroupSwap)
+    enabled: BoolProperty(
+        name="Vertex Group swaps",
+        description="On rare occasions, you may want to replace a vertex group with another. When enabled, provides a"
+                    " list where you can choose vertex groups to have their weights swapped with another vertex group."
+    )
+
+
 class VertexGroupSettings(PropertyGroup):
     # Clean up vertex groups that aren't used by the armature
     remove_non_deform_vertex_groups: BoolProperty(
@@ -522,6 +535,7 @@ class VertexGroupSettings(PropertyGroup):
         default=True,
         description="Remove vertex groups that don't have an associated deform bone"
     )
+    vertex_group_swaps: PointerProperty(type=VertexGroupSwapCollection)
 
 
 class VertexColorSettings(PropertyGroup):

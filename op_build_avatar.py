@@ -674,6 +674,45 @@ def get_deform_bone_names(obj: Object) -> set[str]:
 
 
 def build_mesh_vertex_groups(obj: Object, settings: VertexGroupSettings):
+    swaps = settings.vertex_group_swaps
+    if swaps.enabled:
+        vertex_groups = obj.vertex_groups
+        all_names = {vg.name for vg in vertex_groups}
+        # Find a temp name that isn't already in use
+        temp_name_base = 'temp'
+        temp_name = temp_name_base
+        idx = 0
+        while temp_name in all_names:
+            idx += 1
+            temp_name = f"{temp_name_base}.{idx:03d}"
+
+        for swap in swaps.data:
+            first = swap.name
+            second = swap.swap_with
+
+            if first == second:
+                # Same name, don't need to do anything
+                continue
+
+            first_vg = vertex_groups.get(first)
+            if not first_vg:
+                # self.report({'WARNING'}, f"Could not find '{first}' in the vertex groups of {obj!r}")
+                continue
+
+            second_vg = vertex_groups.get(second)
+            if not second_vg:
+                # self.report({'WARNING'}, f"Could not find '{second}' in the vertex groups of {obj!r}")
+                continue
+
+            # Currently, if a vertex group called Group already exists, attempting to rename another vertex group to
+            # Group will result in it actually being renamed to Group.001 or similar. This behaviour is unlike some
+            # other types when renamed, which will rename the already existing Group instead. Due to this inconsistent
+            # behaviour when renaming different types, we're avoiding the behaviour entirely by first changing one
+            # vertex group to a name which we've guaranteed isn't already in use.
+            first_vg.name = temp_name
+            second_vg.name = first
+            first_vg.name = second
+
     if settings.remove_non_deform_vertex_groups:
         deform_bone_names = get_deform_bone_names(obj)
         for vg in obj.vertex_groups:

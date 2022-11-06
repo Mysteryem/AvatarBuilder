@@ -1,7 +1,7 @@
 from bpy.types import Operator, Context, PropertyGroup, OperatorProperties
 from bpy.props import StringProperty, EnumProperty, BoolProperty
 from abc import abstractmethod
-from typing import Optional, Generic, TypeVar
+from typing import Optional, Generic, TypeVar, Any, NamedTuple, Union
 
 from .registration import dummy_register_factory
 from .utils import PropCollectionType
@@ -226,6 +226,80 @@ class CollectionMoveBase(ContextCollectionOperatorBase, Operator):
                 data.move(active_index, bottom_index)
                 self.set_active_index(context, bottom_index)
         return {'FINISHED'}
+
+
+B = TypeVar('B', bound=ContextCollectionOperatorBase)
+OM = TypeVar('OM', bound=Operator)
+
+
+# noinspection PyTypeChecker
+def _create_operator(name: str, base: type[B], operator_mixin: type[OM], args: dict[str, Any]) -> Union[type[B], type[OM]]:
+    """type(str, tuple[type, ...], dict[str, Any]) gives return type hint of 'type', this function just calls it with
+    two specific type arguments and gives the exact return type hint corresponding to the created type."""
+    return type(name, (base, operator_mixin), args)
+
+
+def create_control_operators(
+        base: type[B],
+        add: Optional[tuple[str, dict[str, Any]]] = None,
+        remove: Optional[tuple[str, dict[str, Any]]] = None,
+        move: Optional[tuple[str, dict[str, Any]]] = None,
+        clear: Optional[tuple[str, dict[str, Any]]] = None
+) -> tuple[Union[type[B], type[Operator]], ...]:
+    created_classes: list[Union[type[B], type[Operator]]] = []
+    if add is not None:
+        created_classes.append(_create_operator(add[0], base, CollectionAddBase, add[1]))
+    if remove is not None:
+        created_classes.append(_create_operator(remove[0], base, CollectionRemoveBase, remove[1]))
+    if move is not None:
+        created_classes.append(_create_operator(move[0], base, CollectionMoveBase, move[1]))
+    if clear is not None:
+        created_classes.append(_create_operator(clear[0], base, CollectionClearBase, clear[1]))
+
+    # Have to return tuple otherwise PyCharm type hints don't work when unpacking
+    return tuple(created_classes)
+
+
+class _SimpleArgs(NamedTuple):
+    class_suffix: str
+    doc: str
+    bl_idname_suffix: str
+
+
+_SIMPLE_ADD_ARGS = _SimpleArgs('Add', "Add a new {}", "_add")
+_SIMPLE_REMOVE_ARGS = _SimpleArgs('Remove', "Remove the active {}", "_remove")
+_SIMPLE_MOVE_ARGS = _SimpleArgs('Move', "Move the active {}", "_move")
+_SIMPLE_CLEAR_ARGS = _SimpleArgs('Clear', "Remove every {}", "_clear")
+
+
+def create_control_operators_simple(
+        base: type[B],
+        class_name_prefix: str,
+        bl_idname_prefix: str,
+        element_label: str,
+        add: bool = True,
+        remove: bool = True,
+        move: bool = True,
+        clear: bool = True,
+) -> tuple[Union[type[B], type[Operator]], ...]:
+    def create_args(simple_args: _SimpleArgs):
+        if simple_args is None:
+            return None
+        else:
+            return (
+                class_name_prefix + simple_args.class_suffix,
+                dict(
+                    __doc__=simple_args.doc.format(element_label),
+                    bl_idname=bl_idname_prefix + simple_args.bl_idname_suffix
+                )
+            )
+
+    args_inputs = (_SIMPLE_ADD_ARGS if add else None,
+                   _SIMPLE_REMOVE_ARGS if remove else None,
+                   _SIMPLE_MOVE_ARGS if move else None,
+                   _SIMPLE_CLEAR_ARGS if clear else None)
+
+    return create_control_operators(base, *map(create_args, args_inputs))
 
 
 register, unregister = dummy_register_factory()
