@@ -1,10 +1,7 @@
-from bpy.types import UIList, Context, UILayout, Object
+from bpy.types import UIList, Context, UILayout
 
 from .extensions import ObjectPropertyGroup, VertexGroupSwap, VertexGroupSwapCollection
-from .context_collection_ops import (
-    ContextCollectionOperatorBase,
-    create_control_operators_simple,
-)
+from .context_collection_ops import ContextCollectionOperatorBase
 from .utils import PropCollectionType
 from .registration import register_module_classes_factory
 
@@ -46,17 +43,12 @@ class VertexGroupSwapControlBase(ContextCollectionOperatorBase):
         VertexGroupSwapControlBase.get_vertex_group_settings(context).vertex_group_swaps.active_index = value
 
 
-VertexGroupSwapAdd, VertexGroupSwapRemove, VertexGroupSwapMove = create_control_operators_simple(
-    base=VertexGroupSwapControlBase,
+VertexGroupSwapAdd, VertexGroupSwapRemove, VertexGroupSwapMove, _ = VertexGroupSwapControlBase.create_control_operators_simple(
     class_name_prefix='VertexGroupSwap',
     bl_idname_prefix='vg_swap',
     element_label="Vertex Group Swap",
     clear=False,
 )
-
-assert VertexGroupSwapAdd.__module__ == __name__
-assert VertexGroupSwapRemove.__module__ == __name__
-assert VertexGroupSwapMove.__module__ == __name__
 
 
 def draw_vertex_group_swaps(layout: UILayout, vertex_group_swap_collection: VertexGroupSwapCollection):
