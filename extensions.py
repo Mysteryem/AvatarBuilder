@@ -415,7 +415,7 @@ class ShapeKeyOp(PropertyGroup):
 del _DELETE_, _MERGE_
 
 
-class ShapeKeyOps(CollectionPropBase[ShapeKeyOp], PropertyGroup):
+class ShapeKeyOps(CollectionPropBase[ShapeKeyOp]):
     data: CollectionProperty(type=ShapeKeyOp)
 
 
@@ -486,7 +486,7 @@ class ShapeKeySettings(PropertyGroup):
     # TODO: FloatProperty to specify how much movement is still considered nothing
 
 
-class KeepUVMapList(CollectionPropBase[PropertyGroup], PropertyGroup):
+class KeepUVMapList(CollectionPropBase[PropertyGroup]):
     # We only need the .name property, so we can use a plain PropertyGroup
     data: CollectionProperty(type=PropertyGroup)
 
@@ -558,7 +558,7 @@ class MaterialRemapElement(PropertyGroup):
     to_mat_str: StringProperty(name="Internal use", options={'HIDDEN'})
 
 
-class MaterialRemap(CollectionPropBase[MaterialRemapElement], PropertyGroup):
+class MaterialRemap(CollectionPropBase[MaterialRemapElement]):
     data: CollectionProperty(type=MaterialRemapElement)
 
 

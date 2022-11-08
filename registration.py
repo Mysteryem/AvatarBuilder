@@ -135,7 +135,7 @@ class IdPropertyGroup:
 E = TypeVar('E', bound=PropertyGroup)
 
 
-class CollectionPropBase(Generic[E]):
+class CollectionPropBase(Generic[E], PropertyGroup):
     # Unfortunately, PyCharm won't pick up the typing if we try to set
     # data: CollectionProperty(type=<type as argument>)
     # using a passed in argument, so we must provide the annotation in subclasses
