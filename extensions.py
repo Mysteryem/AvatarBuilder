@@ -7,6 +7,7 @@ from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringPrope
 from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key, Mesh, Material, WindowManager
 
 from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup, CollectionPropBase
+from . import utils
 
 # bpy_prop_collection_idprop isn't currently exposed in bpy.types, so it can't actually be imported. It's presence here
 # is purely to assist with development where it exists as a fake class.
@@ -68,12 +69,8 @@ def update_name_ensure_unique(element_updating: PropertyGroup, collection_prop: 
 
                 # TODO: Could check if existing_element_orig_name in disallowed_names first
 
-                suffix_number = 0
-                while existing_element_new_name in disallowed_names:
-                    suffix_number += 1
-                    # my_name -> my_name.001 -> my_name.002 -> my_name.003 etc.
-                    existing_element_new_name = f"{existing_element_orig_name}.{suffix_number:03d}"
-                    # print(f"Trying new name '{existing_element_new_name}'")
+                if existing_element_new_name in disallowed_names:
+                    existing_element_new_name = utils.get_unique_name(existing_element_orig_name, disallowed_names)
 
                 # Update the name of the existing element, so it won't conflict with the new name of self and won't conflict
                 # with the names of any other elements either

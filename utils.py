@@ -1,8 +1,20 @@
 import bpy
-from bpy.types import Context, Scene, ViewLayer, ID, ImagePreview, Key, ShapeKey, PropertyGroup, Bone, PoseBone
+from bpy.types import (
+    Context,
+    Scene,
+    ViewLayer,
+    ID,
+    ImagePreview,
+    Key,
+    ShapeKey,
+    PropertyGroup,
+    Bone,
+    PoseBone,
+    bpy_prop_collection,
+)
 
 from types import MethodDescriptorType
-from typing import Any, Protocol, Literal, Optional, Union, TypeVar, Sized, Reversible, runtime_checkable
+from typing import Any, Protocol, Literal, Optional, Union, TypeVar, Sized, Reversible, runtime_checkable, Iterable
 from contextlib import contextmanager
 from .registration import dummy_register_factory
 
@@ -194,6 +206,36 @@ def enumerate_reversed(my_list: SizedAndReversible):
     Comparable in speed to `enumerate(reversed(my_list))`
     """
     return zip(reversed(range(len(my_list))), reversed(my_list))
+
+
+def get_unique_name(base_name: str, existing_names_or_collection: Union[Iterable[str], bpy_prop_collection]):
+    if isinstance(existing_names_or_collection, bpy_prop_collection):
+        # Getting the nth element from an mth element collection appears to scale linearly with n, so checking if the
+        # 500th element is in a 1000 element collection will be done in half the time of checking whether the 1000th
+        # element is in the same collection.
+        # From empirical testing and extrapolation on my hardware, checking if a name (that isn't in the collection) is
+        # in a collection of 1024 elements is about the same speed as first creating a set from the keys and checking if
+        # the name is in the set instead. Any subsequent checks against a set of any number of elements is negligible
+        # compared to a single check in a collection of 1024 elements.
+        # Generally we expect to be making 1 __contains__ check most of the time with additional checks being less and
+        # less likely.
+        # Generally even most, larger collections that have string keys, have under 200 elements (such as a Mesh's shape
+        # keys, an Object's vertex groups and bpy.data.objects)
+        if len(existing_names_or_collection) > 1024:
+            existing_names_set = set(existing_names_or_collection.keys())
+        else:
+            existing_names_set = existing_names_or_collection
+    elif isinstance(existing_names_or_collection, set):
+        existing_names_set = existing_names_or_collection
+    else:
+        existing_names_set = set(existing_names_or_collection)
+
+    unique_name = base_name
+    idx = 0
+    while unique_name in existing_names_set:
+        idx += 1
+        unique_name = f"{base_name}.{idx:03d}"
+    return unique_name
 
 
 register, unregister = dummy_register_factory()

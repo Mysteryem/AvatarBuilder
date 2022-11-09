@@ -749,14 +749,7 @@ def build_mesh_vertex_groups(obj: Object, settings: VertexGroupSettings):
     swaps = settings.vertex_group_swaps
     if swaps.enabled:
         vertex_groups = obj.vertex_groups
-        all_names = {vg.name for vg in vertex_groups}
-        # Find a temp name that isn't already in use
-        temp_name_base = 'temp'
-        temp_name = temp_name_base
-        idx = 0
-        while temp_name in all_names:
-            idx += 1
-            temp_name = f"{temp_name_base}.{idx:03d}"
+        temp_name = utils.get_unique_name('temp', vertex_groups)
 
         for swap in swaps.data:
             first = swap.name
@@ -1141,7 +1134,7 @@ def mmd_remap(scene_property_group: ScenePropertyGroup, mmd_settings: MmdShapeKe
                         # cats_names = (s.cats_translation_name for s in shape_lookup.values())
                         # avoid_names = set(filter(bool, cats_names))
                         # Only the names for shapes that are actually used
-                        avoid_names = (shape_lookup[shape_name].cats_translation_name for shape_name in orig_shape_names_to_shapes if shape_name in shape_lookup)
+                        avoid_names = {shape_lookup[shape_name].cats_translation_name for shape_name in orig_shape_names_to_shapes if shape_name in shape_lookup}
                     else:
                         # If we were to instead check against even the mmd_names that aren't used by this mesh:
                         # japanese_names = (s.mmd_name for s in shape_lookup.values())
@@ -1149,10 +1142,9 @@ def mmd_remap(scene_property_group: ScenePropertyGroup, mmd_settings: MmdShapeKe
 
                         # Very unlikely that an mmd_name will end up as a conflict unless an avatar with Japanese
                         # shape keys is set to map to the Cats translations
-                        avoid_names = (shape_lookup[shape_name].mmd_name for shape_name in orig_shape_names_to_shapes if shape_name in shape_lookup)
+                        avoid_names = {shape_lookup[shape_name].mmd_name for shape_name in orig_shape_names_to_shapes if shape_name in shape_lookup}
 
                 desired_names = {}
-                used_names = set()
                 for shape in key_blocks:
                     shape_name = shape.name
                     if shape_name in shape_lookup:
@@ -1165,16 +1157,10 @@ def mmd_remap(scene_property_group: ScenePropertyGroup, mmd_settings: MmdShapeKe
                     else:
                         # No mapping for this shape key
                         desired_name = shape_name
-                    # Check against avoid_names for names we need to avoid
-                    # Check against used_names because each shape key must have a unique name
-                    desired_name_orig = desired_name
-                    number = 1
-                    while desired_name in avoid_names or desired_name in used_names:
-                        # TODO: More control over how we prefix/suffix to avoid conflicts with shape key names we must
-                        #  avoid
-                        desired_name = f"{desired_name_orig}.{number:03d}"
-                        number += 1
-                    used_names.add(desired_name)
+                    # Get a unique version of the desired name
+                    desired_name = utils.get_unique_name(desired_name, avoid_names)
+                    # Each shape key must have a unique name, so add this shape key's desired name to the set
+                    avoid_names.add(desired_name)
                     desired_names[shape] = desired_name
 
                 for shape, desired_name in desired_names.items():
@@ -1184,14 +1170,10 @@ def mmd_remap(scene_property_group: ScenePropertyGroup, mmd_settings: MmdShapeKe
                         # being renamed.
                         # For this reason, if we want to rename a ShapeKey to the same name as a ShapeKey that already
                         # exists, the ShapeKey that already exists has to be renamed to something else first.
-                        if desired_name in key_blocks:
-                            number = 1
+                        temporary_new_name = utils.get_unique_name(desired_name, key_blocks)
+                        if temporary_new_name != desired_name:
                             # Since we guarantee beforehand that all the names will end up unique, this name won't end
                             # up used.
-                            temporary_new_name = f"{desired_name}.{number:03d}"
-                            while temporary_new_name in key_blocks:
-                                number += 1
-                                temporary_new_name = f"{desired_name}.{number:03d}"
                             key_blocks[desired_name].name = temporary_new_name
                         shape.name = desired_name
 
