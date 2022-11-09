@@ -176,24 +176,11 @@ class MmdMappingControlBase(ContextCollectionOperatorBase):
         ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings_active_index = value
 
 
-class MmdMappingAdd(MmdMappingControlBase, CollectionAddBase):
-    """Add a new shape key mapping"""
-    bl_idname = 'mmd_shape_mapping_add'
-
-
-class MmdMappingRemove(MmdMappingControlBase, CollectionRemoveBase):
-    """Remove the active shape key mapping"""
-    bl_idname = 'mmd_shape_mapping_remove'
-
-
-class MmdMappingMove(MmdMappingControlBase, CollectionMoveBase):
-    """Move the active shape key mapping"""
-    bl_idname = 'mmd_shape_mapping_move'
-
-
-class MmdMappingsClear(MmdMappingControlBase, CollectionClearBase):
-    """Delete all shape key mappings"""
-    bl_idname = 'mmd_shape_mappings_clear'
+MmdMappingAdd, MmdMappingRemove, MmdMappingMove, MmdMappingsClear = MmdMappingControlBase.create_control_operators_simple(
+    class_name_prefix='MmdMapping',
+    bl_idname_prefix='mmd_shape_mapping',
+    element_label="shape key mapping",
+)
 
 
 class MmdMappingsClearShapeNames(MmdMappingControlBase, Operator):
