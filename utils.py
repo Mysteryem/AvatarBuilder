@@ -2,7 +2,7 @@ import bpy
 from bpy.types import Context, Scene, ViewLayer, ID, ImagePreview, Key, ShapeKey, PropertyGroup, Bone, PoseBone
 
 from types import MethodDescriptorType
-from typing import Any, Protocol, Literal, Optional, Union
+from typing import Any, Protocol, Literal, Optional, Union, TypeVar, Sized, Reversible, runtime_checkable
 from contextlib import contextmanager
 from .registration import dummy_register_factory
 
@@ -177,6 +177,23 @@ def id_property_group_copy(from_owner: PropertyHolderType, to_owner: PropertyHol
     else:
         # Prop being pasted to was probably only just created or otherwise hasn't had the prop initialised yet
         to_owner[id_prop_name] = from_prop
+
+
+_T_co = TypeVar('_T_co')
+
+
+@runtime_checkable
+class SizedAndReversible(Sized, Reversible[_T_co], Protocol[_T_co]):
+    pass
+
+
+def enumerate_reversed(my_list: SizedAndReversible):
+    """like `reversed(enumerate(my_list))` if it was possible.
+    Does not create a copy of my_list like `reversed(list(enumerate(my_list)))` (faster)
+    Does not have to subtract the iterated index from the length of my_list in each iteration (faster)
+    Comparable in speed to `enumerate(reversed(my_list))`
+    """
+    return zip(reversed(range(len(my_list))), reversed(my_list))
 
 
 register, unregister = dummy_register_factory()
