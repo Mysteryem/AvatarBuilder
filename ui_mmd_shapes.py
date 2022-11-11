@@ -360,16 +360,17 @@ class ImportShapeSettings(Operator, ImportHelper):
             if self.mode == 'REPLACE':
                 mappings.clear()
             elif self.mode == 'APPEND_NEW':
-                existing_mmd_names = set(m.mmd_name for m in mappings)
+                existing_mmd_names = {m.mmd_name for m in mappings}
                 # We don't want to exclude lines that have no mapping, e.g. lines that are only comments
                 existing_mmd_names.remove("")
                 parsed_lines = (p for p in parsed_lines if p.mmd_name not in existing_mmd_names)
 
-            for shape_name, mmd_name, cats_name in parsed_lines:
+            for parsed_line in parsed_lines:
                 added = mappings.add()
-                added.model_shape = shape_name
-                added.mmd_name = mmd_name
-                added.cats_translation_name = cats_name
+                added.model_shape = parsed_line.model_shape
+                added.mmd_name = parsed_line.mmd_name
+                added.cats_translation_name = parsed_line.cats_translation
+                added.comment = parsed_line.comment
         return {'FINISHED'}
 
 
