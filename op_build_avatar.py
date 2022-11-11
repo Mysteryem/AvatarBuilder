@@ -4,6 +4,7 @@ from typing import Union, Optional, AnyStr, Callable, Literal, cast
 from collections import defaultdict
 from dataclasses import dataclass
 import itertools
+import functools
 
 import bpy
 from bpy.types import (
@@ -48,14 +49,10 @@ def merge_shapes_into_first(mesh_obj: Object, shapes_to_merge: list[tuple[ShapeK
     # We only update/remove shapes at the end, to avoid issues when some shapes are relative to other shapes being
     # merged or merged into
 
-    shape_cos_dict = {}
-
+    @functools.cache
     def get_shape_cos(shape):
-        cos = shape_cos_dict.get(shape.name)
-        if cos is None:
-            cos = np.empty(3 * len(shape.data), dtype=np.single)
-            shape.data.foreach_get('co', cos)
-            shape_cos_dict[shape.name] = cos
+        cos = np.empty(3 * len(shape.data), dtype=np.single)
+        shape.data.foreach_get('co', cos)
         return cos
 
     shape_updates = {}
