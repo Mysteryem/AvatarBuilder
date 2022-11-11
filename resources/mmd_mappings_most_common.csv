@@ -1,27 +1,27 @@
-# ======================================,,
-"# Most common: Found on Miku Append, Mirai Akari and Shishiro Botan",,
-Blink,まばたき,Blink
-Blink Happy,笑い,Blink Happy
-## The first two winks usually combine to make 'Blink Happy',,
-Wink Happy Left,ウィンク,Wink
-Wink Happy Right,ウィンク右,Wink Right
-## The second two winks usually combine to make 'Blink',,
-Wink Left,ウィンク２,Wink 2
-Wink Right,ｳｨﾝｸ２右,Wink 2 Right
-Calmness,なごみ,Calm
->.<,はぅ,Close><
-Surprised,びっくり,Surprised
-Stare,じと目,Stare
-Sharp,ｷﾘｯ,Slant
-Ah,あ,Ah
-Ch,い,Ch
-U,う,U
-E,え,E
-Oh,お,Oh
-▲,▲,
-ω,ω,
-Mouth Corner Lower,口角下げ,Mouth Horn Lower
-Pupil Shrink,瞳小,Pupil
-Eyebrows Serious,真面目,Serious
-Eyebrows Cheerful,にこり,Cheerful
-Eyebrows Angry,怒り,Anger
+,,,======================================
+,,,"- Most common: Found on Miku Append, Mirai Akari and Shishiro Botan"
+Blink,まばたき,Blink,Neutral blink
+Blink Happy,笑い,Blink Happy,Happy blink
+,,,-- The first two winks usually combine to make 'Blink Happy'
+Wink Happy Left,ウィンク,Wink,Happy left-eye wink. Combines with ウィンク右 (happy right-eye wink) to make 笑い (happy blink)
+Wink Happy Right,ウィンク右,Wink Right,Happy right-eye wink. Combines with ウィンク (happy left-eye wink) to make 笑い (happy blink)
+,,,-- The second two winks usually combine to make 'Blink'
+Wink Left,ウィンク２,Wink 2,Neutral left-eye wink. Combines with ｳｨﾝｸ２右 (neutral right-eye wink) to make まばたき (neutral blink)
+Wink Right,ｳｨﾝｸ２右,Wink 2 Right,Neutral right-eye wink. Combines with ウィンク２ (neutral left-eye wink) to make まばたき (neutral blink)
+Calmness,なごみ,Calm,"Both eyes closed as if calm, relaxed or sleeping"
+><,はぅ,Close><,"Both eyes closed making >< shapes. Has a variety of uses, confusion, wincing, xD face, xP face and more"
+Surprised,びっくり,Surprised,"Surprised eyes, often simply opened wider than normal"
+Stare,じと目,Stare,"Staring eyes. Often, the upper eyelids become straight, horizontal lines"
+Sharp,ｷﾘｯ,Slant,Slanted eyes. Often used for anger or a serious expression
+Ah,あ,Ah,aa viseme. Phonemes: A. Examples: car
+Ch,い,Ch,"CH viseme. Phonemes: tS, dZ, S. Examples: chair, join, she"
+U,う,U,U viseme. Phonemes: ou. Examples: book
+E,え,E,E viseme. Phonemes: e. Examples: bed
+Oh,お,Oh,O viseme. Phonemes: oh. Examples: toe
+▲,▲,,"Mouth open, making a triangle shape"
+ω,ω,,"Mouth closed, lips making a cat face or cursive w shape"
+Mouth Corner Lower,口角下げ,Mouth Horn Lower,"Lower the corners of the mouth, making a frown :("
+Pupil Shrink,瞳小,Pupil,"Shrink (scale down) the pupils and irises of both eyes, typically towards the middle of the pupil"
+Eyebrows Serious,真面目,Serious,Rotate/bend eyebrows to make a serious expression
+Eyebrows Cheerful,にこり,Cheerful,"Rotate/bend eyebrows to make a cheerful expression, often used with 笑い (happy blink)"
+Eyebrows Angry,怒り,Anger,"Rotate/bend eyebrows to make an angry expression, often used with ｷﾘｯ (slanted eyes)"

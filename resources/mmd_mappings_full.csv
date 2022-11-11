@@ -1,212 +1,199 @@
-# ======================================,,
-"# Most common: Found on Miku Append, Mirai Akari and Shishiro Botan",,
-Blink,まばたき,Blink
-Blink Happy,笑い,Blink Happy
-## The first two winks usually combine to make 'Blink Happy',,
-Wink Happy Left,ウィンク,Wink
-Wink Happy Right,ウィンク右,Wink Right
-## The second two winks usually combine to make 'Blink',,
-Wink Left,ウィンク２,Wink 2
-Wink Right,ｳｨﾝｸ２右,Wink 2 Right
-Calmness,なごみ,Calm
->.<,はぅ,Close><
-Surprised,びっくり,Surprised
-Stare,じと目,Stare
-Sharp,ｷﾘｯ,Slant
-Ah,あ,Ah
-Ch,い,Ch
-U,う,U
-E,え,E
-Oh,お,Oh
-▲,▲,
-ω,ω,
-Mouth Corner Lower,口角下げ,Mouth Horn Lower
-Pupil Shrink,瞳小,Pupil
-Eyebrows Serious,真面目,Serious
-Eyebrows Cheerful,にこり,Cheerful
-Eyebrows Angry,怒り,Anger
-# ======================================,,
-# Common: Found on both Miku Append and Mirai Akari,,
-O_O,はちゅ目,Hachu Eye
-## Similar to Mouth Corner Lower and sometimes called N,,
-Hmm,ん,Hmm
-∧,∧,
-Mouth Corner Widen,口横広げ,Mouth Side Widen
-Hearts In Eyes,はぁと,Heart
-Pupil Hide,恐ろしい子！,HorrorChild !
-Eyebrow Head Left,眉頭左,Eyebrow Head Left
-Eyebrow Head Right,眉頭右,Eyebrow Head Right
-# ======================================,,
-# Common: Found on both Miku Append and Shishiro Botan,,
-Lick,ぺろっ,Lick
-TehHeh Lick,てへぺろ,TehHeh Lick
-Mouth Corner Raise,口角上げ,Mouth Horn Raise
-Tears,涙,Tears
-Blush,照れ,Blush
-Eyebrows Sad,困る,Sadness
-Eyebrows Raise,上,Upper
-Eyebrows Lower,下,Lower
-Eyebrows Forward,前,Front
-# ======================================,,
-# Common: Found on both Mirai Akari and Shishiro Botan,,
-Left Mouth Corner Lower,左口角下げ,Left Mouth Horn Lower
-Left Mouth Corner Raise,左口角上げ,Left Mouth Horn Raise
-Right Mouth Corner Lower,右口角下げ,Right Mouth Horn Lower
-Right Mouth Corner Raise,右口角上げ,Right Mouth Horn Raise
-# ======================================,,
-# Miku Append only,,
-O_O Vertical Shrink,はちゅ目縦潰れ,Hachu Eye Vertical Collapse
-O_O Horizontal Shrink,はちゅ目横潰れ,Hachu Eye Side Collapse
-Ah 2,あ２,Ah 2
-□,□,
-Wa,ワ,Wa
-ω□,ω□,
-Grin,にやり,Grin
-Grin Smug,にやり２,Grin 2
-Smile,にっこり,Smile
-TehHeh Lick 2,てへぺろ２,TehHeh Lick 2
-Upper Teeth Hide,歯無し上,Teeth None Upper
-Lower Teeth Hide,歯無し下,Teeth None Lower
-## Meme(?) face with longer and pointier nose and chin like :^>,,
-Handsome,ハンサム,Higher Sard
-## Results in a less pointy chin,,
-Chin Contour,輪郭,Contour
-Stars In Eyes,星目,Star Eye
-Pupil Vertical Collapse,瞳縦潰れ,Pupil Vertical Collapse
-Highlight Lower,光下,Light Lower
-Gloom,がーん,Gloom
-Breast Shrink,みっぱい,Body Forever Ch
-Glasses,メガネ,Glasses
-# ======================================,,
-# Mirai Akari only,,
-Ah2,あ2,Ah2
-Ah3,あ3,Ah3
-Ah Angry,あ怒る,Ah GetAngry
-Ah Tsudere,あ狂った,Ah Gone Crazy
-Oh Small,お小さい,Oh Small Difference Ch
-Kiss,キッス,Kiss
-,トップリップ,Top -lip
-,ボトムリップ,Bottom Lip
-,ええ？,E E ?
-,いー！,Ch ー !
-,V,
-,ω開く,ω Open Nine
-,ワアアア!,Wa Aaaa!
-,ええ!,E E!
-,口下げ,Mouth Lower
-,口上げ,Mouth Raise
-,口すぼめる,Mouth Shrink
-,左口横広げ,Left Mouth Side Widen
-,右口横広げ,Right Mouth Side Widen
-,上歯上げ,Upper Teeth Raise
-,下歯下げ,Lower Teeth Lower
-,上歯を隠す,Upper Teeth wo Hide Vinegar
-,下歯を隠す,Lower Teeth wo Hide Vinegar
-,犬歯右,Dog Teeth Right
-,犬歯左,Dog Teeth Left
-,歯右2,Teeth Right2
-,歯左2,Teeth Left2
-,下まぶた上げ,Lower Eyelid Raise
-Anger-eye,恐ろしい,Horror Ch
-,星目1,Star Eye1
-Star Eyes 2,星目2,Star Eye2
-Eye Highlight Star,スターライト,Starlight
-Round Eyes,丸い目,Circle Ch Eye
-,ｺｯﾁﾐﾝﾅ,Kochminna
-,怒り眉,Anger Eyebrow
-,失望した,Was Disappointed
-,にこり眉,Cheerful Eyebrow
-,困った,Troubled
-,動揺,Movement Shake
-,眉上,Eyebrow Upper
-,眉下,Eyebrow Lower
-,右眉怒り,Right Eyebrow Anger
-,左眉怒り,Left Eyebrow Anger
-,はぁ？眉,Haa ? Eyebrow
-,はぁ？眉2,Haa ? Eyebrow2
-,眉毛を前方に,Eyebrow Strand wo Front Towards
-,右眉下げ,Right Eyebrow Lower
-,左眉下げ,Left Eyebrow Lower
-,右眉上げ,Right Eyebrow Raise
-,左眉上げ,Left Eyebrow Raise
-Blush1,照れ1,Blush1
-Blush2,照れ2,Blush2
-,右怒筋,Right Anger Muscle
-,左怒筋,Left Anger Muscle
-,メガネスケール,Glasses Scale
-# ======================================,,
-# Shishiro Botan only:,,
-Eyebrows Angry_2,怒り_2,Anger_2
-Eyebrows Serious_2,真面目_2,Serious_2
-Eyebrows Sad_2,困る_2,Sadness_2
-## This is a rotation of the eyebrows that results in a similar to 困る (Sad),,
-Eyebrows Huh,ハ,Higher
-Eyebrows Inwards,寄せ,Tangent
-"## For Botan, this is びっくり without shrinking the irises",,
-Surprised_2,びっくり_2,Surprised_2
-"## For Botan, this is なごみ without the highlights on the eyelashes",,
-Calm_2,なごみ_2,Calm_2
-## Same as じと目 (Stare),,
-Stare Eyes,ジト目,Jito Eye
-Eye Highlight Expand,ハイライト拡大,Highlight Expand Big
-Eye Highlight Hide,ハイライト消,Highlight Extinguishing
-Pupils Up,瞳_上,Pupil_ Upper
-Pupils Down,瞳_下,Pupil_ Lower
-Pupils Left,瞳_左,Pupil_ Left
-Pupils Right,瞳_右,Pupil_ Right
-Outer Eye Corner Raise,目尻_上げ,Eye Butt_ Raise
-Outer Eye Corner Lower,目尻_下げ,Eye Butt_ Lower
-Inner Eye Corner Lower,目頭_下げ,Eye Head_ Lower
-Inner Eye Corner Raise,目頭_上げ,Eye Head_ Raise
-Lower Eyelashes Raise,下まつ毛上げ,Lower Pine Strand Raise
-Lower Eyelashes Lower,下まつ毛下げ,Lower Pine Strand Lower
-## Irises and pupils replaced with a spiral pattern,,
-Spiral Eyes,ぐるぐる目,Round And Round Eye
-"## Pupils removed and irises replaced with a blank, soulless look",,
-Despair Eyes,絶望,Disappointment
-Hearts In Eyes,ハート目,Heart Eye
-## Same as Stars In Eyes,,
-Glittering Eyes,きらきら目,Glitter Eye
-,横潰し,Side Crush
-,縦潰し,Vertical Crush
-,丸目,Circle Eye
-,白目,White Eye
-,カメラ目線,Camera Eye Line
-,▲_2,
-,がたがた,Gag
-,むふふ,Mufufu
-,てへぺろ_上,TehHeh Lick_ Upper
-,横伸ばし,Side Extend Brush
-,にひひ,Hihi
-,にひひ_2,Hihi_2
-,ムッ,Muzu
-,ムッ_2,Muzu_2
-,叫ぶ,Call Out
-,にこり口,Cheerful Mouth
-,大笑い,Big Blink Happy
-,くいしばる,Nine Ch Be
-,結ぶ,Connection Flutter
-,青ざめ,Pale
-,ムカッ,Mukac
-,汗,Sweat
-,歯消し,Teeth Extinguishing
-,下歯消し,Lower Teeth Extinguishing
-,耳立て,Ears Stand Up
-,耳寝,Ears Sleeping
-,イカ耳,Squid Ears
-,ぼわっ,Blurring
-# ======================================,,
-# Extras from Xoriu's MMD Chart,,
-Eye Highlight Hide,ハイライト消,Highlight Extinguishing
-Eye Reflection Hide,映り込み消,Reflection Body Extinguishing
-## 笑い + 下 (Happy Blink + Eyebrows Lower),,
-Joy,喜び,Joy FacialExpression
-Wow?!,わぉ?!,Wow?!
-## なごみ + ω (Calm + ω),,
-Calm ω,なごみω,Calm ω
-Sorrow,悲しむ,Sorrow
-Hostility,敵意,Hostility
-# ======================================,,
-# From other models:,,
-## often a blush from cheek to cheek like when anime/manga characters are drunk,,
-Blush 2,照れ２,Blush 2
+,,,======================================
+,,,"- Most common: Found on Miku Append, Mirai Akari and Shishiro Botan"
+Blink,まばたき,Blink,Neutral blink
+Blink Happy,笑い,Blink Happy,Happy blink
+,,,-- The first two winks usually combine to make 'Blink Happy'
+Wink Happy Left,ウィンク,Wink,Happy left-eye wink. Combines with ウィンク右 (happy right-eye wink) to make 笑い (happy blink)
+Wink Happy Right,ウィンク右,Wink Right,Happy right-eye wink. Combines with ウィンク (happy left-eye wink) to make 笑い (happy blink)
+,,,-- The second two winks usually combine to make 'Blink'
+Wink Left,ウィンク２,Wink 2,Neutral left-eye wink. Combines with ｳｨﾝｸ２右 (neutral right-eye wink) to make まばたき (neutral blink)
+Wink Right,ｳｨﾝｸ２右,Wink 2 Right,Neutral right-eye wink. Combines with ウィンク２ (neutral left-eye wink) to make まばたき (neutral blink)
+Calmness,なごみ,Calm,"Both eyes closed as if calm, relaxed or sleeping"
+><,はぅ,Close><,"Both eyes closed making >< shapes. Has a variety of uses, confusion, wincing, xD face, xP face and more"
+Surprised,びっくり,Surprised,"Surprised eyes, often simply opened wider than normal"
+Stare,じと目,Stare,"Staring eyes. Often, the upper eyelids become straight, horizontal lines"
+Sharp,ｷﾘｯ,Slant,Slanted eyes. Often used for anger or a serious expression
+Ah,あ,Ah,aa viseme. Phonemes: A. Examples: car
+Ch,い,Ch,"CH viseme. Phonemes: tS, dZ, S. Examples: chair, join, she"
+U,う,U,U viseme. Phonemes: ou. Examples: book
+E,え,E,E viseme. Phonemes: e. Examples: bed
+Oh,お,Oh,O viseme. Phonemes: oh. Examples: toe
+▲,▲,,"Mouth open, making a triangle shape"
+ω,ω,,"Mouth closed, lips making a cat face or cursive w shape"
+Mouth Corner Lower,口角下げ,Mouth Horn Lower,"Lower the corners of the mouth, making a frown :("
+Pupil Shrink,瞳小,Pupil,"Shrink (scale down) the pupils and irises of both eyes, typically towards the middle of the pupil"
+Eyebrows Serious,真面目,Serious,Rotate/bend eyebrows to make a serious expression
+Eyebrows Cheerful,にこり,Cheerful,"Rotate/bend eyebrows to make a cheerful expression, often used with 笑い (happy blink)"
+Eyebrows Angry,怒り,Anger,"Rotate/bend eyebrows to make an angry expression, often used with ｷﾘｯ (slanted eyes)"
+,,,======================================
+,,,Common: Found on both Miku Append and Mirai Akari
+O_O,はちゅ目,Hachu Eye,"Eyes are replaced with white circles with thick, dark outlines to make a O.O or O_O face"
+Hmm,ん,Hmm,Similar to Mouth Corner Lower and sometimes called N (n is the romaji of ん)
+∧,∧,,Lips together and straightened with the left and right sides angled downwards. The angle is usually less sharp than ∧ and more like ╱╲ or ︿
+Mouth Corner Widen,口横広げ,Mouth Side Widen,
+Hearts In Eyes,はぁと,Heart,
+Pupil Hide,恐ろしい子！,HorrorChild !,"Make the iris and pupil disappear (usually by moving them backwards into the head, as opposed to shrinking them like in 瞳小), leaving only the scelera visible."
+Eyebrow Head Left,眉頭左,Eyebrow Head Left,
+Eyebrow Head Right,眉頭右,Eyebrow Head Right,
+,,,======================================
+,,,Common: Found on both Miku Append and Shishiro Botan
+Lick,ぺろっ,Lick,Tongue sticking out
+TehHeh Lick,てへぺろ,TehHeh Lick,"Tongue sticking out, playfully. Often associated with a 'teehee' giggle/laugh"
+Mouth Corner Raise,口角上げ,Mouth Horn Raise,"Raise the corners of the mouth, making a smile :)"
+Tears,涙,Tears,
+Blush,照れ,Blush,
+Eyebrows Sad,困る,Sadness,
+Eyebrows Raise,上,Upper,
+Eyebrows Lower,下,Lower,
+Eyebrows Forward,前,Front,
+,,,======================================
+,,,Common: Found on both Mirai Akari and Shishiro Botan
+Left Mouth Corner Lower,左口角下げ,Left Mouth Horn Lower,
+Left Mouth Corner Raise,左口角上げ,Left Mouth Horn Raise,
+Right Mouth Corner Lower,右口角下げ,Right Mouth Horn Lower,
+Right Mouth Corner Raise,右口角上げ,Right Mouth Horn Raise,
+,,,======================================
+,,,Miku Append only
+O_O Vertical Shrink,はちゅ目縦潰れ,Hachu Eye Vertical Collapse,
+O_O Horizontal Shrink,はちゅ目横潰れ,Hachu Eye Side Collapse,
+Ah 2,あ２,Ah 2,
+□,□,,
+Wa,ワ,Wa,
+ω□,ω□,,
+Grin,にやり,Grin,
+Grin Smug,にやり２,Grin 2,
+Smile,にっこり,Smile,
+TehHeh Lick 2,てへぺろ２,TehHeh Lick 2,
+Upper Teeth Hide,歯無し上,Teeth None Upper,
+Lower Teeth Hide,歯無し下,Teeth None Lower,
+Handsome,ハンサム,Higher Sard,Meme(?) face with longer and pointier nose and chin like :^>
+Chin Contour,輪郭,Contour,Results in a less pointy chin
+Stars In Eyes,星目,Star Eye,
+Pupil Vertical Collapse,瞳縦潰れ,Pupil Vertical Collapse,
+Highlight Lower,光下,Light Lower,
+Gloom,がーん,Gloom,
+Breast Shrink,みっぱい,Body Forever Ch,
+Glasses,メガネ,Glasses,
+,,,======================================
+,,,Mirai Akari only
+Ah2,あ2,Ah2,
+Ah3,あ3,Ah3,
+Ah Angry,あ怒る,Ah GetAngry,
+Ah Tsudere,あ狂った,Ah Gone Crazy,
+Oh Small,お小さい,Oh Small Difference Ch,
+Kiss,キッス,Kiss,
+,トップリップ,Top -lip,
+,ボトムリップ,Bottom Lip,
+,ええ？,E E ?,
+,いー！,Ch ー !,
+,V,,
+,ω開く,ω Open Nine,
+,ワアアア!,Wa Aaaa!,
+,ええ!,E E!,
+,口下げ,Mouth Lower,
+,口上げ,Mouth Raise,
+,口すぼめる,Mouth Shrink,
+,左口横広げ,Left Mouth Side Widen,
+,右口横広げ,Right Mouth Side Widen,
+,上歯上げ,Upper Teeth Raise,
+,下歯下げ,Lower Teeth Lower,
+,上歯を隠す,Upper Teeth wo Hide Vinegar,
+,下歯を隠す,Lower Teeth wo Hide Vinegar,
+,犬歯右,Dog Teeth Right,
+,犬歯左,Dog Teeth Left,
+,歯右2,Teeth Right2,
+,歯左2,Teeth Left2,
+,下まぶた上げ,Lower Eyelid Raise,
+Anger-eye,恐ろしい,Horror Ch,
+,星目1,Star Eye1,
+Star Eyes 2,星目2,Star Eye2,
+Eye Highlight Star,スターライト,Starlight,
+Round Eyes,丸い目,Circle Ch Eye,
+,ｺｯﾁﾐﾝﾅ,Kochminna,
+,怒り眉,Anger Eyebrow,
+,失望した,Was Disappointed,
+,にこり眉,Cheerful Eyebrow,
+,困った,Troubled,
+,動揺,Movement Shake,
+,眉上,Eyebrow Upper,
+,眉下,Eyebrow Lower,
+,右眉怒り,Right Eyebrow Anger,
+,左眉怒り,Left Eyebrow Anger,
+,はぁ？眉,Haa ? Eyebrow,
+,はぁ？眉2,Haa ? Eyebrow2,
+,眉毛を前方に,Eyebrow Strand wo Front Towards,
+,右眉下げ,Right Eyebrow Lower,
+,左眉下げ,Left Eyebrow Lower,
+,右眉上げ,Right Eyebrow Raise,
+,左眉上げ,Left Eyebrow Raise,
+Blush1,照れ1,Blush1,
+Blush2,照れ2,Blush2,
+,右怒筋,Right Anger Muscle,
+,左怒筋,Left Anger Muscle,
+,メガネスケール,Glasses Scale,
+,,,======================================
+,,,Shishiro Botan only:
+Eyebrows Angry_2,怒り_2,Anger_2,
+Eyebrows Serious_2,真面目_2,Serious_2,
+Eyebrows Sad_2,困る_2,Sadness_2,
+Eyebrows Huh,ハ,Higher,This is a rotation of the eyebrows that results in a similar to 困る (Sad)
+Eyebrows Inwards,寄せ,Tangent,
+Surprised_2,びっくり_2,Surprised_2,"For Botan, this is びっくり without shrinking the irises"
+Calm_2,なごみ_2,Calm_2,"For Botan, this is なごみ without the highlights on the eyelashes"
+Stare Eyes,ジト目,Jito Eye,Same as じと目 (Stare)
+Eye Highlight Expand,ハイライト拡大,Highlight Expand Big,
+Eye Highlight Hide,ハイライト消,Highlight Extinguishing,
+Pupils Up,瞳_上,Pupil_ Upper,
+Pupils Down,瞳_下,Pupil_ Lower,
+Pupils Left,瞳_左,Pupil_ Left,
+Pupils Right,瞳_右,Pupil_ Right,
+Outer Eye Corner Raise,目尻_上げ,Eye Butt_ Raise,
+Outer Eye Corner Lower,目尻_下げ,Eye Butt_ Lower,
+Inner Eye Corner Lower,目頭_下げ,Eye Head_ Lower,
+Inner Eye Corner Raise,目頭_上げ,Eye Head_ Raise,
+Lower Eyelashes Raise,下まつ毛上げ,Lower Pine Strand Raise,
+Lower Eyelashes Lower,下まつ毛下げ,Lower Pine Strand Lower,
+Spiral Eyes,ぐるぐる目,Round And Round Eye,Irises and pupils replaced with a spiral pattern
+Despair Eyes,絶望,Disappointment,"Pupils removed and irises replaced with a blank, soulless look"
+Hearts In Eyes,ハート目,Heart Eye,
+Glittering Eyes,きらきら目,Glitter Eye,Same as Stars In Eyes
+,横潰し,Side Crush,
+,縦潰し,Vertical Crush,
+,丸目,Circle Eye,
+,白目,White Eye,
+,カメラ目線,Camera Eye Line,
+,▲_2,,
+,がたがた,Gag,
+,むふふ,Mufufu,
+,てへぺろ_上,TehHeh Lick_ Upper,
+,横伸ばし,Side Extend Brush,
+,にひひ,Hihi,
+,にひひ_2,Hihi_2,
+,ムッ,Muzu,
+,ムッ_2,Muzu_2,
+,叫ぶ,Call Out,
+,にこり口,Cheerful Mouth,
+,大笑い,Big Blink Happy,
+,くいしばる,Nine Ch Be,
+,結ぶ,Connection Flutter,
+,青ざめ,Pale,
+,ムカッ,Mukac,
+,汗,Sweat,
+,歯消し,Teeth Extinguishing,
+,下歯消し,Lower Teeth Extinguishing,
+,耳立て,Ears Stand Up,
+,耳寝,Ears Sleeping,
+,イカ耳,Squid Ears,
+,ぼわっ,Blurring,
+,,,======================================
+,,,Extras from Xoriu's MMD Chart
+Eye Highlight Hide,ハイライト消,Highlight Extinguishing,
+Eye Reflection Hide,映り込み消,Reflection Body Extinguishing,
+Joy,喜び,Joy FacialExpression,笑い (Happy Blink) + 下 (Eyebrows Lower)
+Wow?!,わぉ?!,Wow?!,
+Calm ω,なごみω,Calm ω,なごみ (Calm) + ω
+Sorrow,悲しむ,Sorrow,
+Hostility,敵意,Hostility,
+,,,======================================
+,,,From other models:
+Blush 2,照れ２,Blush 2,often a blush from cheek to cheek like when anime/manga characters are drunk
