@@ -11,6 +11,9 @@ from bpy.types import (
     Bone,
     PoseBone,
     bpy_prop_collection,
+    Object,
+    ArmatureModifier,
+    Armature,
 )
 
 from types import MethodDescriptorType
@@ -263,6 +266,19 @@ def get_unique_name(base_name: str, existing_names_or_collection: Union[Iterable
         idx += 1
         unique_name = f"{base_with_separator}{idx:{number_format}}"
     return unique_name
+
+
+def get_deform_bone_names(obj: Object) -> set[str]:
+    """Get a set of the names of all deform bones for a particular Object"""
+    deform_bone_names: set[str] = set()
+    for mod in obj.modifiers:
+        if isinstance(mod, ArmatureModifier) and mod.use_vertex_groups:
+            if mod.object and isinstance(mod.object.data, Armature):
+                armature = mod.object.data
+                for bone in armature.bones:
+                    if bone.use_deform:
+                        deform_bone_names.add(bone.name)
+    return deform_bone_names
 
 
 register, unregister = dummy_register_factory()

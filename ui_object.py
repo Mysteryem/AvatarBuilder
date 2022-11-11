@@ -19,7 +19,7 @@ from .extensions import (
     WmArmatureToggles,
     WmMeshToggles,
 )
-from .integration import check_gret_shape_key_apply_modifiers
+from .integration_gret import check_gret_shape_key_apply_modifiers
 from .context_collection_ops import (
     CollectionAddBase,
     CollectionDuplicateBase,

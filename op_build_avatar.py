@@ -40,7 +40,7 @@ from .extensions import (
     VertexGroupSettings,
     MmdShapeKeySettings,
 )
-from .integration import check_gret_shape_key_apply_modifiers
+from .integration_gret import run_gret_shape_key_apply_modifiers
 from .registration import register_module_classes_factory
 from . import utils
 
@@ -126,131 +126,6 @@ def remove_all_uv_layers_except(me: Mesh, *uv_layers: Union[str, MeshUVLoopLayer
         indices_to_remove = (i for i in indices_to_remove if i not in uv_layer_idx_to_keep)
     for i in indices_to_remove:
         mesh_uv_layers.remove(mesh_uv_layers[i])
-
-
-# All modifier types that are eModifierTypeType_NonGeometrical
-# Only these can be applied to meshes with shape keys
-# We should also be able to easily apply any modifiers which are BKE_modifier_is_same_topology too
-# Modifiers that are geometrical, but same topology are the ones that can be applied as shape keys
-_modifiers_eModifierTypeType_NonGeometrical = {
-    'DATA_TRANSFER',
-    'UV_PROJECT',
-    'UV_WARP',
-    'VOLUME_DISPLACE',  # Isn't available for meshes
-    'VERTEX_WEIGHT_EDIT',
-    'VERTEX_WEIGHT_MIX',
-    'VERTEX_WEIGHT_PROXIMITY',
-}
-
-
-def run_gret_shape_key_apply_modifiers(obj: Object, modifier_names_to_apply: set[str]):
-    gret_check = check_gret_shape_key_apply_modifiers()
-    if gret_check:
-        # noinspection PyUnresolvedReferences
-        gret_op = bpy.ops.gret.shape_key_apply_modifiers
-        context_override = {'object': obj}
-        if gret_check == 'keep_modifiers':
-            # Older version, applies all non-disabled modifiers and modifiers not in our list
-            # Temporarily disable all other modifiers, run the operator and then restore the modifiers that were
-            # temporarily disabled
-            mods_to_enable = []
-            try:
-                for mod in obj.modifiers:
-                    if mod.name in modifier_names_to_apply:
-                        # Normally we're only applying enabled modifiers, but this should make the code more robust
-                        mod.show_viewport = True
-                    elif mod.show_viewport:
-                        # Record that this modifier needs to be re-enabled
-                        mods_to_enable.append(mod.name)
-                        # Disable the modifier so that it doesn't get applied
-                        mod.show_viewport = False
-                # Apply all non-disabled modifiers
-                return utils.op_override(gret_op, context_override)
-            finally:
-                # Restore modifiers that were temporarily disabled
-                modifiers = obj.modifiers
-                # The operator isn't our code, so don't assume that all the modifiers we expect to still exist actually
-                # do
-                expected_modifier_not_found = []
-                for mod_name in mods_to_enable:
-                    mod = modifiers.get(mod_name)
-                    if mod:
-                        mod.show_viewport = True
-                    else:
-                        expected_modifier_not_found.append(mod_name)
-        elif gret_check == 'modifier_mask':
-            # Newer version, only supports up to 32 modifiers (Blender limitation for BoolVectorProperty), uses a mask
-            # to decide which modifiers to apply
-            max_modifiers_per_call = 32
-            full_mask = []
-
-            # Create the mask and find the index of the last modifier that needs to be applied
-            last_apply_index = -1
-            for i, mod in enumerate(obj.modifiers):
-                if mod.name in modifier_names_to_apply:
-                    full_mask.append(True)
-                    last_apply_index = i
-                else:
-                    full_mask.append(False)
-
-            if last_apply_index == -1:
-                # There are no modifiers to apply, so there is nothing to do
-                return {'FINISHED'}
-            elif last_apply_index < max_modifiers_per_call:
-                # The last modifier that needs to be applied is within the first 32 modifiers, we can simply call the
-                # operator once with a mask up to the last modifier that needs to be applied
-                mask_up_to_and_including_last = full_mask[:last_apply_index+1]
-                return utils.op_override(gret_op, context_override, modifier_mask=mask_up_to_and_including_last)
-            else:
-                # The last modifier to apply is after the first 32 modifiers, so we need to apply the operator multiple
-                # times until all the modifiers, that we want to apply, have been applied.
-                # First check if we can apply all the modifiers when we have the limitation of only being able to apply
-                # modifiers within the first 32 modifiers at a time. If there are 32 or more modifiers that won't be
-                # applied, that are before the last modifier that will be applied, we cannot apply all the modifiers.
-                num_no_apply_before_last_apply = sum(1 for do_apply in full_mask[:last_apply_index] if not do_apply)
-
-                if num_no_apply_before_last_apply >= max_modifiers_per_call:
-                    raise RuntimeError(f"Only the first {max_modifiers_per_call} modifiers can be applied per call to"
-                                       f" gret, but there are {num_no_apply_before_last_apply} modifiers that aren't"
-                                       f" being applied before the last modifier which is being applied. This makes it"
-                                       f" impossible to apply all the modifiers in {modifier_names_to_apply} on"
-                                       f" {obj!r}")
-
-                # Apply all the modifiers
-                last_modifiers_length = len(obj.modifiers)
-                while True:
-                    mask_this_call = full_mask[:max_modifiers_per_call]
-                    if any(mask_this_call):
-                        utils.op_override(gret_op, context_override, modifier_mask=mask_this_call)
-
-                        # Remove the indices for all modifiers we've applied, in reverse so that the indices of the
-                        # other elements we're going to pop don't change when we pop an index
-                        # _todo: The amount of leading do_apply == False will only increase as we go through all the
-                        #  masks, we could keep track of this and use it to reduce how far we need to iterate through
-                        #  mask_this_call
-                        count_to_apply = 0
-                        for i, do_apply in utils.enumerate_reversed(mask_this_call):
-                            if do_apply:
-                                full_mask.pop(i)
-                                count_to_apply += 1
-
-                        # Safety check. Ensure that the number of modifiers has decreased by the expected amount (we don't trust
-                        # the gret operator to raise exceptions when applying a modifier fails). Note that we specifically don't
-                        # keep a reference to obj.modifiers in-case applying some modifiers internally re-creates it.
-                        new_modifiers_length = len(obj.modifiers)
-                        expected_number_of_modifiers = last_modifiers_length - count_to_apply
-                        if new_modifiers_length != expected_number_of_modifiers:
-                            raise RuntimeError(f"{new_modifiers_length - expected_number_of_modifiers} modifiers failed to"
-                                               f" apply on {obj!r}")
-                        else:
-                            last_modifiers_length = new_modifiers_length
-                    else:
-                        # We've already checked if it's possible to apply all the modifiers we want to apply, so if we get a
-                        # mask with no modifiers to apply, we're done because all that's left are the modifiers we're not
-                        # applying
-                        return {'FINISHED'}
-    else:
-        raise RuntimeError("Gret addon not found or version incompatible")
 
 
 def smart_delete_shape_keys(obj: Object, shape_keys: Key, to_delete: set[ShapeKey]):
@@ -658,6 +533,21 @@ def build_mesh_uvs(me: Mesh, settings: UVSettings):
         #     self.report({'WARNING'}, warning)
 
 
+# All modifier types that are eModifierTypeType_NonGeometrical
+# Only these can be applied to meshes with shape keys
+# We should also be able to easily apply any modifiers which are BKE_modifier_is_same_topology too
+# Modifiers that are geometrical, but same topology are the ones that can be applied as shape keys
+_modifiers_eModifierTypeType_NonGeometrical = {
+    'DATA_TRANSFER',
+    'UV_PROJECT',
+    'UV_WARP',
+    'VOLUME_DISPLACE',  # Isn't available for meshes
+    'VERTEX_WEIGHT_EDIT',
+    'VERTEX_WEIGHT_MIX',
+    'VERTEX_WEIGHT_PROXIMITY',
+}
+
+
 def build_mesh_modifiers(original_scene: Scene, obj: Object, me: Mesh, settings: ModifierSettings):
     # Optionally remove disabled modifiers
     if settings.remove_disabled_modifiers:
@@ -729,20 +619,6 @@ def build_mesh_modifiers(original_scene: Scene, obj: Object, me: Mesh, settings:
             original_scene.collection.objects.unlink(obj)
 
 
-def get_deform_bone_names(obj: Object) -> set[str]:
-    # TODO: Not sure how FBX and unity handle multiple armatures, should we only check the first armature modifier when
-    #  exporting as FBX or exporting for Unity?
-    deform_bone_names: set[str] = set()
-    for mod in obj.modifiers:
-        if isinstance(mod, ArmatureModifier) and mod.use_vertex_groups:
-            if mod.object and isinstance(mod.object.data, Armature):
-                armature = mod.object.data
-                for bone in armature.bones:
-                    if bone.use_deform:
-                        deform_bone_names.add(bone.name)
-    return deform_bone_names
-
-
 def build_mesh_vertex_groups(obj: Object, settings: VertexGroupSettings):
     swaps = settings.vertex_group_swaps
     if swaps.enabled:
@@ -777,7 +653,9 @@ def build_mesh_vertex_groups(obj: Object, settings: VertexGroupSettings):
             first_vg.name = second
 
     if settings.remove_non_deform_vertex_groups:
-        deform_bone_names = get_deform_bone_names(obj)
+        # TODO: Not sure how FBX and unity handle multiple armatures, should we only check the first armature modifier
+        #  when exporting as FBX or exporting for Unity?
+        deform_bone_names = utils.get_deform_bone_names(obj)
         for vg in obj.vertex_groups:
             if vg.name not in deform_bone_names:
                 obj.vertex_groups.remove(vg)
