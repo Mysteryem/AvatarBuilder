@@ -1,5 +1,5 @@
 from typing import Union, cast, Optional
-from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator, Object, Mesh, PropertyGroup
+from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator, Object, Mesh, PropertyGroup, Menu
 
 from . import shape_key_ops, ui_material_remap, utils, ui_uv_maps, ui_vertex_group_swaps
 from .registration import register_module_classes_factory
@@ -22,6 +22,7 @@ from .extensions import (
 from .integration import check_gret_shape_key_apply_modifiers
 from .context_collection_ops import (
     CollectionAddBase,
+    CollectionDuplicateBase,
     CollectionMoveBase,
     CollectionRemoveBase,
     ContextCollectionOperatorBase,
@@ -495,35 +496,26 @@ class ObjectBuildSettingsBase(ContextCollectionOperatorBase):
             object_group.object_settings_active_index = value
 
 
-class ObjectBuildSettingsAdd(ObjectBuildSettingsBase, CollectionAddBase):
+class ObjectBuildSettingsAdd(ObjectBuildSettingsBase, CollectionAddBase[ObjectBuildSettings]):
     """Add a new set of build settings, defaults to the active build settings if they don't exist on this Object"""
     bl_idname = 'object_build_settings_add'
 
     @staticmethod
-    def set_new_item_name_static(data: PropCollectionType, added: PropertyGroup, name=None):
+    def set_new_item_name_static(data: PropCollectionType, added: ObjectBuildSettings, name=None):
         if name:
             added.name_prop = name
         # Auto name
         else:
             # Rename if not unique and ensure that the internal name is also set
-            added_name = added.name_prop
-            orig_name = added_name
-            unique_number = 0
-            # Its internal name of the newly added build_settings will currently be "" since it hasn't been set
-            # We could do `while added_name in build_settings:` but I'm guessing Blender has to iterate through each
-            # element until `added_name` is found since duplicate names are allowed. Checking against a set should be
-            # faster if there are lots
-            existing_names = {bs.name for bs in data}
-            while added_name in existing_names:
-                unique_number += 1
-                added_name = orig_name + " " + str(unique_number)
+            orig_name = added.name_prop
+            added_name = utils.get_unique_name(orig_name, data, number_separator=' ')
             if added_name != orig_name:
                 # Assigning the prop will also update the internal name
                 added.name_prop = added_name
             else:
                 added.name = added_name
 
-    def set_new_item_name(self, data: PropCollectionType, added: PropertyGroup):
+    def set_new_item_name(self, data: PropCollectionType, added: ObjectBuildSettings):
         self.set_new_item_name_static(data, added, self.name)
 
     def execute(self, context: Context) -> set[str]:
@@ -540,6 +532,36 @@ class ObjectBuildSettingsAdd(ObjectBuildSettingsBase, CollectionAddBase):
                 # There is no currently active Scene settings
                 return {'CANCELLED'}
         return super().execute(context)
+
+
+class ObjectBuildSettingsDuplicate(ObjectBuildSettingsBase, CollectionDuplicateBase[ObjectBuildSettings]):
+    """Duplicate the active set of build settings"""
+    bl_idname = 'object_build_settings_duplicate'
+
+    def set_new_item_name(self, data: PropCollectionType, added: ObjectBuildSettings):
+        desired_name = self.name
+        if desired_name:
+            # Since we're duplicating some existing settings, it's probably best that we don't force the name of the
+            # duplicated settings to the desired name and instead pick a unique name using the desired name as the base
+            duplicate_name = utils.get_unique_name(desired_name, data)
+        else:
+            source = data[self.index_being_duplicated]
+            source_name = source.name
+
+            # Get the first unique name using source_name as the base name
+            duplicate_name = utils.get_unique_name(source_name, data)
+
+        # Set the name for the duplicated element (we've guaranteed that it's unique, so no need to propagate to other
+        # settings to ensure uniqueness)
+        added.set_name_no_propagate(duplicate_name)
+
+    @staticmethod
+    def draw_in_menu(self: Menu, context: Context):
+        # Only add to the menu when sync is disabled
+        if not ObjectPropertyGroup.get_group(context.object).sync_active_with_scene:
+            layout = self.layout
+            layout.separator()
+            layout.operator(ObjectBuildSettingsDuplicate.bl_idname)
 
 
 class ObjectBuildSettingsRemove(ObjectBuildSettingsBase, CollectionRemoveBase):
@@ -572,4 +594,24 @@ class ObjectBuildSettingsSync(ObjectBuildSettingsBase, Operator):
         return {'CANCELLED'}
 
 
-register, unregister = register_module_classes_factory(__name__, globals())
+def _register_menus():
+    COPY_ALL_MESH_SETTINGS.copy_menu.append(ObjectBuildSettingsDuplicate.draw_in_menu)
+    COPY_ALL_ARMATURE_SETTINGS.copy_menu.append(ObjectBuildSettingsDuplicate.draw_in_menu)
+
+
+def _unregister_menus():
+    COPY_ALL_ARMATURE_SETTINGS.copy_menu.remove(ObjectBuildSettingsDuplicate.draw_in_menu)
+    COPY_ALL_MESH_SETTINGS.copy_menu.remove(ObjectBuildSettingsDuplicate.draw_in_menu)
+
+
+_register_classes, _unregister_classes = register_module_classes_factory(__name__, globals())
+
+
+def register():
+    _register_classes()
+    _register_menus()
+
+
+def unregister():
+    _unregister_menus()
+    _unregister_classes()

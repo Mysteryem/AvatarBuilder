@@ -16,6 +16,7 @@ from bpy.types import (
 from types import MethodDescriptorType
 from typing import Any, Protocol, Literal, Optional, Union, TypeVar, Sized, Reversible, runtime_checkable, Iterable
 from contextlib import contextmanager
+import re
 from .registration import dummy_register_factory
 
 
@@ -160,35 +161,47 @@ PropertyHolderType = Union[ID, PropertyGroup, Bone, PoseBone]
 """Only ID, PropertyGroup, Bone and PoseBone types can have custom properties assigned"""
 
 
-def get_id_prop_ensure(holder: PropertyHolderType, prop_name: str):
-    if prop_name in holder:
-        return holder[prop_name]
-    else:
-        # TODO: maybe calling .items() or .keys() or .values() would work to ensure all props on holder are created?
-        getattr(holder, prop_name)
-        return holder[prop_name]
+def property_group_copy(from_group: PropertyHolderType, to_group: PropertyHolderType):
+    """Copy all properties from from_group to to_group. This is a direct copy, update functions will not be called."""
+    if type(from_group) != type(to_group):
+        # To support cases where one type extends another, or even completely separate types, we would first have to
+        # find all properties from the bl_rna of each type, taking care to avoid the 'rna_type' property and possibly
+        # any properties which use their own getters and setters
+        raise TypeError("Both groups must be the same type")
+    # .items() and .keys() won't return properties that are set to their default value and have never been modified
+    non_default_keys = set()
+    # We get the existing keys of to_group before copying because we may be about to add some extra keys when copying.
+    # This is a minor optimisation so that we have to iterate less.
+    to_group_existing_keys = to_group.keys()
+    for k, v in from_group.items():
+        non_default_keys.add(k)
+        to_group[k] = v
+    for k in to_group_existing_keys:
+        if k not in non_default_keys:
+            # Delete the property, effectively restoring it to its default value when read
+            del to_group[k]
 
 
+# TODO: Rename to signify that this is really just the same as property_group_copy, but limited to a single property
 def id_property_group_copy(from_owner: PropertyHolderType, to_owner: PropertyHolderType, id_prop_name: str):
-    """Copy a custom property (id property) from one PropertyGroup or ID type to another.
+    """Copy a single custom property (id property) from one PropertyGroup or ID type to another.
     No checks are made that from_owner and to_owner have the same type because it is allowed for different types to have
     the same custom property.
-    No checks are made that to_owner has the property being copied because the property may just not be initialised yet.
+    No checks are made that to_owner has the property being copied because the property may not be set if it hasn't
+    been changed since creation (i.e., the property not existing indicates that the default value should be used).
     """
     # TODO: Can we check for whether the property should exist on to_owner and that its type matches the type of the
     #  property on from_owner, by using the rna functions/attributes?
-    from_prop = get_id_prop_ensure(from_owner, id_prop_name)
-    if id_prop_name in to_owner:
-        # .update is about 3 times faster than direct assignment
-        #   to_owner[id_prop_name] = from_prop
-        # or per-item assignment:
-        #   to_prop = getattr(to_owner, id_prop_name)
-        #   for k, v in getattr(from_owner, id_prop_name).items:
-        #       to_prop[k] = v
-        to_owner[id_prop_name].update(from_prop)
+    if id_prop_name in from_owner:
+        # The property exists in from_owner, so copy it to to_owner
+        to_owner[id_prop_name] = from_owner[id_prop_name]
+    elif id_prop_name in to_owner:
+        # The property doesn't exist in from_owner, but does in to_owner, so delete it from to_owner
+        del to_owner[id_prop_name]
     else:
-        # Prop being pasted to was probably only just created or otherwise hasn't had the prop initialised yet
-        to_owner[id_prop_name] = from_prop
+        # Neither property holder has the property in question. For each, either the property doesn't exist or the
+        # default value is being used.
+        pass
 
 
 _T_co = TypeVar('_T_co')
@@ -208,7 +221,15 @@ def enumerate_reversed(my_list: SizedAndReversible):
     return zip(reversed(range(len(my_list))), reversed(my_list))
 
 
-def get_unique_name(base_name: str, existing_names_or_collection: Union[Iterable[str], bpy_prop_collection]):
+def get_unique_name(base_name: str, existing_names_or_collection: Union[Iterable[str], bpy_prop_collection],
+                    strip_end_numbers: bool = True,
+                    number_separator: str = '.',
+                    ) -> str:
+    if strip_end_numbers:
+        match = re.fullmatch(r'(.*)' + re.escape(number_separator) + r'\.\d+', base_name)
+        if match:
+            # group(0) is the full match, group(1) is the first capture group
+            base_name = match.group(1)
     if isinstance(existing_names_or_collection, bpy_prop_collection):
         # Getting the nth element from an mth element collection appears to scale linearly with n, so checking if the
         # 500th element is in a 1000 element collection will be done in half the time of checking whether the 1000th
@@ -231,10 +252,11 @@ def get_unique_name(base_name: str, existing_names_or_collection: Union[Iterable
         existing_names_set = set(existing_names_or_collection)
 
     unique_name = base_name
+    base_with_separator = base_name + number_separator
     idx = 0
     while unique_name in existing_names_set:
         idx += 1
-        unique_name = f"{base_name}.{idx:03d}"
+        unique_name = f"{base_with_separator}{idx:03d}"
     return unique_name
 
 

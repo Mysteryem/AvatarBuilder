@@ -1,10 +1,11 @@
 from bpy.types import Operator, Context, PropertyGroup, OperatorProperties
-from bpy.props import StringProperty, EnumProperty, BoolProperty
+from bpy.props import StringProperty, EnumProperty, BoolProperty, IntProperty
 from abc import abstractmethod
 from typing import Optional, Generic, TypeVar, Any, NamedTuple, Union
 
 from .registration import dummy_register_factory
 from .utils import PropCollectionType
+from . import utils
 
 
 """
@@ -219,6 +220,35 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
         if self.set_as_active:
             self.set_active_index(context, new_item_index)
         return {'FINISHED'}
+
+
+# TODO: Add Duplicate to ContextCollectionOperatorBase's control Operator creation methods
+# noinspection PyAbstractClass
+class CollectionDuplicateBase(CollectionAddBase[E]):
+    """Duplicate the active item of the collection"""
+    bl_label = "Duplicate"
+
+    index_being_duplicated: IntProperty(options={'HIDDEN'})
+
+    @classmethod
+    def poll(cls, context: Context) -> bool:
+        # Can't duplicate if there isn't an active item to duplicate
+        return cls.active_index_in_bounds(context)
+
+    def modify_newly_created(self, data: PropCollectionType, added: E):
+        source = data[self.index_being_duplicated]
+
+        # Copy every property from source to added
+        utils.property_group_copy(source, added)
+
+        # Set new element name and anything else
+        super().modify_newly_created(data, added)
+
+    def execute(self, context: Context) -> set[str]:
+        # We guarantee that the index exists via the poll method
+        self.index_being_duplicated = self.get_active_index(context)
+        # Create the new element, run modify_newly_created and then set as active (if set_as_active is True)
+        return super().execute(context)
 
 
 # noinspection PyAbstractClass

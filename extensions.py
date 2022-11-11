@@ -722,6 +722,9 @@ class ObjectBuildSettings(PropertyGroup):
     armature_settings: PointerProperty(type=ArmatureSettings)
     mesh_settings: PointerProperty(type=MeshSettings)
 
+    def set_name_no_propagate(self, new_name: str):
+        change_name_no_propagate(self, 'name_prop', new_name)
+
 
 class MmdShapeMapping(PropertyGroup):
     def update_name(self, context):
