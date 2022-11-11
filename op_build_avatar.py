@@ -722,7 +722,8 @@ def build_mesh_modifiers(original_scene: Scene, obj: Object, me: Mesh, settings:
             else:
                 for mod_name, _ in mod_name_and_applicable_with_shapes:
                     print(f"Applying modifier {mod_name} to {repr(obj)}")
-                    if 'FINISHED' not in bpy.ops.object.modifier_apply(context_override, modifier=mod_name):
+                    op_result = utils.op_override(bpy.ops.object.modifier_apply, context_override, modifier=mod_name)
+                    if 'FINISHED' not in op_result:
                         raise RuntimeError(f"bpy.ops.object.modifier_apply failed for {mod_name} on {repr(obj)}")
         finally:
             obj.show_only_shape_key = orig_show_only_shape_key
@@ -886,10 +887,11 @@ def build_mesh(original_scene: Scene, obj: Object, me: Mesh, settings: MeshSetti
     # There probably shouldn't be an option to turn this off
     # Set custom split normals (so that the current normals are kept when joining other meshes)
     # TODO: We might need to do something when use_auto_smooth is False
-    bpy.ops.mesh.customdata_custom_splitnormals_add({'mesh': me})
+    utils.op_override(bpy.ops.mesh.customdata_custom_splitnormals_add, {'mesh': me})
 
     # TODO: Add option to apply all transforms
-    # bpy.ops.object.transform_apply({'selected_editable_objects': [obj]}, location=True, rotation=True, scale=True)
+    # utils.op_override(bpy.ops.object.transform_apply, {'selected_editable_objects': [obj]},
+    #                   location=True, rotation=True, scale=True)
 
 
 def build_armature(obj: Object, armature: Armature, settings: ArmatureSettings, copy_objects: set[Object]):
@@ -923,7 +925,8 @@ def build_armature(obj: Object, armature: Armature, settings: ArmatureSettings, 
                     mod.use_deform_preserve_volume = True
 
     # TODO: Add option to apply all transforms
-    # bpy.ops.object.transform_apply({'selected_editable_objects': [obj]}, location=True, rotation=True, scale=True)
+    # utils.op_override(bpy.ops.object.transform_apply, {'selected_editable_objects': [obj]},
+    #                   location=True, rotation=True, scale=True)
 
 
 # TODO: Rename this function to be shorter
@@ -1304,7 +1307,7 @@ class BuildAvatarOp(Operator):
                         # TODO: Not sure if scene is required, we'll include it anyway
                         'scene': export_scene,
                     }
-                    bpy.ops.object.parent_set(override, type='OBJECT', keep_transform=True)
+                    utils.op_override(bpy.ops.object.parent_set, override, type='OBJECT', keep_transform=True)
                     print(f"Swapped parent of copy of {helper.orig_object.name} to copy of {orig_parent.name}")
                 else:
                     # Look for a recursive parent that does have a copy object and reparent to that
@@ -1325,7 +1328,7 @@ class BuildAvatarOp(Operator):
                             # TODO: Not sure if scene is required, we'll include it anyway
                             'scene': export_scene,
                         }
-                        bpy.ops.object.parent_set(override, type='OBJECT', keep_transform=True)
+                        utils.op_override(bpy.ops.object.parent_set, override, type='OBJECT', keep_transform=True)
                         print(f"Swapped parent of copy of {helper.orig_object.name} to copy of its recursive parent {recursive_parent.name}")
                     else:
                         # No recursive parent has a copy object, so clear parent, but keep transforms
@@ -1335,7 +1338,7 @@ class BuildAvatarOp(Operator):
                             # Scene isn't required, but it could be good to include in-case it does become one
                             'scene': export_scene,
                         }
-                        bpy.ops.object.parent_clear(override, type='CLEAR_KEEP_TRANSFORM')
+                        utils.op_override(bpy.ops.object.parent_clear, override, type='CLEAR_KEEP_TRANSFORM')
                         print(f"Remove parent of copy of {helper.orig_object.name}, none of its recursive parents have copy objects")
             else:
                 # No parent to start with, so the copy will remain with no parent
@@ -1417,7 +1420,7 @@ class BuildAvatarOp(Operator):
                         combined_object.data.use_auto_smooth = joined_mesh_autosmooth
 
                     # Join the objects
-                    bpy.ops.object.join(context_override)
+                    utils.op_override(bpy.ops.object.join, context_override)
 
                 else:
                     # There's only one object, there's nothing to join
@@ -1496,7 +1499,7 @@ class BuildAvatarOp(Operator):
                     }
 
                     # Join the objects
-                    bpy.ops.object.join(context_override)
+                    utils.op_override(bpy.ops.object.join, context_override)
 
                     # Since we're about to rename the combined object, if there is an existing object with that name,
                     # the existing object will have its name changed. If that object were to not have its build_name
