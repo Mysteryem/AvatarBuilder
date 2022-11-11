@@ -414,7 +414,7 @@ class ObjectPanel(Panel):
             list_row = header_top_row.row(align=False)
             list_row.template_list(ObjectBuildSettingsUIList.bl_idname, "", group, 'object_settings', group, 'object_settings_active_index', rows=3)
             vertical_buttons_col = header_top_row.column(align=True)
-            vertical_buttons_col.operator(ObjectBuildSettingsAdd.bl_idname, text="", icon="ADD").name = ''
+            vertical_buttons_col.menu(ObjectBuildSettingsAddMenu.bl_idname, text="", icon="ADD")
             vertical_buttons_col.operator(ObjectBuildSettingsRemove.bl_idname, text="", icon="REMOVE")
             vertical_buttons_col.separator()
             vertical_buttons_col.operator(ObjectBuildSettingsMove.bl_idname, text="", icon="TRIA_UP").type = 'UP'
@@ -555,13 +555,16 @@ class ObjectBuildSettingsDuplicate(ObjectBuildSettingsBase, CollectionDuplicateB
         # settings to ensure uniqueness)
         added.set_name_no_propagate(duplicate_name)
 
-    @staticmethod
-    def draw_in_menu(self: Menu, context: Context):
-        # Only add to the menu when sync is disabled
-        if not ObjectPropertyGroup.get_group(context.object).sync_active_with_scene:
-            layout = self.layout
-            layout.separator()
-            layout.operator(ObjectBuildSettingsDuplicate.bl_idname)
+
+class ObjectBuildSettingsAddMenu(Menu):
+    """Add new settings, either blank or a duplicate of the active settings"""
+    bl_label = "Duplicate"
+    bl_idname = 'object_build_settings_duplicate'
+
+    def draw(self, context: Context):
+        layout = self.layout
+        layout.operator(ObjectBuildSettingsAdd.bl_idname, text="New").name = ''
+        layout.operator(ObjectBuildSettingsDuplicate.bl_idname, text="Copy Active Settings").name = ''
 
 
 class ObjectBuildSettingsRemove(ObjectBuildSettingsBase, CollectionRemoveBase):
@@ -594,24 +597,4 @@ class ObjectBuildSettingsSync(ObjectBuildSettingsBase, Operator):
         return {'CANCELLED'}
 
 
-def _register_menus():
-    COPY_ALL_MESH_SETTINGS.copy_menu.append(ObjectBuildSettingsDuplicate.draw_in_menu)
-    COPY_ALL_ARMATURE_SETTINGS.copy_menu.append(ObjectBuildSettingsDuplicate.draw_in_menu)
-
-
-def _unregister_menus():
-    COPY_ALL_ARMATURE_SETTINGS.copy_menu.remove(ObjectBuildSettingsDuplicate.draw_in_menu)
-    COPY_ALL_MESH_SETTINGS.copy_menu.remove(ObjectBuildSettingsDuplicate.draw_in_menu)
-
-
-_register_classes, _unregister_classes = register_module_classes_factory(__name__, globals())
-
-
-def register():
-    _register_classes()
-    _register_menus()
-
-
-def unregister():
-    _unregister_menus()
-    _unregister_classes()
+register, unregister = register_module_classes_factory(__name__, globals())
