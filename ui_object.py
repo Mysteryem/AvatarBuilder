@@ -508,7 +508,7 @@ class ObjectBuildSettingsAdd(ObjectBuildSettingsBase, CollectionAddBase[ObjectBu
         else:
             # Rename if not unique and ensure that the internal name is also set
             orig_name = added.name_prop
-            added_name = utils.get_unique_name(orig_name, data, number_separator=' ')
+            added_name = utils.get_unique_name(orig_name, data, number_separator=' ', min_number_digits=1)
             if added_name != orig_name:
                 # Assigning the prop will also update the internal name
                 added.name_prop = added_name

@@ -24,6 +24,7 @@ from .context_collection_ops import (
 )
 from .extensions import ObjectPropertyGroup, KeepUVMapList
 from .registration import register_module_classes_factory
+from . import utils
 
 
 _UV_MAP_ITEMS_CACHE = []
@@ -51,18 +52,12 @@ def _uv_map_items(self, context: Context):
                 uv_layer_name = intern(uv_layer_name)
                 item = (uv_layer_name, uv_layer_name, uv_layer_name, "GROUP_UVS", idx)
                 items.append(item)
-        # It's important to always have at least one item
+        # It's important to always have at least one item otherwise the minimum index of 0 will be out of bounds
         if not items:
             # Add an item with an identifier which isn't in the mesh's uv layers
-            # Get a set of the names of the uv layers
-            all_layer_names = {layer.name for layer in me.uv_layers}
-            # Iterate i until it produces a string which doesn't match the name of a uv layer
-            i = 0
-            i_str = str(i)
-            while i_str in all_layer_names:
-                i += 1
-                i_str = str(i)
-            items.append((i_str, "(no remaining uv maps)", "No remaining uv maps", 'ERROR', -1))
+            # Note that we cannot use the empty string as Blender will exclude any items where bool(identifier) == False
+            unique_identifier = utils.get_unique_name('NONE_REMAINING', me.uv_layers)
+            items.append((unique_identifier, "(no remaining uv maps)", "No remaining uv maps", 'ERROR', -1))
     else:
         # This shouldn't happen, be we'll leave it here for safety, since items must always have at least one item
         items.append(('ERROR', "ERROR: Not a Mesh", "ERROR: Not a Mesh", 'ERROR', -1))

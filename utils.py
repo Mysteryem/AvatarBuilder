@@ -224,7 +224,12 @@ def enumerate_reversed(my_list: SizedAndReversible):
 def get_unique_name(base_name: str, existing_names_or_collection: Union[Iterable[str], bpy_prop_collection],
                     strip_end_numbers: bool = True,
                     number_separator: str = '.',
+                    min_number_digits: int = 3,
                     ) -> str:
+    if min_number_digits is not None and min_number_digits > 0:
+        number_format = f'0{min_number_digits}d'
+    else:
+        number_format = 'd'
     if strip_end_numbers:
         match = re.fullmatch(r'(.*)' + re.escape(number_separator) + r'\.\d+', base_name)
         if match:
@@ -256,7 +261,7 @@ def get_unique_name(base_name: str, existing_names_or_collection: Union[Iterable
     idx = 0
     while unique_name in existing_names_set:
         idx += 1
-        unique_name = f"{base_with_separator}{idx:03d}"
+        unique_name = f"{base_with_separator}{idx:{number_format}}"
     return unique_name
 
 

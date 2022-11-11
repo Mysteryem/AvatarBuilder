@@ -14,6 +14,7 @@ from .context_collection_ops import (
     CollectionRemoveBase,
     CollectionMoveBase,
 )
+from . import utils
 
 
 class SceneBuildSettingsUIList(UIList):
@@ -133,17 +134,8 @@ class SceneBuildSettingsAdd(CollectionAddBase, SceneBuildSettingsBase):
             added.name_prop = self.name
         else:
             # Rename if not unique and ensure that the internal name is also set
-            added_name = added.name_prop
-            orig_name = added_name
-            unique_number = 0
-            # Its internal name of the newly added build_settings will currently be "" since it hasn't been set
-            # We could do `while added_name in build_settings:` but I'm guessing Blender has to iterate through each
-            # element until `added_name` is found since duplicate names are allowed. Checking against a set should be
-            # faster if there are lots
-            existing_names = {bs.name for bs in data}
-            while added_name in existing_names:
-                unique_number += 1
-                added_name = orig_name + " " + str(unique_number)
+            orig_name = added.name_prop
+            added_name = utils.get_unique_name(orig_name, data, number_separator=' ', min_number_digits=1)
             if added_name != orig_name:
                 # Assigning the prop will also update the internal name
                 added.name_prop = added_name
