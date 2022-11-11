@@ -282,6 +282,27 @@ class MmdShapesSpecialsMenu(Menu):
         layout.operator(MmdMappingMove.bl_idname, text="Move To Bottom", icon="TRIA_DOWN_BAR").type = 'BOTTOM'
 
 
+class MappingCsvLine(NamedTuple):
+    """tuple used for importing and exporting mappings as lines of csv. Fields will be imported/exported in the order
+     they are defined"""
+    model_shape: str = ""
+    mmd_name: str = ""
+    cats_translation: str = ""
+    comment: str = ""
+
+    def is_only_comment(self):
+        return self.comment and not self.model_shape and not self.mmd_name and not self.cats_translation
+
+    @classmethod
+    def from_mapping(cls, mapping: MmdShapeMapping):
+        return cls(
+            model_shape=mapping.model_shape,
+            mmd_name=mapping.mmd_name,
+            cats_translation=mapping.cats_translation_name,
+            comment=mapping.comment,
+        )
+
+
 class ExportShapeSettings(Operator, ExportHelper):
     """Export a .csv containing mmd shape data"""
     bl_idname = "mmd_shapes_export"
@@ -292,27 +313,14 @@ class ExportShapeSettings(Operator, ExportHelper):
 
     def execute(self, context: Context) -> set[str]:
         mappings = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings
-        lines = []
-        for mapping in mappings:
-            model_shape = mapping.model_shape
-            mmd_name = mapping.mmd_name
-            cats_translation_name = mapping.cats_translation_name
-            line = (model_shape, mmd_name, cats_translation_name)
-            lines.append(line)
+        # Each row must be an Iterable whereby each iterated element goes in its own column. MappingCsvLine is a tuple
+        # subclass, so we can turn each mapping into a MappingCsvLine to turn it into a row. Since we use MappingCsvLine
+        # when importing also, this means
+        row_gen = map(MappingCsvLine.from_mapping, mappings)
         # Note: newline should be '' when using csv.writer
         with open(self.filepath, 'w', encoding='utf-8', newline='') as file:
-            csv.writer(file).writerows(lines)
+            csv.writer(file).writerows(row_gen)
         return {'FINISHED'}
-
-
-class ParsedCsvLine(NamedTuple):
-    model_shape: str = ""
-    mmd_name: str = ""
-    cats_translation: str = ""
-    comment: str = ""
-
-    def is_only_comment(self):
-        return self.comment and not self.model_shape and not self.mmd_name and not self.cats_translation
 
 
 class ImportShapeSettings(Operator, ImportHelper):
@@ -339,17 +347,17 @@ class ImportShapeSettings(Operator, ImportHelper):
         # Note: newline should be '' when using csv.reader
         with open(self.filepath, 'r', encoding='utf-8', newline='') as file:
             reader = csv.reader(file)
-            parsed_lines: Union[list[ParsedCsvLine], Generator[ParsedCsvLine]] = []
+            parsed_lines: Union[list[MappingCsvLine], Generator[MappingCsvLine]] = []
 
             for line_no, line_list in enumerate(reader, start=1):
                 num_fields = len(line_list)
-                expected_fields = len(ParsedCsvLine._fields)
+                expected_fields = len(MappingCsvLine._fields)
                 if num_fields > expected_fields:
                     # If there are extra fields, get only as many as we're expecting
-                    parsed_line = ParsedCsvLine(*line_list[:expected_fields])
+                    parsed_line = MappingCsvLine(*line_list[:expected_fields])
                 else:
                     # If there aren't enough fields, default values for the missing fields will be used
-                    parsed_line = ParsedCsvLine(*line_list)
+                    parsed_line = MappingCsvLine(*line_list)
 
                 parsed_lines.append(parsed_line)
                 if num_fields < expected_fields:
