@@ -15,7 +15,7 @@ bl_info = {
 
 # Submodules in registration order
 _ordered_submodule_names = [
-    'cats_translate',
+    'integration_cats',
     'op_build_avatar',
     'shape_key_ops',
     'ui_object',

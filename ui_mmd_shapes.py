@@ -6,7 +6,7 @@ import os
 from typing import Generator, Union, cast, NamedTuple
 import csv
 
-from . import cats_translate
+from . import integration_cats
 from .extensions import ScenePropertyGroup, MmdShapeMapping, MmdShapeMappingGroup
 from .registration import register_module_classes_factory
 from .context_collection_ops import (
@@ -154,7 +154,7 @@ class MmdMappingList(UIList):
             cats_row.prop(item, 'cats_translation_name', text="", emboss=False)
             op_row = cats_row.row(align=True)
             op_row.enabled = bool(item.mmd_name)
-            translate_options = op_row.operator(cats_translate.CatsTranslate.bl_idname, text="", icon='WORLD_DATA')
+            translate_options = op_row.operator(integration_cats.CatsTranslate.bl_idname, text="", icon='WORLD_DATA')
             translate_options.to_translate = item.mmd_name
             translate_options.is_shape_key = True
             # Path from context to the property
@@ -421,7 +421,7 @@ class CatsTranslateAll(Operator):
 
     @classmethod
     def poll(cls, context: Context) -> bool:
-        return cats_translate.CatsTranslate.poll(context)
+        return integration_cats.CatsTranslate.poll(context)
 
     def execute(self, context: Context) -> set[str]:
         mappings = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings
@@ -435,7 +435,7 @@ class CatsTranslateAll(Operator):
                 unique_to_translate.add(mmd_name)
                 to_translate.append(mmd_name)
 
-        translations = cats_translate.cats_translate(to_translate, is_shape_key=True, calling_op=self)
+        translations = integration_cats.cats_translate(to_translate, is_shape_key=True, calling_op=self)
         if translations:
             for mapping in mappings:
                 mmd_name = mapping.mmd_name
@@ -507,10 +507,10 @@ class MmdShapeMappingsPanel(Panel):
         vertical_buttons_col.separator()
         vertical_buttons_col.operator(ExportShapeSettings.bl_idname, text="", icon="EXPORT")
 
-        if not cats_translate.cats_exists():
+        if not integration_cats.cats_exists():
             col.label(text="Cats addon not found")
             col.label(text="Translating is disabled")
-        elif not cats_translate.CatsTranslate.poll(context):
+        elif not integration_cats.CatsTranslate.poll(context):
             col.label(text="Unsupported Cats version")
             col.label(text="Translating is disabled")
         else:
