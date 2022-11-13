@@ -43,12 +43,11 @@ class VertexGroupSwapControlBase(ContextCollectionOperatorBase):
         VertexGroupSwapControlBase.get_vertex_group_settings(context).vertex_group_swaps.active_index = value
 
 
-VertexGroupSwapAdd, VertexGroupSwapRemove, VertexGroupSwapMove, _ = VertexGroupSwapControlBase.create_control_operators_simple(
-    class_name_prefix='VertexGroupSwap',
-    bl_idname_prefix='vg_swap',
-    element_label="Vertex Group Swap",
-    clear=False,
-)
+_op_builder = VertexGroupSwapControlBase.op_builder(
+    class_name_prefix='VertexGroupSwap', bl_idname_prefix='vg_swap', element_label="Vertex Group Swap",)
+VertexGroupSwapAdd = _op_builder.add_op()
+VertexGroupSwapRemove = _op_builder.remove_op()
+VertexGroupSwapMove = _op_builder.move_op()
 
 
 def draw_vertex_group_swaps(layout: UILayout, vertex_group_swap_collection: VertexGroupSwapCollection):

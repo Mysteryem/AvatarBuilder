@@ -1,7 +1,9 @@
 from bpy.types import Operator, Context, PropertyGroup, OperatorProperties
 from bpy.props import StringProperty, EnumProperty, BoolProperty, IntProperty
+
 from abc import abstractmethod
-from typing import Optional, Generic, TypeVar, Any, NamedTuple, Union
+from typing import Optional, Generic, TypeVar, Any, Union
+from dataclasses import dataclass
 
 from .registration import dummy_register_factory
 from .utils import PropCollectionType
@@ -11,29 +13,8 @@ from . import utils
 """
 Base classes for quickly creating Operators for controlling custom CollectionProperties 
 """
-
-
-class _SimpleArgs(NamedTuple):
-    class_suffix: str
-    doc: str
-    bl_idname_suffix: str
-
-
-_SIMPLE_ADD_ARGS = _SimpleArgs('Add', "Add a new {}", "_add")
-_SIMPLE_REMOVE_ARGS = _SimpleArgs('Remove', "Remove the active {}", "_remove")
-_SIMPLE_MOVE_ARGS = _SimpleArgs('Move', "Move the active {}", "_move")
-_SIMPLE_CLEAR_ARGS = _SimpleArgs('Clear', "Remove every {}", "_clear")
-
-
 B = TypeVar('B', bound='ContextCollectionOperatorBase')
 OM = TypeVar('OM', bound=Operator)
-
-_ControlOperatorsTuple = tuple[
-    Union[type['CollectionAddBase'], type[B], None],
-    Union[type['CollectionRemoveBase'], type[B], None],
-    Union[type['CollectionMoveBase'], type[B], None],
-    Union[type['CollectionClearBase'], type[B], None],
-]
 
 
 # Ideally, this would extend abc.ABC, but Blender has issues with mixing metaclasses (Operator's metaclass is
@@ -75,68 +56,52 @@ class ContextCollectionOperatorBase:
     # noinspection PyTypeChecker
     @classmethod
     def _create_operator(
-            cls: type[B], name: str, operator_mixin: type[OM], args: dict[str, Any]
+            cls: type[B], name: str, operator_mixin: type[OM], **kwargs: Any
     ) -> Union[type[B], type[OM]]:
         """type(str, tuple[type, ...], dict[str, Any]) gives return type hint of 'type', this function just calls it
         with two specific type arguments and gives the exact return type hint corresponding to the created type."""
-        return type(name, (cls, operator_mixin), args)
+        return type(name, (cls, operator_mixin), kwargs)
+
+    @dataclass
+    class SimpleControlOpBuilder(Generic[B]):
+        base: type[B]
+        class_name_prefix: str
+        bl_idname_prefix: str
+        element_label: str
+        module: Optional[str] = None
+
+        def _create_op(self, class_suffix: str, bl_idname_suffix: str, docstring: str, operator_mixin: type[OM]
+                       ) -> Union[type[OM], type[B]]:
+            class_name = self.class_name_prefix + class_suffix
+            bl_idname = self.bl_idname_prefix + bl_idname_suffix
+            docstring = docstring.format(self.element_label)
+            module = self.module
+            if module is None:
+                module = self.base.__module__
+            return self.base._create_operator(
+                class_name, operator_mixin, __doc__=docstring, __module__=module, bl_idname=bl_idname)
+
+        def add_op(self) -> Union[type['CollectionAddBase'], type[B]]:
+            return self._create_op('Add', '_add', "Add a new {}", CollectionAddBase)
+
+        def remove_op(self) -> Union[type['CollectionRemoveBase'], type[B]]:
+            return self._create_op('Remove', '_remove', "Remove the active {}", CollectionRemoveBase)
+
+        def move_op(self) -> Union[type['CollectionMoveBase'], type[B]]:
+            return self._create_op('Move', '_move', "Move the active {}", CollectionMoveBase)
+
+        def clear_op(self) -> Union[type['CollectionClearBase'], type[B]]:
+            return self._create_op('Clear', '_clear', "Remove every {}", CollectionClearBase)
+
+        def duplicate_op(self) -> Union[type['CollectionDuplicateBase'], type[B]]:
+            return self._create_op('Duplicate', '_duplicate', "Duplicate tje active {}", CollectionDuplicateBase)
 
     @classmethod
-    def create_control_operators(
-            cls: type[B],
-            add: Optional[tuple[str, dict[str, Any]]] = None,
-            remove: Optional[tuple[str, dict[str, Any]]] = None,
-            move: Optional[tuple[str, dict[str, Any]]] = None,
-            clear: Optional[tuple[str, dict[str, Any]]] = None,
-    ) -> _ControlOperatorsTuple:
-        if add is not None:
-            add = cls._create_operator(add[0], CollectionAddBase, add[1])
-        if remove is not None:
-            remove = cls._create_operator(remove[0], CollectionRemoveBase, remove[1])
-        if move is not None:
-            move = cls._create_operator(move[0], CollectionMoveBase, move[1])
-        if clear is not None:
-            clear = cls._create_operator(clear[0], CollectionClearBase, clear[1])
-
-        # Have to return tuple otherwise PyCharm type hints don't work when unpacking
-        return add, remove, move, clear
-
-    @classmethod
-    def create_control_operators_simple(
-            cls: type[B],
-            class_name_prefix: str,
-            bl_idname_prefix: str,
-            element_label: str,
-            module: Optional[str] = None,
-            add: bool = True,
-            remove: bool = True,
-            move: bool = True,
-            clear: bool = True,
-    ) -> _ControlOperatorsTuple:
-        # Detection of classes to register relies on __module__ matching the module being registered, usually it should
-        # match the __module__ of cls, so use that when the module argument is not provided
+    def op_builder(cls: type[B], class_name_prefix: str, bl_idname_prefix: str, element_label: str,
+                   module: Optional[str] = None) -> SimpleControlOpBuilder[B]:
         if module is None:
             module = cls.__module__
-
-        def create_args(simple_args: _SimpleArgs):
-            if simple_args is None:
-                return None
-            else:
-                return (
-                    class_name_prefix + simple_args.class_suffix,
-                    dict(
-                        __doc__=simple_args.doc.format(element_label),
-                        __module__=module,
-                        bl_idname=bl_idname_prefix + simple_args.bl_idname_suffix,
-                    )
-                )
-
-        args_inputs = (_SIMPLE_ADD_ARGS if add else None,
-                       _SIMPLE_REMOVE_ARGS if remove else None,
-                       _SIMPLE_MOVE_ARGS if move else None,
-                       _SIMPLE_CLEAR_ARGS if clear else None)
-
-        return cls.create_control_operators(*map(create_args, args_inputs))
+        return cls.SimpleControlOpBuilder(cls, class_name_prefix, bl_idname_prefix, element_label, module)
 
 
 E = TypeVar('E', bound=PropertyGroup)
