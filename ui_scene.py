@@ -37,6 +37,8 @@ class ScenePanel(Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Avatar Builder"
+    # Before MMD Shape Mapping Panel by default
+    bl_order = 0
 
     @staticmethod
     def draw_mmd(layout: UILayout, mmd_settings: MmdShapeKeySettings):

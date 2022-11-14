@@ -449,6 +449,8 @@ class MmdShapeMappingsPanel(Panel):
     bl_space_type = "VIEW_3D"
     bl_region_type = "UI"
     bl_category = "Avatar Builder"
+    # After main Scene Build Settings Panel by default
+    bl_order = 1
 
     @classmethod
     def poll(cls, context: Context) -> bool:
