@@ -1,7 +1,6 @@
 import bpy
 from bpy.types import UIList, Context, UILayout, Menu, Panel, Operator, Object, Mesh, Armature, SpaceProperties
 from typing import cast
-from bpy.props import EnumProperty
 
 from .registration import register_module_classes_factory
 from .extensions import ScenePropertyGroup, ObjectPropertyGroup, MmdShapeKeySettings
@@ -12,7 +11,6 @@ from .context_collection_ops import (
     ContextCollectionOperatorBase,
     CollectionAddBase,
     CollectionRemoveBase,
-    CollectionMoveBase,
 )
 from . import utils
 
@@ -125,6 +123,14 @@ class SceneBuildSettingsBase(ContextCollectionOperatorBase):
         ScenePropertyGroup.get_group(context.scene).build_settings_active_index = value
 
 
+_op_builder = SceneBuildSettingsBase.op_builder(
+    class_name_prefix='SceneBuildSettings',
+    bl_idname_prefix='scene_build_settings',
+    element_label="scene build settings",
+)
+SceneBuildSettingsMove = _op_builder.move.build()
+
+
 def _redraw_object_properties_regions(context: Context):
     # Iterate through all areas in the current screen
     for area in context.screen.areas:
@@ -163,10 +169,8 @@ def _redraw_object_properties_regions(context: Context):
                             break
 
 
+@_op_builder.add.decorate
 class SceneBuildSettingsAdd(CollectionAddBase, SceneBuildSettingsBase):
-    """Add new scene build settings"""
-    bl_idname = "scene_build_settings_add"
-
     def set_new_item_name(self, data, added):
         if self.name:
             added.name_prop = self.name
@@ -193,10 +197,8 @@ class SceneBuildSettingsAdd(CollectionAddBase, SceneBuildSettingsBase):
 
 
 # TODO: Also remove from objects in the scene! (maybe optionally)
+@_op_builder.remove.decorate
 class SceneBuildSettingsRemove(CollectionRemoveBase, SceneBuildSettingsBase):
-    """Remove the active build settings"""
-    bl_idname = "scene_build_settings_remove"
-
     def execute(self, context: Context) -> set[str]:
         result = super().execute(context)
         if not self.get_collection(context):
@@ -205,21 +207,6 @@ class SceneBuildSettingsRemove(CollectionRemoveBase, SceneBuildSettingsBase):
             # drawn anymore
             _redraw_object_properties_regions(context)
         return result
-
-
-class SceneBuildSettingsMove(CollectionMoveBase, SceneBuildSettingsBase):
-    """Move the active scene build settings up or down the list"""
-    bl_idname = "scene_build_settings_move"
-
-    type: EnumProperty(
-        items=(
-            ('UP', "Up", "Move settings up, wrapping around if already at the top"),
-            ('DOWN', "Down", "Move settings down, wrapping around if already at the bottom"),
-            ('TOP', "Top", "Move settings to the top"),
-            ('BOTTOM', "Bottom", "Move settings to the bottom"),
-        ),
-        name="Type",
-    )
 
 
 class SceneBuildSettingsPurge(Operator):
@@ -440,4 +427,5 @@ class UnhideFromSceneSettings(Operator):
         return {'FINISHED'}
 
 
+del _op_builder
 register, unregister = register_module_classes_factory(__name__, globals())

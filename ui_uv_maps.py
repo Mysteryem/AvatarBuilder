@@ -18,9 +18,7 @@ from sys import intern
 from .context_collection_ops import (
     PropCollectionType,
     ContextCollectionOperatorBase,
-    CollectionRemoveBase,
     CollectionAddBase,
-    CollectionMoveBase,
 )
 from .extensions import ObjectPropertyGroup, KeepUVMapList
 from .registration import register_module_classes_factory
@@ -161,9 +159,17 @@ class KeepUVMapListControlBase(ContextCollectionOperatorBase):
             prop.active_index = value
 
 
-class UVMapListAdd(CollectionAddBase, KeepUVMapListControlBase):
-    bl_idname = 'keep_uv_map_list_add'
+_op_builder = KeepUVMapListControlBase.op_builder(
+    class_name_prefix='UVMapList',
+    bl_idname_prefix='keep_uv_map_list',
+    element_label='UV Map',
+)
+UVMapListRemove = _op_builder.remove.build()
+UVMapListMove = _op_builder.move.build()
 
+
+@_op_builder.add.decorate
+class UVMapListAdd(CollectionAddBase, KeepUVMapListControlBase):
     @classmethod
     def poll(cls, context: Context) -> bool:
         data = context.object.data
@@ -189,14 +195,6 @@ class UVMapListAdd(CollectionAddBase, KeepUVMapListControlBase):
             return super().set_new_item_name(data, added)
 
 
-class UVMapListRemove(CollectionRemoveBase, KeepUVMapListControlBase):
-    bl_idname = 'keep_uv_map_list_remove'
-
-
-class UVMapListMove(CollectionMoveBase, KeepUVMapListControlBase):
-    bl_idname = 'keep_uv_map_list_move'
-
-
 def draw_uv_map_list(layout: UILayout, keep_uv_map_list: KeepUVMapList):
     row = layout.row(align=True)
     row.template_list(
@@ -215,4 +213,5 @@ def draw_uv_map_list(layout: UILayout, keep_uv_map_list: KeepUVMapList):
     vertical_buttons_col2.operator(UVMapListMove.bl_idname, text="", icon="TRIA_DOWN").type = 'DOWN'
 
 
+del _op_builder
 register, unregister = register_module_classes_factory(__name__, globals())

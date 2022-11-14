@@ -10,10 +10,6 @@ from . import integration_cats
 from .extensions import ScenePropertyGroup, MmdShapeMapping, MmdShapeMappingGroup
 from .registration import register_module_classes_factory
 from .context_collection_ops import (
-    CollectionAddBase,
-    CollectionClearBase,
-    CollectionMoveBase,
-    CollectionRemoveBase,
     ContextCollectionOperatorBase,
     PropCollectionType,
 )
@@ -178,10 +174,10 @@ class MmdMappingControlBase(ContextCollectionOperatorBase):
 
 _op_builder = MmdMappingControlBase.op_builder(
     class_name_prefix='MmdMapping', bl_idname_prefix='mmd_shape_mapping', element_label='shape_key_mapping')
-MmdMappingAdd = _op_builder.add_op()
-MmdMappingRemove = _op_builder.remove_op()
-MmdMappingMove = _op_builder.move_op()
-MmdMappingsClear = _op_builder.clear_op()
+MmdMappingAdd = _op_builder.add.build()
+MmdMappingRemove = _op_builder.remove.build()
+MmdMappingMove = _op_builder.move.build()
+MmdMappingsClear = _op_builder.clear.build()
 
 
 class MmdMappingsClearShapeNames(MmdMappingControlBase, Operator):
@@ -518,4 +514,5 @@ class MmdShapeMappingsPanel(Panel):
             col.operator(CatsTranslateAll.bl_idname, icon="WORLD")
 
 
+del _op_builder
 register, unregister = register_module_classes_factory(__name__, globals())

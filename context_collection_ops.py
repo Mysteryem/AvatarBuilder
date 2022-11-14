@@ -2,8 +2,8 @@ from bpy.types import Operator, Context, PropertyGroup, OperatorProperties
 from bpy.props import StringProperty, EnumProperty, BoolProperty, IntProperty
 
 from abc import abstractmethod
-from typing import Optional, Generic, TypeVar, Any, Union
-from dataclasses import dataclass
+from typing import Optional, Generic, TypeVar, Union
+from dataclasses import dataclass, field
 
 from .registration import dummy_register_factory
 from .utils import PropCollectionType
@@ -53,55 +53,12 @@ class ContextCollectionOperatorBase:
         else:
             return cls.index_in_bounds(collection, active_index)
 
-    # noinspection PyTypeChecker
-    @classmethod
-    def _create_operator(
-            cls: type[B], name: str, operator_mixin: type[OM], **kwargs: Any
-    ) -> Union[type[B], type[OM]]:
-        """type(str, tuple[type, ...], dict[str, Any]) gives return type hint of 'type', this function just calls it
-        with two specific type arguments and gives the exact return type hint corresponding to the created type."""
-        return type(name, (cls, operator_mixin), kwargs)
-
-    @dataclass
-    class SimpleControlOpBuilder(Generic[B]):
-        base: type[B]
-        class_name_prefix: str
-        bl_idname_prefix: str
-        element_label: str
-        module: Optional[str] = None
-
-        def _create_op(self, class_suffix: str, bl_idname_suffix: str, docstring: str, operator_mixin: type[OM]
-                       ) -> Union[type[OM], type[B]]:
-            class_name = self.class_name_prefix + class_suffix
-            bl_idname = self.bl_idname_prefix + bl_idname_suffix
-            docstring = docstring.format(self.element_label)
-            module = self.module
-            if module is None:
-                module = self.base.__module__
-            return self.base._create_operator(
-                class_name, operator_mixin, __doc__=docstring, __module__=module, bl_idname=bl_idname)
-
-        def add_op(self) -> Union[type['CollectionAddBase'], type[B]]:
-            return self._create_op('Add', '_add', "Add a new {}", CollectionAddBase)
-
-        def remove_op(self) -> Union[type['CollectionRemoveBase'], type[B]]:
-            return self._create_op('Remove', '_remove', "Remove the active {}", CollectionRemoveBase)
-
-        def move_op(self) -> Union[type['CollectionMoveBase'], type[B]]:
-            return self._create_op('Move', '_move', "Move the active {}", CollectionMoveBase)
-
-        def clear_op(self) -> Union[type['CollectionClearBase'], type[B]]:
-            return self._create_op('Clear', '_clear', "Remove every {}", CollectionClearBase)
-
-        def duplicate_op(self) -> Union[type['CollectionDuplicateBase'], type[B]]:
-            return self._create_op('Duplicate', '_duplicate', "Duplicate tje active {}", CollectionDuplicateBase)
-
     @classmethod
     def op_builder(cls: type[B], class_name_prefix: str, bl_idname_prefix: str, element_label: str,
-                   module: Optional[str] = None) -> SimpleControlOpBuilder[B]:
+                   module: Optional[str] = None) -> 'SimpleControlOpBuilder[B]':
         if module is None:
             module = cls.__module__
-        return cls.SimpleControlOpBuilder(cls, class_name_prefix, bl_idname_prefix, element_label, module)
+        return SimpleControlOpBuilder(cls, class_name_prefix, bl_idname_prefix, element_label, module)
 
 
 E = TypeVar('E', bound=PropertyGroup)
@@ -310,6 +267,85 @@ class CollectionMoveBase(ContextCollectionOperatorBase, Operator):
                 data.move(active_index, bottom_index)
                 self.set_active_index(context, bottom_index)
         return {'FINISHED'}
+
+
+@dataclass
+class _SimpleControlOpData(Generic[B, OM]):
+    base: type[B]
+    module: str
+    class_name: str
+    bl_idname: str
+    docstring: str
+    op_base: type[OM]
+
+    # Would have used __call__ instead of build, but PyCharm seems to be bugged and its type checking breaks with
+    #   built_class = my_op_data()
+    # But does work with
+    #   built_class = my_op_data.__call__()
+    def build(self) -> Union[type[B], type[OM]]:
+        # type(str, tuple[type, ...], dict[str, Any]) only gives return type hint of 'type'
+        # noinspection PyTypeChecker
+        return type(
+            self.class_name,
+            (self.base, self.op_base),
+            dict(__doc__=self.docstring, __module__=self.module, bl_idname=self.bl_idname)
+        )
+
+    def decorate(self, cls):
+        """Decorate an existing class with the generated bl_idname and docstring. This is intended for when the Operator
+        needs to override or declare new methods or provide additional documentation"""
+        # In the future maybe we could automatically create a subclass that has self.base and self.op_base as its bases
+        # if they're missing from cls. Currently, this isn't important, since the classes being decorated always include
+        # both base classes in their bases already.
+        #
+        # Only set the __doc__ attribute when it doesn't already exist in cls.__dict__. This way, we can write more
+        # specific docstrings if the operator has additional features.
+        # We don't bother setting bl_description, since class registration will set it automatically
+        if '__doc__' not in cls.__dict__:
+            cls.__doc__ = self.docstring
+        # For now, we're always setting the bl_idname, it shouldn't exist in cls.__dict__
+        if 'bl_idname' in cls.__dict__:
+            raise RuntimeError(f"bl_idname already exists on {cls} when it shouldn't")
+        else:
+            cls.bl_idname = self.bl_idname
+        return cls
+
+
+@dataclass
+class SimpleControlOpBuilder(Generic[B]):
+    base: type[B]
+    class_name_prefix: str
+    bl_idname_prefix: str
+    element_label: str
+    add: _SimpleControlOpData[B, CollectionAddBase] = field(init=False)
+    remove: _SimpleControlOpData[B, CollectionRemoveBase] = field(init=False)
+    move: _SimpleControlOpData[B, CollectionMoveBase] = field(init=False)
+    clear: _SimpleControlOpData[B, CollectionClearBase] = field(init=False)
+    duplicate: _SimpleControlOpData[B, CollectionDuplicateBase] = field(init=False)
+    module: Optional[str] = None
+
+    def __post_init__(self):
+        # PyCharm doesn't infer types of Generic dataclasses, so we must specify the return type hint ourself:
+        # https://youtrack.jetbrains.com/issue/PY-48912/PyCharm-does-not-infer-type-of-generic-dataclass-instance
+        def make_data(class_suffix: str, bl_idname_suffix: str, docstring: str, op_base: type[OM]
+                      ) -> _SimpleControlOpData[B, OM]:
+            module = self.module
+            if module is None:
+                module = self.base.__module__
+            return _SimpleControlOpData(
+                self.base,
+                module,
+                self.class_name_prefix + class_suffix,
+                self.bl_idname_prefix + bl_idname_suffix,
+                docstring.format(self.element_label),
+                op_base,
+            )
+
+        self.add = make_data('Add', '_add', "Add a new {}", CollectionAddBase)
+        self.remove = make_data('Remove', '_remove', "Remove the active {}", CollectionRemoveBase)
+        self.move = make_data('Move', '_move', "Move the active {}", CollectionMoveBase)
+        self.clear = make_data('Clear', '_clear', "Remove every {}", CollectionClearBase)
+        self.duplicate = make_data('Duplicate', '_duplicate', "Duplicate the active {}", CollectionDuplicateBase)
 
 
 register, unregister = dummy_register_factory()

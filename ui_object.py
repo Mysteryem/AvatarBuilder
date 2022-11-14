@@ -23,8 +23,6 @@ from .integration_gret import check_gret_shape_key_apply_modifiers
 from .context_collection_ops import (
     CollectionAddBase,
     CollectionDuplicateBase,
-    CollectionMoveBase,
-    CollectionRemoveBase,
     ContextCollectionOperatorBase,
     PropCollectionType,
 )
@@ -496,9 +494,18 @@ class ObjectBuildSettingsBase(ContextCollectionOperatorBase):
             object_group.object_settings_active_index = value
 
 
+_op_builder = ObjectBuildSettingsBase.op_builder(
+    class_name_prefix='ObjectBuildSettings',
+    bl_idname_prefix='object_build_settings',
+    element_label="settings",
+)
+ObjectBuildSettingsRemove = _op_builder.remove.build()
+ObjectBuildSettingsMove = _op_builder.move.build()
+
+
+@_op_builder.add.decorate
 class ObjectBuildSettingsAdd(ObjectBuildSettingsBase, CollectionAddBase[ObjectBuildSettings]):
-    """Add a new set of build settings, defaults to the active build settings if they don't exist on this Object"""
-    bl_idname = 'object_build_settings_add'
+    """Add new settings, defaults to the active build settings if they don't exist on this Object"""
 
     @staticmethod
     def set_new_item_name_static(data: PropCollectionType, added: ObjectBuildSettings, name=None):
@@ -534,9 +541,8 @@ class ObjectBuildSettingsAdd(ObjectBuildSettingsBase, CollectionAddBase[ObjectBu
         return super().execute(context)
 
 
+@_op_builder.duplicate.decorate
 class ObjectBuildSettingsDuplicate(ObjectBuildSettingsBase, CollectionDuplicateBase[ObjectBuildSettings]):
-    """Duplicate the active set of build settings"""
-    bl_idname = 'object_build_settings_duplicate'
 
     def set_new_item_name(self, data: PropCollectionType, added: ObjectBuildSettings):
         desired_name = self.name
@@ -567,14 +573,6 @@ class ObjectBuildSettingsAddMenu(Menu):
         layout.operator(ObjectBuildSettingsDuplicate.bl_idname, text="Copy Active Settings").name = ''
 
 
-class ObjectBuildSettingsRemove(ObjectBuildSettingsBase, CollectionRemoveBase):
-    bl_idname = 'object_build_settings_remove'
-
-
-class ObjectBuildSettingsMove(ObjectBuildSettingsBase, CollectionMoveBase):
-    bl_idname = 'object_build_settings_move'
-
-
 class ObjectBuildSettingsSync(ObjectBuildSettingsBase, Operator):
     """Set the currently displayed settings to the currently active build settings"""
     bl_idname = 'object_build_settings_sync'
@@ -597,4 +595,5 @@ class ObjectBuildSettingsSync(ObjectBuildSettingsBase, Operator):
         return {'CANCELLED'}
 
 
+del _op_builder
 register, unregister = register_module_classes_factory(__name__, globals())

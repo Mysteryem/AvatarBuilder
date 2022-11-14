@@ -7,8 +7,6 @@ from .context_collection_ops import (
     ContextCollectionOperatorBase,
     PropCollectionType,
     CollectionAddBase,
-    CollectionRemoveBase,
-    CollectionMoveBase
 )
 from .extensions import ShapeKeyOp, ObjectBuildSettings, ObjectPropertyGroup, ShapeKeySettings
 from .registration import register_module_classes_factory
@@ -89,10 +87,17 @@ class ShapeKeyOpsListBase(ContextCollectionOperatorBase):
             settings.mesh_settings.shape_key_settings.shape_key_ops.active_index = value
 
 
-class ShapeKeyOpsListAdd(ShapeKeyOpsListBase, CollectionAddBase[ShapeKeyOp]):
-    """Add a new shape key op"""
-    bl_idname = 'shape_key_ops_list_add'
+_op_builder = ShapeKeyOpsListBase.op_builder(
+    class_name_prefix='ShapeKeyOpsList',
+    bl_idname_prefix='shape_key_ops_list',
+    element_label="shape key op",
+)
+ShapeKeyOpsListRemove = _op_builder.remove.build()
+ShapeKeyOpsListMove = _op_builder.move.build()
 
+
+@_op_builder.add.decorate
+class ShapeKeyOpsListAdd(ShapeKeyOpsListBase, CollectionAddBase[ShapeKeyOp]):
     type: EnumProperty(
         items=ShapeKeyOp.TYPE_ITEMS,
         name="Type",
@@ -135,16 +140,6 @@ class ShapeKeyOpsListAddMenu(Menu):
         layout = self.layout
         layout.menu(ShapeKeyOpsListAddDeleteSubMenu.bl_idname, icon='TRASH')
         layout.menu(ShapeKeyOpsListAddMergeSubMenu.bl_idname, icon='FULLSCREEN_EXIT')
-
-
-class ShapeKeyOpsListRemove(ShapeKeyOpsListBase, CollectionRemoveBase):
-    """Remove the active shape key op"""
-    bl_idname = 'shape_key_ops_list_remove'
-
-
-class ShapeKeyOpsListMove(ShapeKeyOpsListBase, CollectionMoveBase):
-    """Move the active shape key op"""
-    bl_idname = 'shape_key_ops_list_move'
 
 
 def draw_shape_key_ops(shape_keys_box_col: UILayout, settings: ShapeKeySettings, shape_keys: Key):
@@ -198,4 +193,5 @@ def draw_shape_key_ops(shape_keys_box_col: UILayout, settings: ShapeKeySettings,
         active_op_col.prop(active_op, 'ignore_regex')
 
 
+del _op_builder
 register, unregister = register_module_classes_factory(__name__, globals())

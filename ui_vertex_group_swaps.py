@@ -45,9 +45,9 @@ class VertexGroupSwapControlBase(ContextCollectionOperatorBase):
 
 _op_builder = VertexGroupSwapControlBase.op_builder(
     class_name_prefix='VertexGroupSwap', bl_idname_prefix='vg_swap', element_label="Vertex Group Swap",)
-VertexGroupSwapAdd = _op_builder.add_op()
-VertexGroupSwapRemove = _op_builder.remove_op()
-VertexGroupSwapMove = _op_builder.move_op()
+VertexGroupSwapAdd = _op_builder.add.build()
+VertexGroupSwapRemove = _op_builder.remove.build()
+VertexGroupSwapMove = _op_builder.move.build()
 
 
 def draw_vertex_group_swaps(layout: UILayout, vertex_group_swap_collection: VertexGroupSwapCollection):
@@ -66,4 +66,5 @@ def draw_vertex_group_swaps(layout: UILayout, vertex_group_swap_collection: Vert
         vertical_buttons_col.operator(VertexGroupSwapMove.bl_idname, text="", icon="TRIA_DOWN").type = 'DOWN'
 
 
+del _op_builder
 register, unregister = register_module_classes_factory(__name__, globals())
