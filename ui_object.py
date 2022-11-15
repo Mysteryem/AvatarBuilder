@@ -347,10 +347,8 @@ class ObjectPanelBase(Panel):
 
         header_top_row = header_col.row(align=True)
         header_top_row.use_property_decorate = False
-        header_top_row_left_buttons_col = header_top_row.column(align=True)
-        header_top_row_left_buttons_row1 = header_top_row_left_buttons_col.row(align=True)
-        header_top_row_left_buttons_row1.prop(group, 'sync_active_with_scene', icon="SCENE_DATA", text="")
-        header_top_row_left_buttons_row1.prop(group, 'sync_active_with_scene', icon="OBJECT_DATA", text="", invert_checkbox=True)
+        header_top_row_left_buttons_col = header_top_row.column()
+        header_top_row_left_buttons_col.prop(group, 'sync_active_with_scene', icon="SCENE_DATA", text="")
 
         copy_menu = None
         if obj.type == 'MESH':

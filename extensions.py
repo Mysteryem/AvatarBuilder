@@ -812,7 +812,7 @@ class ObjectPropertyGroup(IdPropertyGroup, PropertyGroup):
 
     object_settings: CollectionProperty(type=ObjectBuildSettings)
     object_settings_active_index: IntProperty()
-    sync_active_with_scene: BoolProperty(name="Toggle scene sync", default=True)
+    sync_active_with_scene: BoolProperty(name="Sync UI with active settings", default=True)
 
     def get_active_settings(self) -> Optional[ObjectBuildSettings]:
         settings = self.object_settings
