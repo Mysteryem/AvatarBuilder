@@ -1058,10 +1058,29 @@ def mmd_remap(scene_property_group: ScenePropertyGroup, mmd_settings: MmdShapeKe
 
 def _get_join_sort_key(helper: ObjectHelper) -> tuple:
     """Ordering for joining objects together"""
-    # settings.join_order is likely to be the same for most objects being sorted
+    # settings.join_order is likely to be the same for most objects being sorted, so we have to provide additional
+    # deterministic ordering for when .join_order is the same
+    #
     # orig_object_name should be unique per helper and have been set directly from an Object's .name, which is
-    # guaranteed to be unique so the entire tuple should therefore be unique
-    return helper.settings.join_order, helper.orig_object_name
+    # guaranteed to be unique, so the by including it in the sort key tuple, the entire tuple should therefore be unique
+    orig_data = helper.orig_object.data
+    if isinstance(orig_data, Mesh):
+        # By including the number of shape keys in the sort key, the user can prepare one mesh with all shape keys in
+        # the desired order, then, when being joined with other meshes, they will all be joined into that one mesh with
+        # all the shape keys, maintaining the user's desired shape key order.
+        shape_keys = orig_data.shape_keys
+        if shape_keys:
+            # We negate the number of shape keys because we want the meshes with the most shape keys to be sorted first
+            shape_key_ordering = -len(shape_keys.key_blocks)
+        else:
+            shape_key_ordering = 0
+        return helper.settings.join_order, shape_key_ordering, helper.orig_object_name
+    else:
+        # Not a Mesh, which currently means it must be an Armature, which doesn't have shape keys.
+        # Attempting to join Objects of different types is an error, so we won't include a dummy value for shape key
+        # ordering.
+        return helper.settings.join_order, helper.orig_object_name
+
 
 
 class BuildAvatarOp(Operator):

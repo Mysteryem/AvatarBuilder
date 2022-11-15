@@ -709,15 +709,15 @@ class ObjectBuildSettings(PropertyGroup):
     )
     join_order: IntProperty(
         name="Join Order",
-        # Generally you would only want to decrease this value, so
+        # Generally you would only want to decrease this value, so start at a positive value
         default=10,
-        description="When joining objects together, the objects being joined will be joined in the order of their Join"
-                    " Order."
-                    " The object with the lowest value Join Order will be the object that the others will be joined"
-                    " into."
-                    " Join Order affects the order of shape keys/material slots/etc. on the combined mesh."
-                    " The combined mesh will inherit the lowest Join Order of its parts."
-                    " If there is a tie for Join Order, the order will be based on the object's name instead"
+        description="The order Objects are joined together affects the order of shape keys/material slots/etc. on the"
+                    " combined mesh.\n"
+                    "When joining Objects together, the Objects will be joined into the Object with lowest Join Order"
+                    " and, in the order of their Join Order.\n"
+                    "The combined Object will inherit the lowest Join Order of its parts.\n"
+                    "If there is a tie for Join Order, the tie will be solved by comparing the number of Shape Keys"
+                    " (most Shape Keys first) and then the Object's name"
     )
     armature_settings: PointerProperty(type=ArmatureSettings)
     mesh_settings: PointerProperty(type=MeshSettings)
