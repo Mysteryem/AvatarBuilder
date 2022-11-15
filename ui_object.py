@@ -1,5 +1,17 @@
 from typing import Union, cast, Optional
-from bpy.types import UIList, Context, UILayout, Panel, SpaceProperties, Operator, Object, Mesh, PropertyGroup, Menu
+from bpy.types import (
+    UIList,
+    Context,
+    UILayout,
+    Panel,
+    SpaceProperties,
+    Operator,
+    Object,
+    Mesh,
+    PropertyGroup,
+    Menu,
+    Scene,
+)
 
 from . import shape_key_ops, ui_material_remap, utils, ui_uv_maps, ui_vertex_group_swaps
 from .registration import register_module_classes_factory
@@ -76,38 +88,28 @@ class ObjectBuildSettingsUIList(UIList):
         #row.enabled = not is_scene_active
 
 
-class ObjectPanel(Panel):
-    bl_idname = "object_panel"
-    bl_label = "Avatar Builder"
-    bl_space_type = "PROPERTIES"
-    bl_region_type = "WINDOW"
-    #bl_category = "AvatarBuilder"
-    bl_context = "object"
-    bl_options = {'DEFAULT_CLOSED'}
-
-    @classmethod
-    def poll(cls, context: Context):
-        # guaranteed to be SpaceProperties by the bl_space_type
-        space_data = cast(SpaceProperties, context.space_data)
-        pin_id = space_data.pin_id
-        if pin_id is not None:
-            # pin object is guaranteed to be an Object because of the bl_context = "object" which says this Panel is
-            # only displayed in the Object Properties tab. The Object Properties tab is not available if Object Data is
-            # pinned
-            obj = pin_id
-        else:
-            obj = context.object
-
+class ObjectPanelBase(Panel):
+    @staticmethod
+    def _poll_object(obj: Object):
         # TODO: Currently, we're only building these types, should we be including any others?
         # TODO: Make the set a global variable and uses it elsewhere too
-        if not obj or obj.type not in ObjectPropertyGroup.ALLOWED_TYPES:
-            return False
-        scene = context.scene
+        return obj and obj.type in ObjectPropertyGroup.ALLOWED_TYPES
+
+    @staticmethod
+    def _poll_scene(scene: Scene):
         # Build settings must be non-empty
         # TODO: Should add a 'clean' or 'purge' button to Scene panel that purges non-existent build settings from all
         #       objects in the current scene. This is because we otherwise have no way to remove the object settings
         #       if we hide the panel when there's no build settings
-        return ScenePropertyGroup.get_group(scene).build_settings
+        return scene and ScenePropertyGroup.get_group(scene).build_settings
+
+    @staticmethod
+    def _get_object(context: Context):
+        return context.object
+
+    @classmethod
+    def poll(cls, context: Context):
+        return cls._poll_object(cls._get_object(context)) and cls._poll_scene(context.scene)
 
     @staticmethod
     def draw_expandable_header(properties_col: UILayout, ui_toggle_data: PropertyGroup, ui_toggle_prop: str,
@@ -331,14 +333,7 @@ class ObjectPanel(Panel):
             self.draw_materials_box(properties_col, settings.material_settings, obj, ui_toggle_data, enabled)
 
     def draw(self, context: Context):
-        # guaranteed to be SpaceProperties by the bl_space_type
-        space_data = cast(SpaceProperties, context.space_data)
-        pin_id = space_data.pin_id
-        if pin_id:
-            # poll function has already checked that there's either no pin or that it's an object
-            obj = pin_id
-        else:
-            obj = context.object
+        obj = self._get_object(context)
         group = ObjectPropertyGroup.get_group(obj)
         object_settings = group.object_settings
 
@@ -457,6 +452,37 @@ class ObjectPanel(Panel):
                 main_column.separator()
                 final_col = main_column.column(align=True)
                 final_col.operator(ObjectBuildSettingsRemove.bl_idname, text="Remove from Avatar Builder", icon="TRASH")
+
+
+class ObjectPanel(ObjectPanelBase):
+    bl_idname = "object_panel"
+    bl_label = "Avatar Builder"
+    bl_space_type = "PROPERTIES"
+    bl_region_type = "WINDOW"
+    bl_context = "object"
+    bl_options = {'DEFAULT_CLOSED'}
+
+    @staticmethod
+    def _get_object(context: Context):
+        # guaranteed to be SpaceProperties by the bl_space_type
+        space_data = cast(SpaceProperties, context.space_data)
+        pin_id = space_data.pin_id
+        if pin_id:
+            # poll function has already checked that there's either no pin or that it's an object
+            return pin_id
+        else:
+            return context.object
+
+
+class ObjectPanelInScene(ObjectPanelBase):
+    """3D View version of the Object Settings Panel"""
+    bl_idname = 'object_panel_scene'
+    bl_label = "Object Settings"
+    bl_space_type = 'VIEW_3D'
+    bl_region_type = 'UI'
+    bl_category = "Avatar Builder"
+    # After MMD Shape Mapping Panel by default (since this Panel is not always present)
+    bl_order = 3
 
 
 class ObjectBuildSettingsBase(ContextCollectionOperatorBase):
