@@ -481,6 +481,8 @@ class ObjectPanelInScene(ObjectPanelBase):
     bl_category = "Avatar Builder"
     # After MMD Shape Mapping Panel by default (since this Panel is not always present)
     bl_order = 3
+    # The 3D View version is intended as an extra way to access Object Settings
+    bl_options = {'DEFAULT_CLOSED'}
 
 
 class ObjectBuildSettingsBase(ContextCollectionOperatorBase):

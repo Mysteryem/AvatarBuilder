@@ -451,6 +451,8 @@ class MmdShapeMappingsPanel(Panel):
     bl_category = "Avatar Builder"
     # After main Scene Build Settings Panel by default
     bl_order = 1
+    # MMD Mappings are always needed, so default to being closed
+    bl_options = {'DEFAULT_CLOSED'}
 
     @classmethod
     def poll(cls, context: Context) -> bool:
