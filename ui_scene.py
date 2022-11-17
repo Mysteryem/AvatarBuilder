@@ -1,12 +1,24 @@
 import bpy
-from bpy.types import UIList, Context, UILayout, Menu, Panel, Operator, Object, Mesh, Armature, SpaceProperties
+from bpy.types import (
+    UIList,
+    Context,
+    UILayout,
+    Menu,
+    Panel,
+    Operator,
+    Object,
+    Mesh,
+    Armature,
+    SpaceProperties,
+    SpaceView3D,
+)
 from typing import cast
 from collections import defaultdict
 
 from .registration import register_module_classes_factory
 from .extensions import ScenePropertyGroup, ObjectPropertyGroup, MmdShapeKeySettings
 from .op_build_avatar import BuildAvatarOp
-from .ui_object import ObjectBuildSettingsAdd
+from .ui_object import ObjectBuildSettingsAdd, ObjectPanelInScene
 from .context_collection_ops import (
     PropCollectionType,
     ContextCollectionOperatorBase,
@@ -134,7 +146,8 @@ _op_builder = SceneBuildSettingsBase.op_builder(
 SceneBuildSettingsMove = _op_builder.move.build()
 
 
-def _redraw_object_properties_regions(context: Context):
+def _redraw_object_properties_panels(context: Context):
+    view3d_panel_drawn = ObjectPanelInScene.poll(context)
     # Iterate through all areas in the current screen
     for area in context.screen.areas:
         if area.type == 'PROPERTIES':
@@ -170,6 +183,26 @@ def _redraw_object_properties_regions(context: Context):
                             # If we found the WINDOW region before the end, we can skip the other regions
                             # (HEADER and NAVIGATION_BAR)
                             break
+        elif view3d_panel_drawn and area.type == 'VIEW_3D':
+            ui_region_shown = False
+            # I think there's only ever a single space in the 3D View, but we'll loop to be sure
+            for space in area.spaces:
+                # SpaceView3D.show_region_ui indicates whether the right shelf (the 'UI' region) is displayed
+                if isinstance(space, SpaceView3D) and space.show_region_ui:
+                    ui_region_shown = True
+                    break
+
+            if ui_region_shown:
+                # Find the 'UI' region
+                for region in area.regions:
+                    if region.type == 'UI':
+                        # There doesn't appear to be a way to tell which tab of the UI region is active, nor does there
+                        # appear to be a way to tell if a specific Panel is expanded or collapsed, so we will have to
+                        # assume that the Panel's tab is active and that the Panel is expanded.
+                        # Tell the UI region to redraw
+                        region.tag_redraw()
+                        # There should only be one UI region, so any remaining regions can be skipped
+                        break
 
 
 @_op_builder.add.decorate
@@ -195,7 +228,7 @@ class SceneBuildSettingsAdd(CollectionAddBase, SceneBuildSettingsBase):
         # built. This is so that the .poll of the Object Panel gets called again, making the Panel appear due to the
         # fact that there are now some settings that exist.
         if no_elements_to_start_with and 'FINISHED' in result:
-            _redraw_object_properties_regions(context)
+            _redraw_object_properties_panels(context)
         return result
 
 
@@ -208,7 +241,7 @@ class SceneBuildSettingsRemove(CollectionRemoveBase, SceneBuildSettingsBase):
             # If we've just removed the last settings, tell any Object Properties regions to redraw so that they update
             # for the fact that there are no longer any settings, meaning the Panel in Object Properties shouldn't be
             # drawn anymore
-            _redraw_object_properties_regions(context)
+            _redraw_object_properties_panels(context)
         return result
 
 
@@ -258,6 +291,9 @@ class SceneBuildSettingsPurge(Operator):
                 num_objects_removed_from += 1
 
         self.report({'INFO'}, f"Removed {total_num_settings_removed} settings from {num_objects_removed_from} Objects.")
+        if total_num_settings_removed != 0:
+            # Cause a UI redraw
+            _redraw_object_properties_panels(context)
         return {'FINISHED'}
 
 
