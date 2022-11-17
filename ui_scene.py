@@ -1,6 +1,7 @@
 import bpy
 from bpy.types import UIList, Context, UILayout, Menu, Panel, Operator, Object, Mesh, Armature, SpaceProperties
 from typing import cast
+from collections import defaultdict
 
 from .registration import register_module_classes_factory
 from .extensions import ScenePropertyGroup, ObjectPropertyGroup, MmdShapeKeySettings
@@ -212,21 +213,54 @@ class SceneBuildSettingsRemove(CollectionRemoveBase, SceneBuildSettingsBase):
 
 
 class SceneBuildSettingsPurge(Operator):
-    """Clear all orphaned Build Settings from all objects in the scene
-    (Not yet implemented)"""
+    """Remove orphaned Build Settings from all Objects in every Scene."""
     bl_idname = "scene_build_settings_purge"
     bl_label = "Purge"
     bl_options = {'REGISTER', 'UNDO'}
 
-    @classmethod
-    def poll(cls, context: bpy.types.Context) -> bool:
-        return False
-
     def execute(self, context: bpy.types.Context) -> set[str]:
+        total_num_settings_removed = 0
+        num_objects_removed_from = 0
+
+        # Objects could be in multiple Scenes, so we need to find the possible SceneBuildSettings for each Object in
+        # each Scene
+        non_orphan_settings_per_object: dict[Object, set[str]] = defaultdict(set)
+        for scene in bpy.data.scenes:
+            scene_property_group = ScenePropertyGroup.get_group(scene)
+            # Get the names of all SceneBuildSettings in this Scene
+            settings_in_scene = {spg.name for spg in scene_property_group.build_settings}
+            # Only need to look through the Objects in the Scene if there is at least one SceneBuildSettings
+            if settings_in_scene:
+                # Iterate through every Object in this Scene
+                for obj in scene.objects:
+                    # Only need to check Objects of the allowed types
+                    if obj.type in ObjectPropertyGroup.ALLOWED_TYPES:
+                        # Add the set of names of settings in this Scene to set of all names for this Object
+                        non_orphan_settings_per_object[obj].update(settings_in_scene)
+
+        # Iterate through all found Objects, removing any ObjectBuildSettings that are not in the set of names for the
+        # Object being iterated
+        for obj, non_orphan_groups in non_orphan_settings_per_object.items():
+            # Get the collection of ObjectBuildSettings
+            settings_col = ObjectPropertyGroup.get_group(obj).object_settings
+            # Iterate in reverse so that we can remove settings without affecting the indices of settings we are yet to
+            # iterate.
+            num_settings_removed = 0
+            for idx, settings in utils.enumerate_reversed(settings_col):
+                # If the name of the ObjectBuildSettings doesn't match any of the SceneBuildSettings for this Object,
+                # remove the ObjectBuildSettings
+                settings_name = settings.name
+                if settings_name not in non_orphan_groups:
+                    settings_col.remove(idx)
+                    num_settings_removed += 1
+            if num_settings_removed != 0:
+                total_num_settings_removed += num_settings_removed
+                num_objects_removed_from += 1
+
+        self.report({'INFO'}, f"Removed {total_num_settings_removed} settings from {num_objects_removed_from} Objects.")
         return {'FINISHED'}
 
 
-# TODO: Implement and add a 'Fake User' BoolProperty to Object Settings that prevents purging
 # TODO: By default we only show the object settings matching the scene settings, so is this necessary?
 class SceneBuildSettingsSync(Operator):
     """Set the currently displayed settings of all objects in the scene to the currently active Build Settings

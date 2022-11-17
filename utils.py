@@ -17,7 +17,7 @@ from bpy.types import (
 )
 
 from types import MethodDescriptorType
-from typing import Any, Protocol, Literal, Optional, Union, TypeVar, Sized, Reversible, runtime_checkable, Iterable
+from typing import Any, Protocol, Literal, Optional, Union, TypeVar, Sized, Reversible, Iterable
 from contextlib import contextmanager
 import re
 from .registration import dummy_register_factory
@@ -207,15 +207,23 @@ def id_property_group_copy(from_owner: PropertyHolderType, to_owner: PropertyHol
         pass
 
 
-_T_co = TypeVar('_T_co')
+# Naming this _T_co breaks PyCharm's code analysis for some reason
+_T = TypeVar('_T')
 
 
-@runtime_checkable
-class SizedAndReversible(Sized, Reversible[_T_co], Protocol[_T_co]):
+# Type hint for sized and reversible
+class SizedAndReversible(Sized, Reversible[_T], Protocol[_T]):
     pass
 
 
-def enumerate_reversed(my_list: SizedAndReversible):
+# Type hint for supports len and getitem, this is a copy of the Protocol in _typeshed used by type checkers for the
+# builtin 'reverse' function (_typeshed does not exist at runtime).
+class SupportsLenAndGetItem(Protocol[_T]):
+    def __len__(self) -> int: ...
+    def __getitem__(self, item) -> _T: ...
+
+
+def enumerate_reversed(my_list: Union[SizedAndReversible[_T], SupportsLenAndGetItem[_T]]) -> Iterable[tuple[int, _T]]:
     """like `reversed(enumerate(my_list))` if it was possible.
     Does not create a copy of my_list like `reversed(list(enumerate(my_list)))` (faster)
     Does not have to subtract the iterated index from the length of my_list in each iteration (faster)
