@@ -274,8 +274,9 @@ class SceneBuildSettingsPurge(Operator):
         # Iterate through all found Objects, removing any ObjectBuildSettings that are not in the set of names for the
         # Object being iterated
         for obj, non_orphan_groups in non_orphan_settings_per_object.items():
+            object_group = ObjectPropertyGroup.get_group(obj)
             # Get the collection of ObjectBuildSettings
-            settings_col = ObjectPropertyGroup.get_group(obj).object_settings
+            settings_col = object_group.object_settings
             # Iterate in reverse so that we can remove settings without affecting the indices of settings we are yet to
             # iterate.
             num_settings_removed = 0
@@ -286,6 +287,9 @@ class SceneBuildSettingsPurge(Operator):
                 if settings_name not in non_orphan_groups:
                     settings_col.remove(idx)
                     num_settings_removed += 1
+            num_remaining_settings = len(settings_col)
+            if object_group.object_settings_active_index >= num_remaining_settings:
+                object_group.object_settings_active_index = max(0, num_remaining_settings - 1)
             if num_settings_removed != 0:
                 total_num_settings_removed += num_settings_removed
                 num_objects_removed_from += 1
