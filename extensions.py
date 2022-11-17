@@ -413,7 +413,7 @@ del _DELETE_, _MERGE_
 
 
 class ShapeKeyOps(CollectionPropBase[ShapeKeyOp]):
-    data: CollectionProperty(type=ShapeKeyOp)
+    collection: CollectionProperty(type=ShapeKeyOp)
 
 
 def object_build_settings_update_name(self: 'ObjectBuildSettings', context: Context):
@@ -485,7 +485,7 @@ class ShapeKeySettings(PropertyGroup):
 
 class KeepUVMapList(CollectionPropBase[PropertyGroup]):
     # We only need the .name property, so we can use a plain PropertyGroup
-    data: CollectionProperty(type=PropertyGroup)
+    collection: CollectionProperty(type=PropertyGroup)
 
 
 class UVSettings(PropertyGroup):
@@ -517,7 +517,7 @@ class VertexGroupSwap(PropertyGroup):
 
 
 class VertexGroupSwapCollection(CollectionPropBase[VertexGroupSwap]):
-    data: CollectionProperty(type=VertexGroupSwap)
+    collection: CollectionProperty(type=VertexGroupSwap)
     enabled: BoolProperty(
         name="Vertex Group swaps",
         description="On rare occasions, you may want to replace a vertex group with another. When enabled, provides a"
@@ -556,7 +556,7 @@ class MaterialRemapElement(PropertyGroup):
 
 
 class MaterialRemap(CollectionPropBase[MaterialRemapElement]):
-    data: CollectionProperty(type=MaterialRemapElement)
+    collection: CollectionProperty(type=MaterialRemapElement)
 
 
 class MaterialSettings(PropertyGroup):
@@ -587,7 +587,7 @@ class MaterialSettings(PropertyGroup):
 
         if self.materials_main_op == 'REMAP':
             # Refresh length of mappings collection
-            data = self.materials_remap.data
+            data = self.materials_remap.collection
             material_slots = context.object.material_slots
             num_mappings = len(data)
             num_slots = len(material_slots)
@@ -610,7 +610,7 @@ class MaterialSettings(PropertyGroup):
                 if mat_str:
                     remap.to_mat = bpy.data.materials.get(mat_str)
         else:
-            for remap in self.materials_remap.data:
+            for remap in self.materials_remap.collection:
                 mat = remap.to_mat
                 if mat:
                     try:

@@ -137,17 +137,17 @@ E = TypeVar('E', bound=PropertyGroup)
 
 class CollectionPropBase(Generic[E], PropertyGroup):
     # Unfortunately, PyCharm won't pick up the typing if we try to set
-    # data: CollectionProperty(type=<type as argument>)
+    # collection: CollectionProperty(type=<type as argument>)
     # using a passed in argument, so we must provide the annotation in subclasses
     #
     # By setting this property's type to None, it will error if it's not overridden
-    data: CollectionProperty(type=None)
+    collection: CollectionProperty(type=None)
     active_index: IntProperty()
 
     @property
     def active(self) -> Optional[E]:
-        if 0 <= self.active_index < len(self.data):
-            return self.data[self.active_index]
+        if 0 <= self.active_index < len(self.collection):
+            return self.collection[self.active_index]
         else:
             return None
 

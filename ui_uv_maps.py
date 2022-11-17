@@ -35,7 +35,7 @@ def _uv_map_items(self, context: Context):
     me = obj.data
     if isinstance(me, Mesh):
         settings = ObjectPropertyGroup.get_group(obj).get_displayed_settings(context.scene)
-        data = settings.mesh_settings.uv_settings.keep_uv_map_list.data
+        data = settings.mesh_settings.uv_settings.keep_uv_map_list.collection
         used_uv_maps = {e.name for e in data}
 
         # Don't include the current row
@@ -78,7 +78,7 @@ class KeepUVMapSearch(Operator):
         obj = context.object
         group = ObjectPropertyGroup.get_group(obj)
         object_settings = group.get_displayed_settings(context.scene)
-        data = object_settings.mesh_settings.uv_settings.keep_uv_map_list.data
+        data = object_settings.mesh_settings.uv_settings.keep_uv_map_list.collection
         index = self.index
         if index < len(data):
             row = data[index]
@@ -140,7 +140,7 @@ class KeepUVMapListControlBase(ContextCollectionOperatorBase):
     def get_collection(cls, context: Context) -> Optional[PropCollectionType]:
         prop = KeepUVMapListControlBase.get_property(context)
         if prop:
-            return prop.data
+            return prop.collection
         else:
             return None
 
@@ -199,7 +199,7 @@ def draw_uv_map_list(layout: UILayout, keep_uv_map_list: KeepUVMapList):
     row = layout.row(align=True)
     row.template_list(
         KeepUVMapUIList.bl_idname, "",
-        keep_uv_map_list, 'data',
+        keep_uv_map_list, 'collection',
         keep_uv_map_list, 'active_index',
         # Two rows minimum, since there is another option specifically for keeping only one UV Map
         sort_lock=True, rows=2)

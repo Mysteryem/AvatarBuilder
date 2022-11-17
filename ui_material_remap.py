@@ -76,7 +76,7 @@ class RefreshRemapList(Operator):
         object_build_settings = ObjectPropertyGroup.get_group(obj).get_displayed_settings(context.scene)
         material_settings = object_build_settings.mesh_settings.material_settings
         if material_settings.materials_main_op == 'REMAP':
-            data = material_settings.materials_remap.data
+            data = material_settings.materials_remap.collection
             material_slots = obj.material_slots
             num_mappings = len(data)
             num_slots = len(material_slots)
@@ -105,7 +105,7 @@ def draw_material_remap_list(layout: UILayout, obj: Object, material_remap: Mate
     col_flow = box.column_flow(columns=2, align=True)
     col1 = col_flow.column()
     col2 = col_flow.column()
-    for idx, (slot, remap) in enumerate(zip(obj.material_slots, material_remap.data)):
+    for idx, (slot, remap) in enumerate(zip(obj.material_slots, material_remap.collection)):
         mat = slot.material
         row = col1.row()
         if mat:
@@ -120,7 +120,7 @@ def draw_material_remap_list(layout: UILayout, obj: Object, material_remap: Mate
         else:
             col2.prop(remap, 'to_mat', text="", icon='MATERIAL_DATA')
     num_slots = len(obj.material_slots)
-    num_remaps = len(material_remap.data)
+    num_remaps = len(material_remap.collection)
     if num_slots != num_remaps:
         if num_slots > num_remaps:
             # There are more slots than remaps, the user needs to refresh the list
@@ -133,7 +133,7 @@ def draw_material_remap_list(layout: UILayout, obj: Object, material_remap: Mate
             col_flow.alert = True
             col1 = col_flow.column()
             col2 = col_flow.column()
-            for remap in material_remap.data[num_slots:]:
+            for remap in material_remap.collection[num_slots:]:
                 row = col1.row()
                 row.label(text="Removed slot:")
                 row.label(text="", icon='FORWARD')

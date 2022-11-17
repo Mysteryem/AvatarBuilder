@@ -32,7 +32,7 @@ class VertexGroupSwapControlBase(ContextCollectionOperatorBase):
 
     @classmethod
     def get_collection(cls, context: Context) -> PropCollectionType:
-        return VertexGroupSwapControlBase.get_vertex_group_settings(context).vertex_group_swaps.data
+        return VertexGroupSwapControlBase.get_vertex_group_settings(context).vertex_group_swaps.collection
 
     @classmethod
     def get_active_index(cls, context: Context) -> int:
@@ -55,7 +55,7 @@ def draw_vertex_group_swaps(layout: UILayout, vertex_group_swap_collection: Vert
     if vertex_group_swap_collection.enabled:
         row = layout.row(align=True)
         row.template_list(VertexGroupSwapList.bl_idname, "",
-                          vertex_group_swap_collection, 'data',
+                          vertex_group_swap_collection, 'collection',
                           vertex_group_swap_collection, 'active_index',
                           rows=2)
         vertical_buttons_col = row.column(align=True)

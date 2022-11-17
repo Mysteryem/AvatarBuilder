@@ -68,7 +68,7 @@ class ShapeKeyOpsListBase(ContextCollectionOperatorBase):
     def get_collection(cls, context: Context) -> Optional[PropCollectionType]:
         settings = cls.get_shape_key_settings(context)
         if settings is not None:
-            return settings.mesh_settings.shape_key_settings.shape_key_ops.data
+            return settings.mesh_settings.shape_key_settings.shape_key_ops.collection
         else:
             return None
 
@@ -155,7 +155,7 @@ def draw_shape_key_ops(shape_keys_box_col: UILayout, settings: ShapeKeySettings,
     vertical_buttons_col.operator(ShapeKeyOpsListMove.bl_idname, text="", icon="TRIA_DOWN").type = 'DOWN'
     shape_keys_box_col.template_list(
         ShapeKeyOpsUIList.bl_idname, "",
-        shape_key_ops, 'data',
+        shape_key_ops, 'collection',
         shape_key_ops, 'active_index',
         # With the buttons down the side, 4 rows is the minimum we can have, so we put the buttons on top
         sort_lock=True, rows=1)

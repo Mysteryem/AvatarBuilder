@@ -463,7 +463,7 @@ def build_mesh_shape_keys(obj: Object, me: Mesh, settings: ShapeKeySettings):
             del mix_shape_co
             return
         elif main_op == 'CUSTOM':
-            for op in settings.shape_key_ops.data:
+            for op in settings.shape_key_ops.collection:
                 build_mesh_shape_key_op(obj, shape_keys, op)
         elif main_op == 'KEEP':
             # Nothing to do
@@ -625,7 +625,7 @@ def build_mesh_vertex_groups(obj: Object, settings: VertexGroupSettings):
         vertex_groups = obj.vertex_groups
         temp_name = utils.get_unique_name('temp', vertex_groups)
 
-        for swap in swaps.data:
+        for swap in swaps.collection:
             first = swap.name
             second = swap.swap_with
 
@@ -704,7 +704,7 @@ def build_mesh_materials(obj: Object, me: Mesh, settings: MaterialSettings):
             materials.append(material)
     elif main_op == 'REMAP':
         # Using zip to stop iteration as soon as either iterator runs out of elements
-        for idx, remap in zip(range(len(materials)), settings.materials_remap.data):
+        for idx, remap in zip(range(len(materials)), settings.materials_remap.collection):
             materials[idx] = remap.to_mat
 
     # TODO: We might want to clean up any polygon material indices that are out of bounds of the number of materials
