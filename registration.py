@@ -2,8 +2,8 @@ from collections import defaultdict
 from typing import TypeVar, Union, Generic, Optional
 
 import bpy
-from bpy.types import Panel, Operator, UIList, Menu, ID, Bone, PoseBone, PropertyGroup
-from bpy.props import PointerProperty, CollectionProperty, IntProperty
+from bpy.types import Panel, Operator, UIList, Menu, ID, Bone, PoseBone, PropertyGroup, UILayout
+from bpy.props import PointerProperty, CollectionProperty, IntProperty, EnumProperty
 
 # Prefix
 _BL_ID_PREFIX = "em_av_builder"
@@ -143,6 +143,88 @@ class CollectionPropBase(Generic[E], PropertyGroup):
     # By setting this property's type to None, it will error if it's not overridden
     collection: CollectionProperty(type=None)
     active_index: IntProperty()
+
+    def get_element_icon(self, element: Optional[E]):
+        """Get the icon of an element"""
+        return 'DECORATE'
+
+    def get_element_label(self, element: Optional[E]):
+        """Get the name of an element"""
+        if element is None:
+            return "(no items)"
+        else:
+            return element.name
+
+    def get_element_description(self, element: Optional[E]):
+        """Get the description of an element"""
+        return ""
+
+    def _search_items(self, context):
+        """This function cannot be overriden without also overriding the search EnumProperty annotation"""
+        items = []
+        if context:
+            collection = self.collection
+            if collection:
+                for idx, e in enumerate(collection):
+                    identifier = str(idx)
+                    item = (
+                        identifier,
+                        self.get_element_label(e),
+                        self.get_element_description(e),
+                        self.get_element_icon(e),
+                        idx
+                    )
+                    items.append(item)
+        if not items:
+            # Must have at least one element
+            items = [
+                (
+                    '0',
+                    self.get_element_label(None),
+                    self.get_element_description(None),
+                    self.get_element_icon(None),
+                    0,
+                )
+            ]
+        return items
+
+    def _search_items_get(self):
+        """This function cannot be overriden without also overriding the search EnumProperty annotation"""
+        maximum_index = len(self.collection) - 1
+        # Technically, active_index could erroneously be set below 0
+        minimum_index = 0
+        return max(minimum_index, min(self.active_index, maximum_index))
+
+    def _search_items_set(self, value):
+        """This function cannot be overriden without also overriding the search EnumProperty annotation"""
+        self.active_index = value
+
+    # Enum 'wrapper' for the active_index property, intended for use in UI
+    search: EnumProperty(
+        items=_search_items,
+        get=_search_items_get,
+        set=_search_items_set,
+        options={'SKIP_SAVE'},
+        # Don't display anything below the popup list displayed with UILayout.prop
+        name="",
+    )
+
+    def draw_search(self, layout: UILayout, *,
+                    new: str = '', unlink: str = '', name_prop: str = 'name'):
+        """UI helper that produces a similar look to UILayout.template_ID but for custom Collection properties"""
+        row = layout.row(align=True)
+        row.prop(self, 'search', icon_only=True)
+        active = self.active
+        if active is not None:
+            row.prop(active, name_prop, text="")
+            if new:
+                row.operator(new, text="", icon='DUPLICATE')
+            if unlink:
+                row.operator(unlink, text="", icon='X')
+        else:
+            # todo: Might want to display something for when the 'new' Operator isn't specified
+            if new:
+                row.operator(new, text="New", icon='ADD')
 
     @property
     def active(self) -> Optional[E]:
