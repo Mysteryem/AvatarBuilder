@@ -146,7 +146,7 @@ class CollectionPropBase(Generic[E], PropertyGroup):
 
     def get_element_icon(self, element: Optional[E]):
         """Get the icon of an element"""
-        return 'DECORATE'
+        return 'NONE'
 
     def get_element_label(self, element: Optional[E]):
         """Get the name of an element"""
@@ -210,10 +210,11 @@ class CollectionPropBase(Generic[E], PropertyGroup):
     )
 
     def draw_search(self, layout: UILayout, *,
-                    new: str = '', unlink: str = '', name_prop: str = 'name'):
-        """UI helper that produces a similar look to UILayout.template_ID but for custom Collection properties"""
+                    new: str = '', unlink: str = '', name_prop: str = 'name', icon: str = 'NONE'):
+        """UI helper that produces a similar look to UILayout.template_ID but for custom Collection properties.
+        icon of 'NONE' will use the icon from get_element_icon"""
         row = layout.row(align=True)
-        row.prop(self, 'search', icon_only=True)
+        row.prop(self, 'search', icon_only=True, icon=icon)
         active = self.active
         if active is not None:
             row.prop(active, name_prop, text="")

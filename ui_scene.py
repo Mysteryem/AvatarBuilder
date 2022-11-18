@@ -70,7 +70,8 @@ class ScenePanel(Panel):
             group.draw_search(col,
                               new=SceneBuildSettingsAdd.bl_idname,
                               unlink=SceneBuildSettingsRemove.bl_idname,
-                              name_prop='name_prop')
+                              name_prop='name_prop',
+                              icon='SETTINGS')
             buttons_col = col.column(align=True)
             # TODO: Sync is only useful if forced sync is turned off, so only display it in those cases
             row = buttons_col.row(align=True)

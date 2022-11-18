@@ -797,9 +797,6 @@ class ScenePropertyGroup(IdPropertyGroup, CollectionPropBase[SceneBuildSettings]
         else:
             return None
 
-    def get_element_icon(self, element: Optional[SceneBuildSettings]):
-        return 'SETTINGS'
-
 
 class ObjectPropertyGroup(IdPropertyGroup, CollectionPropBase[ObjectBuildSettings]):
     _registration_name = f'{_PROP_PREFIX}_object_settings_group'
