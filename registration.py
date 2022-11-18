@@ -1,5 +1,6 @@
 from collections import defaultdict
 from typing import TypeVar, Union, Generic, Optional
+from sys import intern
 
 import bpy
 from bpy.types import Panel, Operator, UIList, Menu, ID, Bone, PoseBone, PropertyGroup, UILayout
@@ -166,12 +167,11 @@ class CollectionPropBase(Generic[E], PropertyGroup):
             collection = self.collection
             if collection:
                 for idx, e in enumerate(collection):
-                    identifier = str(idx)
                     item = (
-                        identifier,
-                        self.get_element_label(e),
-                        self.get_element_description(e),
-                        self.get_element_icon(e),
+                        intern(str(idx)),
+                        intern(self.get_element_label(e)),
+                        intern(self.get_element_description(e)),
+                        intern(self.get_element_icon(e)),
                         idx
                     )
                     items.append(item)
@@ -179,10 +179,10 @@ class CollectionPropBase(Generic[E], PropertyGroup):
             # Must have at least one element
             items = [
                 (
-                    '0',
-                    self.get_element_label(None),
-                    self.get_element_description(None),
-                    self.get_element_icon(None),
+                    intern('0'),
+                    intern(self.get_element_label(None)),
+                    intern(self.get_element_description(None)),
+                    intern(self.get_element_icon(None)),
                     0,
                 )
             ]
