@@ -66,7 +66,7 @@ class CopyPropsItem:
                     options.props_to_copy = self.props
 
             # Draw the operator to copy settings to each SceneBuildSettings (excluding the currently displayed settings)
-            for scene_build_settings in ScenePropertyGroup.get_group(scene).build_settings:
+            for scene_build_settings in ScenePropertyGroup.get_group(scene).collection:
                 draw_copy_operator(scene_build_settings)
 
             # There may be some orphaned settings (matches no SceneBuildSettings), in which case, we should add a
@@ -75,7 +75,7 @@ class CopyPropsItem:
 
             # Draw the operator to copy settings to each orphaned ObjectBuildSettings (excluding the currently displayed
             # settings)
-            for object_build_settings in object_group.object_settings:
+            for object_build_settings in object_group.collection:
                 is_orphaned = object_build_settings.name not in all_build_settings_names
                 if is_orphaned:
                     # Add the separator if we haven't already
@@ -373,7 +373,7 @@ class CopyObjectProperties(Operator):
 
         create = self.create
         for paste_to_obj in paste_objects:
-            settings_col = ObjectPropertyGroup.get_group(paste_to_obj).object_settings
+            settings_col = ObjectPropertyGroup.get_group(paste_to_obj).collection
             if paste_settings_name in settings_col:
                 paste_to_settings = settings_col[paste_settings_name]
             elif create:

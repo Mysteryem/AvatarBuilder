@@ -809,7 +809,7 @@ def set_build_name_for_existing_object_about_to_be_renamed(name: str):
     existing_object: Object = bpy.data.objects.get(name)
     if existing_object:
         existing_object_group = ObjectPropertyGroup.get_group(existing_object)
-        existing_object_settings = existing_object_group.object_settings
+        existing_object_settings = existing_object_group.collection
         # Iterate through all the build settings on this object, if they don't have a target object name set, then they
         # would have been using the object's name instead. Since the object's name is about to be changed, the target
         # object name must be set in order for build behaviour to remain the same.
@@ -962,7 +962,7 @@ def validate_build(context: Context, active_scene_settings: SceneBuildSettings) 
 
 def mmd_remap(scene_property_group: ScenePropertyGroup, mmd_settings: MmdShapeKeySettings, mesh_objects: list[Object]):
     if mmd_settings.do_remap:
-        mmd_mappings = scene_property_group.mmd_shape_mapping_group.mmd_shape_mappings
+        mmd_mappings = scene_property_group.mmd_shape_mapping_group.collection
 
         # Must have a model_shape name, since that's what we will match against
         valid_mmd_mappings = (m for m in mmd_mappings if m.model_shape)

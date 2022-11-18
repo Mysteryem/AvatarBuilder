@@ -58,7 +58,7 @@ class ObjectBuildSettingsUIList(UIList):
     def draw_item(self, context: Context, layout: UILayout, data, item: ObjectBuildSettings, icon, active_data, active_property, index=0,
                   flt_flag=0):
         scene_group = ScenePropertyGroup.get_group(context.scene)
-        scene_settings = scene_group.build_settings
+        scene_settings = scene_group.collection
 
         scene_active_name = scene_group.get_active().name
         is_scene_active = item.name == scene_active_name
@@ -101,7 +101,7 @@ class ObjectPanelBase(Panel):
         # TODO: Should add a 'clean' or 'purge' button to Scene panel that purges non-existent build settings from all
         #       objects in the current scene. This is because we otherwise have no way to remove the object settings
         #       if we hide the panel when there's no build settings
-        return scene and ScenePropertyGroup.get_group(scene).build_settings
+        return scene and ScenePropertyGroup.get_group(scene).collection
 
     @staticmethod
     def _get_object(context: Context):
@@ -335,7 +335,7 @@ class ObjectPanelBase(Panel):
     def draw(self, context: Context):
         obj = self._get_object(context)
         group = ObjectPropertyGroup.get_group(obj)
-        object_settings = group.object_settings
+        object_settings = group.collection
 
         layout = self.layout
         main_column = layout.column(align=True)
@@ -378,18 +378,18 @@ class ObjectPanelBase(Panel):
             else:
                 active_object_settings = None
                 # If there are any SceneBuildSettings:
-                if scene_group.build_settings:
+                if scene_group.collection:
                     # Only happens if the active index is out of bounds for some reason, since we hide the panel
                     # when there are no Build Settings
                     header_col.label(text="Active build settings is out of bounds, this shouldn't normally happen.")
                     header_col.label(text="Select one in the list in the 3D View or Auto Fix")
                     # Button to set the active index to 0
                     options = header_col.operator('wm.context_set_int', text="Auto Fix", icon='SHADERFX')
-                    options.data_path = 'scene.' + scene_group.path_from_id('build_settings_active_index')
+                    options.data_path = 'scene.' + scene_group.path_from_id('active_index')
                     options.value = 0
                     options.relative = False
         else:
-            object_settings_active_index = group.object_settings_active_index
+            object_settings_active_index = group.active_index
             num_object_settings = len(object_settings)
             if num_object_settings > 0 and 0 <= object_settings_active_index < num_object_settings:
                 active_object_settings = object_settings[object_settings_active_index]
@@ -403,7 +403,7 @@ class ObjectPanelBase(Panel):
                 header_top_row_left_buttons_row2.menu(copy_menu.bl_idname, text="", icon='PASTEDOWN')
 
             list_row = header_top_row.row(align=False)
-            list_row.template_list(ObjectBuildSettingsUIList.bl_idname, "", group, 'object_settings', group, 'object_settings_active_index', rows=3)
+            list_row.template_list(ObjectBuildSettingsUIList.bl_idname, "", group, 'collection', group, 'active_index', rows=3)
             vertical_buttons_col = header_top_row.column(align=True)
             vertical_buttons_col.menu(ObjectBuildSettingsAddMenu.bl_idname, text="", icon="ADD")
             vertical_buttons_col.operator(ObjectBuildSettingsRemove.bl_idname, text="", icon="REMOVE")
@@ -492,7 +492,7 @@ class ObjectBuildSettingsBase(ContextCollectionOperatorBase):
 
     @classmethod
     def get_collection(cls, context: Context) -> PropCollectionType:
-        return cls.get_object_group(context).object_settings
+        return cls.get_object_group(context).collection
 
     @classmethod
     def get_active_index(cls, context: Context) -> Optional[int]:
@@ -503,11 +503,11 @@ class ObjectBuildSettingsBase(ContextCollectionOperatorBase):
         if sync_enabled:
             active_scene_settings = ScenePropertyGroup.get_group(context.scene).get_active()
             if active_scene_settings and active_scene_settings.name:
-                return object_group.object_settings.find(active_scene_settings.name)
+                return object_group.collection.find(active_scene_settings.name)
             else:
                 return None
         else:
-            return object_group.object_settings_active_index
+            return object_group.active_index
 
     @classmethod
     def set_active_index(cls, context: Context, value: int):
@@ -517,7 +517,7 @@ class ObjectBuildSettingsBase(ContextCollectionOperatorBase):
             # The active index is effectively read-only when sync is enabled
             return
         else:
-            object_group.object_settings_active_index = value
+            object_group.active_index = value
 
 
 _op_builder = ObjectBuildSettingsBase.op_builder(

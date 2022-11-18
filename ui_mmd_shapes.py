@@ -43,8 +43,8 @@ class ShowMappingComment(Operator):
     def get_mapping(use_active: bool, index: int, context: Context):
         shape_mapping_group = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group
         if use_active:
-            index = shape_mapping_group.mmd_shape_mappings_active_index
-        data = shape_mapping_group.mmd_shape_mappings
+            return shape_mapping_group.active
+        data = shape_mapping_group.collection
         if 0 <= index < len(data):
             return data[index]
         else:
@@ -161,15 +161,15 @@ class MmdMappingList(UIList):
 class MmdMappingControlBase(ContextCollectionOperatorBase):
     @classmethod
     def get_collection(cls, context: Context) -> PropCollectionType:
-        return ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings
+        return ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.collection
 
     @classmethod
     def get_active_index(cls, context: Context) -> int:
-        return ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings_active_index
+        return ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.active_index
 
     @classmethod
     def set_active_index(cls, context: Context, value: int):
-        ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings_active_index = value
+        ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.active = value
 
 
 _op_builder = MmdMappingControlBase.op_builder(
@@ -309,7 +309,7 @@ class ExportShapeSettings(Operator, ExportHelper):
     filename_ext = ".csv"
 
     def execute(self, context: Context) -> set[str]:
-        mappings = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings
+        mappings = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.collection
         # Each row must be an Iterable whereby each iterated element goes in its own column. MappingCsvLine is a tuple
         # subclass, so we can turn each mapping into a MappingCsvLine to turn it into a row. Since we use MappingCsvLine
         # when importing also, this means
@@ -360,7 +360,7 @@ class ImportShapeSettings(Operator, ImportHelper):
                 if num_fields < expected_fields:
                     self.report({'WARNING'}, f"Line {line_no} only had {num_fields} fields, (expecting at least"
                                              f" {expected_fields}).")
-            mappings = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings
+            mappings = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.collection
 
             if self.mode == 'REPLACE':
                 mappings.clear()
@@ -421,7 +421,7 @@ class CatsTranslateAll(Operator):
         return integration_cats.CatsTranslate.poll(context)
 
     def execute(self, context: Context) -> set[str]:
-        mappings = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.mmd_shape_mappings
+        mappings = ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.collection
 
         # Get all mmd_names that are non-empty and filter out any duplicates
         unique_to_translate = set()
@@ -485,7 +485,7 @@ class MmdShapeMappingsPanel(Panel):
 
         # Draw the list
         row = main_list_col.row()
-        row.template_list(MmdMappingList.bl_idname, "", group, 'mmd_shape_mappings', group, 'mmd_shape_mappings_active_index')
+        row.template_list(MmdMappingList.bl_idname, "", group, 'collection', group, 'active_index')
 
         # Second column for the list controls
         list_controls_col = list_row.column()

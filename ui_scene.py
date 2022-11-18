@@ -74,7 +74,7 @@ class ScenePanel(Panel):
         else:
             col.label(text="Scene Settings Groups")
             row = col.row()
-            row.template_list(SceneBuildSettingsUIList.bl_idname, "", group, 'build_settings', group, 'build_settings_active_index')
+            row.template_list(SceneBuildSettingsUIList.bl_idname, "", group, 'collection', group, 'active_index')
             vertical_buttons_col = row.column(align=True)
             vertical_buttons_col.operator(SceneBuildSettingsAdd.bl_idname, text="", icon="ADD").name = ''
             vertical_buttons_col.operator(SceneBuildSettingsRemove.bl_idname, text="", icon="REMOVE")
@@ -127,15 +127,15 @@ class ScenePanel(Panel):
 class SceneBuildSettingsBase(ContextCollectionOperatorBase):
     @classmethod
     def get_collection(cls, context: Context) -> PropCollectionType:
-        return ScenePropertyGroup.get_group(context.scene).build_settings
+        return ScenePropertyGroup.get_group(context.scene).collection
 
     @classmethod
     def get_active_index(cls, context: Context) -> int:
-        return ScenePropertyGroup.get_group(context.scene).build_settings_active_index
+        return ScenePropertyGroup.get_group(context.scene).active_index
 
     @classmethod
     def set_active_index(cls, context: Context, value: int):
-        ScenePropertyGroup.get_group(context.scene).build_settings_active_index = value
+        ScenePropertyGroup.get_group(context.scene).active_index = value
 
 
 _op_builder = SceneBuildSettingsBase.op_builder(
@@ -261,7 +261,7 @@ class SceneBuildSettingsPurge(Operator):
         for scene in bpy.data.scenes:
             scene_property_group = ScenePropertyGroup.get_group(scene)
             # Get the names of all SceneBuildSettings in this Scene
-            settings_in_scene = {spg.name for spg in scene_property_group.build_settings}
+            settings_in_scene = {spg.name for spg in scene_property_group.collection}
             # Only need to look through the Objects in the Scene if there is at least one SceneBuildSettings
             if settings_in_scene:
                 # Iterate through every Object in this Scene
@@ -276,7 +276,7 @@ class SceneBuildSettingsPurge(Operator):
         for obj, non_orphan_groups in non_orphan_settings_per_object.items():
             object_group = ObjectPropertyGroup.get_group(obj)
             # Get the collection of ObjectBuildSettings
-            settings_col = object_group.object_settings
+            settings_col = object_group.collection
             # Iterate in reverse so that we can remove settings without affecting the indices of settings we are yet to
             # iterate.
             num_settings_removed = 0
@@ -288,8 +288,8 @@ class SceneBuildSettingsPurge(Operator):
                     settings_col.remove(idx)
                     num_settings_removed += 1
             num_remaining_settings = len(settings_col)
-            if object_group.object_settings_active_index >= num_remaining_settings:
-                object_group.object_settings_active_index = max(0, num_remaining_settings - 1)
+            if object_group.active_index >= num_remaining_settings:
+                object_group.active_index = max(0, num_remaining_settings - 1)
             if num_settings_removed != 0:
                 total_num_settings_removed += num_settings_removed
                 num_objects_removed_from += 1
@@ -395,7 +395,7 @@ class SelectObjectsInSceneSettings(Operator):
             vl = context.view_layer
             for obj in context.visible_objects:
                 if not obj.select_get(view_layer=vl):
-                    object_settings = ObjectPropertyGroup.get_group(obj).object_settings
+                    object_settings = ObjectPropertyGroup.get_group(obj).collection
                     if active_group_name in object_settings:
                         if self.include_disabled or object_settings[active_group_name].include_in_build:
                             obj.select_set(state=True, view_layer=vl)
@@ -416,7 +416,7 @@ class AddSelectedToSceneSettings(Operator):
             active_group_name = active.name
             for obj in context.selected_objects:
                 object_group = ObjectPropertyGroup.get_group(obj)
-                object_settings = object_group.object_settings
+                object_settings = object_group.collection
                 if active_group_name not in object_settings:
                     added = object_settings.add()
                     ObjectBuildSettingsAdd.set_new_item_name_static(object_settings, added, active_group_name)
@@ -435,7 +435,7 @@ class DisableSelectedFromSceneSettings(Operator):
             active_group_name = active.name
             for obj in context.selected_objects:
                 object_group = ObjectPropertyGroup.get_group(obj)
-                object_settings = object_group.object_settings
+                object_settings = object_group.collection
                 if active_group_name in object_settings:
                     object_settings[active_group_name].include_in_build = False
         return {'FINISHED'}
@@ -453,7 +453,7 @@ class EnableSelectedFromSceneSettings(Operator):
             active_group_name = active.name
             for obj in context.selected_objects:
                 object_group = ObjectPropertyGroup.get_group(obj)
-                object_settings = object_group.object_settings
+                object_settings = object_group.collection
                 if active_group_name in object_settings:
                     object_settings[active_group_name].include_in_build = True
         return {'FINISHED'}
@@ -473,7 +473,7 @@ class DisableHiddenFromSceneSettings(Operator):
             for obj in vl.objects:
                 if obj.hide_get(view_layer=vl):
                     object_group = ObjectPropertyGroup.get_group(obj)
-                    object_settings = object_group.object_settings
+                    object_settings = object_group.collection
                     if active_group_name in object_settings:
                         object_settings[active_group_name].include_in_build = False
         return {'FINISHED'}
@@ -495,7 +495,7 @@ class UnhideFromSceneSettings(Operator):
             for obj in vl.objects:
                 if obj.hide_get(view_layer=vl):
                     object_group = ObjectPropertyGroup.get_group(obj)
-                    object_settings = object_group.object_settings
+                    object_settings = object_group.collection
                     if active_group_name in object_settings:
                         obj.hide_set(state=False, view_layer=vl)
                         if self.select:

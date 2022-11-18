@@ -101,7 +101,7 @@ def change_name_no_propagate(element_updating: PropertyGroup, name_prop_name: st
 def scene_build_settings_update_name(self: 'SceneBuildSettings', context: Context):
     scene = context.scene
     scene_group = ScenePropertyGroup.get_group(scene)
-    build_settings = scene_group.build_settings
+    build_settings = scene_group.collection
 
     old_name = self.name
     new_name = self.name_prop
@@ -112,7 +112,7 @@ def scene_build_settings_update_name(self: 'SceneBuildSettings', context: Contex
             # Propagate name change to object settings of objects in the corresponding scene
             for obj in scene.objects:
                 object_group = ObjectPropertyGroup.get_group(obj)
-                object_settings = object_group.object_settings
+                object_settings = object_group.collection
                 if old_name in object_settings:
                     object_settings[old_name].name_prop = new_name
         else:
@@ -120,7 +120,7 @@ def scene_build_settings_update_name(self: 'SceneBuildSettings', context: Contex
             # Propagate name changes to object settings of objects in the corresponding scene
             for obj in scene.objects:
                 object_group = ObjectPropertyGroup.get_group(obj)
-                object_settings = object_group.object_settings
+                object_settings = object_group.collection
 
                 self_settings = None
                 existing_settings = None
@@ -421,8 +421,8 @@ def object_build_settings_update_name(self: 'ObjectBuildSettings', context: Cont
     obj = self.id_data
     object_group = ObjectPropertyGroup.get_group(obj)
 
-    all_scene_build_settings = set(chain.from_iterable(ScenePropertyGroup.get_group(s).build_settings.keys() for s in bpy.data.scenes))
-    update_name_ensure_unique(self, object_group.object_settings, 'name_prop', extra_disallowed_names=all_scene_build_settings)
+    all_scene_build_settings = set(chain.from_iterable(ScenePropertyGroup.get_group(s).collection.keys() for s in bpy.data.scenes))
+    update_name_ensure_unique(self, object_group.collection, 'name_prop', extra_disallowed_names=all_scene_build_settings)
 
 
 class ArmatureSettings(PropertyGroup):
@@ -752,12 +752,9 @@ class MmdShapeMapping(PropertyGroup):
     )
 
 
-class MmdShapeMappingGroup(PropertyGroup):
-    # TODO: Replace with making this class extend registration.CollectionPropBase, requiring mmd_shape_mappings and its
-    #  active_index to be renamed
+class MmdShapeMappingGroup(CollectionPropBase[MmdShapeMapping]):
     # Collection for mmd_shape_data
-    mmd_shape_mappings: CollectionProperty(type=MmdShapeMapping)
-    mmd_shape_mappings_active_index: IntProperty(name="Active Mapping")
+    collection: CollectionProperty(type=MmdShapeMapping)
 
     # noinspection PyMethodMayBeStatic,PyShadowingBuiltins
     def object_is_mesh_with_shapes(self, object: Object):
@@ -773,13 +770,12 @@ class MmdShapeMappingGroup(PropertyGroup):
     )
 
 
-class ScenePropertyGroup(IdPropertyGroup, PropertyGroup):
+class ScenePropertyGroup(IdPropertyGroup, CollectionPropBase[SceneBuildSettings]):
     _registration_name = f'{_PROP_PREFIX}_scene_settings_group'
     _registration_type = Scene
 
     # The main collection and its active index
-    build_settings: CollectionProperty(type=SceneBuildSettings)
-    build_settings_active_index: IntProperty()
+    collection: CollectionProperty(type=SceneBuildSettings)
 
     # Tag export scenes as such so that they and they can be detected more easily for deletion
     is_export_scene: BoolProperty(
@@ -794,15 +790,15 @@ class ScenePropertyGroup(IdPropertyGroup, PropertyGroup):
     mmd_shape_mapping_group: PointerProperty(type=MmdShapeMappingGroup)
 
     def get_active(self) -> Optional[SceneBuildSettings]:
-        settings = self.build_settings
-        active_index = self.build_settings_active_index
+        settings = self.collection
+        active_index = self.active_index
         if settings and 0 <= active_index < len(settings):
             return settings[active_index]
         else:
             return None
 
 
-class ObjectPropertyGroup(IdPropertyGroup, PropertyGroup):
+class ObjectPropertyGroup(IdPropertyGroup, CollectionPropBase[ObjectBuildSettings]):
     _registration_name = f'{_PROP_PREFIX}_object_settings_group'
     _registration_type = Object
 
@@ -810,13 +806,12 @@ class ObjectPropertyGroup(IdPropertyGroup, PropertyGroup):
     # against the allowed types and skip Objects that don't have a correct type
     ALLOWED_TYPES = {'ARMATURE', 'MESH'}
 
-    object_settings: CollectionProperty(type=ObjectBuildSettings)
-    object_settings_active_index: IntProperty()
+    collection: CollectionProperty(type=ObjectBuildSettings)
     sync_active_with_scene: BoolProperty(name="Sync UI with active settings", default=True)
 
     def get_active_settings(self) -> Optional[ObjectBuildSettings]:
-        settings = self.object_settings
-        active_index = self.object_settings_active_index
+        settings = self.collection
+        active_index = self.active_index
         if settings and 0 <= active_index < len(settings):
             return settings[active_index]
         else:
@@ -824,8 +819,8 @@ class ObjectPropertyGroup(IdPropertyGroup, PropertyGroup):
 
     def get_synced_settings(self, scene: Scene) -> Optional[ObjectBuildSettings]:
         active_build_settings = ScenePropertyGroup.get_group(scene).get_active()
-        if active_build_settings and active_build_settings.name in self.object_settings:
-            return self.object_settings[active_build_settings.name]
+        if active_build_settings and active_build_settings.name in self.collection:
+            return self.collection[active_build_settings.name]
         else:
             return None
 
