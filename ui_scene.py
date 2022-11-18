@@ -1,6 +1,5 @@
 import bpy
 from bpy.types import (
-    UIList,
     Context,
     UILayout,
     Menu,
@@ -26,14 +25,6 @@ from .context_collection_ops import (
     CollectionRemoveBase,
 )
 from . import utils
-
-
-class SceneBuildSettingsUIList(UIList):
-    bl_idname = "scene_build_settings"
-
-    def draw_item(self, context: Context, layout: UILayout, data, item, icon, active_data, active_property, index=0, flt_flag=0):
-        #layout.label(text="", icon_value=icon)
-        layout.prop(item, 'name_prop', text="", emboss=False, icon="SETTINGS")
 
 
 class SceneBuildSettingsMenu(Menu):
@@ -73,15 +64,13 @@ class ScenePanel(Panel):
             col.operator(DeleteExportScene.bl_idname, icon='TRASH')
         else:
             col.label(text="Scene Settings Groups")
-            row = col.row()
-            row.template_list(SceneBuildSettingsUIList.bl_idname, "", group, 'collection', group, 'active_index')
-            vertical_buttons_col = row.column(align=True)
-            vertical_buttons_col.operator(SceneBuildSettingsAdd.bl_idname, text="", icon="ADD").name = ''
-            vertical_buttons_col.operator(SceneBuildSettingsRemove.bl_idname, text="", icon="REMOVE")
-            vertical_buttons_col.separator()
-            vertical_buttons_col.operator(SceneBuildSettingsMove.bl_idname, text="", icon="TRIA_UP").type = 'UP'
-            vertical_buttons_col.operator(SceneBuildSettingsMove.bl_idname, text="", icon="TRIA_DOWN").type = 'DOWN'
-
+            # TODO: Replace the 'new' Operator with an Operator that shows a menu of different 'new' options:
+            #  blank (same as the current add), duplicate (same as simple, buildable Duplicate Operator), deep-copy
+            #  (duplicate, but also duplicates ObjectBuildSettings on each Object)
+            group.draw_search(col,
+                              new=SceneBuildSettingsAdd.bl_idname,
+                              unlink=SceneBuildSettingsRemove.bl_idname,
+                              name_prop='name_prop')
             buttons_col = col.column(align=True)
             # TODO: Sync is only useful if forced sync is turned off, so only display it in those cases
             row = buttons_col.row(align=True)
@@ -136,14 +125,6 @@ class SceneBuildSettingsBase(ContextCollectionOperatorBase):
     @classmethod
     def set_active_index(cls, context: Context, value: int):
         ScenePropertyGroup.get_group(context.scene).active_index = value
-
-
-_op_builder = SceneBuildSettingsBase.op_builder(
-    class_name_prefix='SceneBuildSettings',
-    bl_idname_prefix='scene_build_settings',
-    element_label="scene build settings",
-)
-SceneBuildSettingsMove = _op_builder.move.build()
 
 
 def _redraw_object_properties_panels(context: Context):
@@ -203,6 +184,13 @@ def _redraw_object_properties_panels(context: Context):
                         region.tag_redraw()
                         # There should only be one UI region, so any remaining regions can be skipped
                         break
+
+
+_op_builder = SceneBuildSettingsBase.op_builder(
+    class_name_prefix='SceneBuildSettings',
+    bl_idname_prefix='scene_build_settings',
+    element_label="scene build settings",
+)
 
 
 @_op_builder.add.decorate
