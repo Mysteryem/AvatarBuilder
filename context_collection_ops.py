@@ -306,7 +306,7 @@ class _SimpleControlOpData(Generic[B, OM]):
         # Only set the __doc__ attribute when it doesn't already exist in cls.__dict__. This way, we can write more
         # specific docstrings if the operator has additional features.
         # We don't bother setting bl_description, since class registration will set it automatically
-        if '__doc__' not in cls.__dict__:
+        if not cls.__doc__:
             cls.__doc__ = self.docstring
         # For now, we're always setting the bl_idname, it shouldn't exist in cls.__dict__
         if 'bl_idname' in cls.__dict__:
