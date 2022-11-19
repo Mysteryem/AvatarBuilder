@@ -114,7 +114,7 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
         if self.name:
             added.name = self.name
 
-    def modify_newly_created(self, data: PropCollectionType, added: E):
+    def modify_newly_created(self, context: Context, data: PropCollectionType, added: E):
         """Modify the newly created item, by default, calls self.set_new_item_name"""
         self.set_new_item_name(data, added)
 
@@ -125,7 +125,7 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
             return {'CANCELLED'}
 
         added = data.add()
-        self.modify_newly_created(data, added)
+        self.modify_newly_created(context, data, added)
 
         added_item_index = len(data) - 1
         new_item_index = added_item_index
@@ -157,14 +157,14 @@ class CollectionDuplicateBase(CollectionAddBase[E]):
         # Can't duplicate if there isn't an active item to duplicate
         return cls.active_index_in_bounds(context)
 
-    def modify_newly_created(self, data: PropCollectionType, added: E):
+    def modify_newly_created(self, context: Context, data: PropCollectionType, added: E):
         source = data[self.index_being_duplicated]
 
         # Copy every property from source to added
         utils.property_group_copy(source, added)
 
         # Set new element name and anything else
-        super().modify_newly_created(data, added)
+        super().modify_newly_created(context, data, added)
 
     def execute(self, context: Context) -> set[str]:
         # We guarantee that the index exists via the poll method

@@ -210,7 +210,8 @@ class CollectionPropBase(Generic[E], PropertyGroup):
     )
 
     def draw_search(self, layout: UILayout, *,
-                    new: str = '', unlink: str = '', name_prop: str = 'name', icon: str = 'NONE'):
+                    new: str = '', unlink: str = '', name_prop: str = 'name', icon: str = 'NONE',
+                    new_is_menu: bool = False):
         """UI helper that produces a similar look to UILayout.template_ID but for custom Collection properties.
         icon of 'NONE' will use the icon from get_element_icon"""
         row = layout.row(align=True)
@@ -219,13 +220,19 @@ class CollectionPropBase(Generic[E], PropertyGroup):
         if active is not None:
             row.prop(active, name_prop, text="")
             if new:
-                row.operator(new, text="", icon='DUPLICATE')
+                if new_is_menu:
+                    row.menu(new, text="", icon='DUPLICATE')
+                else:
+                    row.operator(new, text="", icon='DUPLICATE')
             if unlink:
                 row.operator(unlink, text="", icon='X')
         else:
             # todo: Might want to display something for when the 'new' Operator isn't specified
             if new:
-                row.operator(new, text="New", icon='ADD')
+                if new_is_menu:
+                    row.menu(new, text="New", icon='ADD')
+                else:
+                    row.operator(new, text="New", icon='ADD')
 
     @property
     def active(self) -> Optional[E]:

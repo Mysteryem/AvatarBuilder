@@ -239,6 +239,9 @@ class SceneBuildSettings(PropertyGroup):
     )
     mmd_settings: PointerProperty(type=MmdShapeKeySettings)
 
+    def set_name_no_propagate(self, new_name: str):
+        change_name_no_propagate(self, 'name_prop', new_name)
+
 
 def _draw_pattern_prop(layout: UILayout, _shape_keys: Key, item: "ShapeKeyOp", label: str):
     layout.prop(item, 'pattern', text=label)

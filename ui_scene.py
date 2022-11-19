@@ -15,7 +15,7 @@ from typing import cast
 from collections import defaultdict
 
 from .registration import register_module_classes_factory
-from .extensions import ScenePropertyGroup, ObjectPropertyGroup, MmdShapeKeySettings
+from .extensions import ScenePropertyGroup, ObjectPropertyGroup, MmdShapeKeySettings, SceneBuildSettings
 from .op_build_avatar import BuildAvatarOp
 from .ui_object import ObjectBuildSettingsAdd, ObjectPanelInScene
 from .context_collection_ops import (
@@ -23,6 +23,7 @@ from .context_collection_ops import (
     ContextCollectionOperatorBase,
     CollectionAddBase,
     CollectionRemoveBase,
+    CollectionDuplicateBase,
 )
 from . import utils
 
@@ -68,7 +69,8 @@ class ScenePanel(Panel):
             #  blank (same as the current add), duplicate (same as simple, buildable Duplicate Operator), deep-copy
             #  (duplicate, but also duplicates ObjectBuildSettings on each Object)
             group.draw_search(col,
-                              new=SceneBuildSettingsAdd.bl_idname,
+                              new=SceneBuildSettingsAddMenu.bl_idname,
+                              new_is_menu=True,
                               unlink=SceneBuildSettingsRemove.bl_idname,
                               name_prop='name_prop',
                               icon='SETTINGS')
@@ -195,8 +197,8 @@ _op_builder = SceneBuildSettingsBase.op_builder(
 
 
 @_op_builder.add.decorate
-class SceneBuildSettingsAdd(CollectionAddBase, SceneBuildSettingsBase):
-    def set_new_item_name(self, data, added):
+class SceneBuildSettingsAdd(CollectionAddBase[SceneBuildSettings], SceneBuildSettingsBase):
+    def set_new_item_name(self, data, added: SceneBuildSettings):
         if self.name:
             added.name_prop = self.name
         else:
@@ -219,6 +221,84 @@ class SceneBuildSettingsAdd(CollectionAddBase, SceneBuildSettingsBase):
         if no_elements_to_start_with and 'FINISHED' in result:
             _redraw_object_properties_panels(context)
         return result
+
+
+class _DuplicateBase(CollectionDuplicateBase[SceneBuildSettings], SceneBuildSettingsBase):
+    def set_new_item_name(self, data: PropCollectionType, added: SceneBuildSettings):
+        desired_name = self.name
+        if desired_name:
+            # Since we're duplicating some existing settings, it's probably best that we don't force the name of the
+            # duplicated settings to the desired name and instead pick a unique name using the desired name as the base
+            duplicate_name = utils.get_unique_name(desired_name, data)
+        else:
+            source = data[self.index_being_duplicated]
+            source_name = source.name
+
+            # Get the first unique name using source_name as the base name
+            duplicate_name = utils.get_unique_name(source_name, data)
+
+        # Set the name for the duplicated element (we've guaranteed that it's unique, so no need to propagate to other
+        # settings to ensure uniqueness)
+        added.set_name_no_propagate(duplicate_name)
+
+
+@_op_builder.duplicate.decorate
+class SceneBuildSettingsDuplicate(_DuplicateBase):
+    pass
+
+
+class SceneBuildSettingsDuplicateDeep(_DuplicateBase):
+    """Duplicate the active settings and also duplicate settings with the same name on all Objects in the Scene
+    (orphaned settings matching the name of the duplicate settings will be overwritten)"""
+    bl_label = "Deep Copy"
+    bl_idname = 'scene_build_settings_deep_copy'
+
+    def modify_newly_created(self, context: Context, data: PropCollectionType, added: SceneBuildSettings):
+        # super call to perform the duplication and automatic naming
+        super().modify_newly_created(context, data, added)
+
+        # Get the SceneBuildSettings that were duplicated and their name
+        original = data[self.index_being_duplicated]
+        original_name = original.name
+
+        # Get the name of the new, duplicate SceneBuildSettings
+        added_name = added.name
+
+        for obj in context.scene.objects:
+            object_settings_col = ObjectPropertyGroup.get_group(obj).collection
+
+            # The ObjectBuildSettings matching the SceneBuildSettings being duplicated
+            orig_object_settings = object_settings_col.get(original_name)
+
+            if orig_object_settings:
+                # Normally there won't be any existing ObjectBuildSettings with the name of the duplicate, since those
+                # settings would have to have been orphaned prior to the creation of the duplicate. If there is existing
+                # settings, we'll replace them.
+                existing_orphaned_settings = object_settings_col.get(added_name)
+                if existing_orphaned_settings:
+                    duplicate_object_settings = existing_orphaned_settings
+                else:
+                    # Create new, empty/default settings
+                    duplicate_object_settings = object_settings_col.add()
+                # Copy all properties across to the duplicate
+                utils.property_group_copy(orig_object_settings, duplicate_object_settings)
+                # Since copying also replaces the name properties (and we haven't set the name properties if the
+                # duplicate is newly created), we need to set the name properties of the duplicate.
+                # The name is basically guaranteed to be unique since either it wasn't in the collection (guaranteed
+                # unique) or the duplicate already had the name (should be unique if the addon is working correctly to
+                # ensure the names are always unique)
+                duplicate_object_settings.set_name_no_propagate(added_name)
+
+
+class SceneBuildSettingsAddMenu(Menu):
+    bl_idname = 'scene_build_settings_add'
+    bl_label = 'Add'
+
+    def draw(self, context: Context):
+        layout = self.layout
+        layout.operator(SceneBuildSettingsAdd.bl_idname)
+        layout.operator(SceneBuildSettingsDuplicate.bl_idname)
+        layout.operator(SceneBuildSettingsDuplicateDeep.bl_idname)
 
 
 # TODO: Also remove from objects in the scene! (maybe optionally)
@@ -296,22 +376,6 @@ class SceneBuildSettingsSync(Operator):
     (Not yet implemented)"""
     bl_idname = "scene_build_settings_sync"
     bl_label = "Purge"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context: bpy.types.Context) -> bool:
-        return False
-
-    def execute(self, context: bpy.types.Context) -> set[str]:
-        return {'FINISHED'}
-
-
-class SceneBuildSettingsDuplicate(Operator):
-    """Duplicate the active build settings, additionally duplicating them on all objects in the current scene if they
-    exist
-    (Not yet implemented)"""
-    bl_idname = "scene_build_settings_duplicate"
-    bl_label = "Duplicate"
     bl_options = {'REGISTER', 'UNDO'}
 
     @classmethod

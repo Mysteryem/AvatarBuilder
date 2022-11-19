@@ -104,8 +104,8 @@ class ShapeKeyOpsListAdd(ShapeKeyOpsListBase, CollectionAddBase[ShapeKeyOp]):
         description="Type of the added shape key op"
     )
 
-    def modify_newly_created(self, data: PropCollectionType, added: ShapeKeyOp):
-        super().modify_newly_created(data, added)
+    def modify_newly_created(self, context: Context, data: PropCollectionType, added: ShapeKeyOp):
+        super().modify_newly_created(context, data, added)
         added.type = self.type
 
 
