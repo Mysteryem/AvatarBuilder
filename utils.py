@@ -242,7 +242,7 @@ def get_unique_name(base_name: str, existing_names_or_collection: Union[Iterable
     else:
         number_format = 'd'
     if strip_end_numbers:
-        match = re.fullmatch(r'(.*)' + re.escape(number_separator) + r'\.\d+', base_name)
+        match = re.fullmatch(r'(.*)' + re.escape(number_separator) + r'\d+', base_name)
         if match:
             # group(0) is the full match, group(1) is the first capture group
             base_name = match.group(1)
