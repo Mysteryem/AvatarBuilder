@@ -373,7 +373,9 @@ class ObjectPanelBase(Panel):
                     header_top_row.use_property_split = True
                     header_top_row.prop(active_object_settings, "include_in_build", text="")
                 else:
-                    options = header_top_row.operator(ObjectBuildSettingsAdd.bl_idname, text="Add to Avatar Builder", icon="ADD")
+                    options = header_top_row.operator(ObjectBuildSettingsAdd.bl_idname,
+                                                      text=f"Add to '{active_build_settings.name}'",
+                                                      icon="ADD")
                     options.name = active_build_settings.name
             else:
                 active_object_settings = None
@@ -449,7 +451,9 @@ class ObjectPanelBase(Panel):
                 # Separator to move the Remove button slightly away from the properties headers
                 main_column.separator()
                 final_col = main_column.column(align=True)
-                final_col.operator(ObjectBuildSettingsRemove.bl_idname, text="Remove from Avatar Builder", icon="TRASH")
+                final_col.operator(ObjectBuildSettingsRemove.bl_idname,
+                                   text=f"Remove from '{active_object_settings.name}'",
+                                   icon="TRASH")
 
 
 class ObjectPanel(ObjectPanelBase):
