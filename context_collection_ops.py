@@ -69,6 +69,9 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
     """Add a new item to the collection and optionally set it as the active item"""
     bl_label = "Add"
     bl_options = {'UNDO'}
+    _use_positional_description = True
+    """Position is irrelevant for some collection properties, setting this to False in the subclass will use the
+     bl_description or __doc__ of the class instead"""
 
     _position_items = (
         ('BOTTOM', 'Bottom', "Add the new item to the bottom"),
@@ -93,21 +96,23 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
     # noinspection PyUnresolvedReferences
     @classmethod
     def description(cls, context: Context, properties: OperatorProperties) -> str:
-        if not properties.is_property_set('position'):
-            last_properties = context.window_manager.operator_properties_last(cls.bl_idname)
-            if last_properties:
-                position = last_properties.position
+        if cls._use_positional_description:
+            if not properties.is_property_set('position'):
+                last_properties = context.window_manager.operator_properties_last(cls.bl_idname)
+                if last_properties:
+                    position = last_properties.position
+                else:
+                    position = properties.position
             else:
+                # When not set, this will get the default
                 position = properties.position
-        else:
-            # When not set, this will get the default
-            position = properties.position
-        lookup = cls._description_lookup
-        if position in lookup:
-            return lookup[position]
-        else:
-            # Shouldn't happen, but fall back to class description or otherwise docstring
-            return getattr(cls, 'bl_description', cls.__doc__)
+            lookup = cls._description_lookup
+            if position in lookup:
+                return lookup[position]
+            else:
+                # Shouldn't happen, but will fall back to class description or otherwise docstring
+                pass
+        return getattr(cls, 'bl_description', cls.__doc__)
 
     def set_new_item_name(self, data: PropCollectionType, added: E):
         """Set the name of a newly created item, defaults to settings .name to self.name"""

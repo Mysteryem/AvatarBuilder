@@ -198,6 +198,9 @@ _op_builder = SceneBuildSettingsBase.op_builder(
 
 @_op_builder.add.decorate
 class SceneBuildSettingsAdd(CollectionAddBase[SceneBuildSettings], SceneBuildSettingsBase):
+    # Position is irrelevant for SceneBuildSettings
+    _use_positional_description = False
+
     def set_new_item_name(self, data, added: SceneBuildSettings):
         if self.name:
             added.name_prop = self.name
@@ -224,6 +227,9 @@ class SceneBuildSettingsAdd(CollectionAddBase[SceneBuildSettings], SceneBuildSet
 
 
 class _DuplicateBase(CollectionDuplicateBase[SceneBuildSettings], SceneBuildSettingsBase):
+    # Position is irrelevant for SceneBuildSettings
+    _use_positional_description = False
+
     def set_new_item_name(self, data: PropCollectionType, added: SceneBuildSettings):
         desired_name = self.name
         if desired_name:
@@ -244,11 +250,11 @@ class _DuplicateBase(CollectionDuplicateBase[SceneBuildSettings], SceneBuildSett
 
 @_op_builder.duplicate.decorate
 class SceneBuildSettingsDuplicate(_DuplicateBase):
-    pass
+    """Duplicate the active settings (will not duplicate the settings on Objects)"""
 
 
 class SceneBuildSettingsDuplicateDeep(_DuplicateBase):
-    """Duplicate the active settings and also duplicate settings with the same name on all Objects in the Scene
+    """Duplicate the active settings and also duplicate matching settings on all Objects in the Scene
     (orphaned settings matching the name of the duplicate settings will be overwritten)"""
     bl_label = "Deep Copy"
     bl_idname = 'scene_build_settings_deep_copy'
