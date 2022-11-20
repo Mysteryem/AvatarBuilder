@@ -75,7 +75,6 @@ class ScenePanel(Panel):
                               name_prop='name_prop',
                               icon='SETTINGS')
             buttons_col = col.column(align=True)
-            # TODO: Sync is only useful if forced sync is turned off, so only display it in those cases
             row = buttons_col.row(align=True)
             row.operator(SceneBuildSettingsSync.bl_idname, text="Sync")
             row.operator(SceneBuildSettingsPurge.bl_idname, text="Purge")

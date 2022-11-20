@@ -7,6 +7,7 @@ from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringPrope
 from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key, Mesh, Material, WindowManager
 
 from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup, CollectionPropBase
+from .preferences import object_ui_sync_enabled
 from . import utils
 
 # bpy_prop_collection_idprop isn't currently exposed in bpy.types, so it can't actually be imported. It's presence here
@@ -810,7 +811,6 @@ class ObjectPropertyGroup(IdPropertyGroup, CollectionPropBase[ObjectBuildSetting
     ALLOWED_TYPES = {'ARMATURE', 'MESH'}
 
     collection: CollectionProperty(type=ObjectBuildSettings)
-    sync_active_with_scene: BoolProperty(name="Sync UI with active settings", default=True)
 
     def get_active_settings(self) -> Optional[ObjectBuildSettings]:
         settings = self.collection
@@ -828,7 +828,7 @@ class ObjectPropertyGroup(IdPropertyGroup, CollectionPropBase[ObjectBuildSetting
             return None
 
     def get_displayed_settings(self, scene: Scene) -> Optional[ObjectBuildSettings]:
-        if self.sync_active_with_scene:
+        if object_ui_sync_enabled():
             return self.get_synced_settings(scene)
         else:
             return self.get_active_settings()

@@ -50,6 +50,7 @@ from .object_props_copy import (
     COPY_ALL_MESH_SETTINGS,
     COPY_ALL_ARMATURE_SETTINGS,
 )
+from .preferences import object_ui_sync_enabled
 
 
 class ObjectBuildSettingsUIList(UIList):
@@ -347,8 +348,6 @@ class ObjectPanelBase(Panel):
 
         header_top_row = header_col.row(align=True)
         header_top_row.use_property_decorate = False
-        header_top_row_left_buttons_col = header_top_row.column()
-        header_top_row_left_buttons_col.prop(group, 'sync_active_with_scene', icon="SCENE_DATA", text="")
 
         copy_menu = None
         if obj.type == 'MESH':
@@ -356,7 +355,7 @@ class ObjectPanelBase(Panel):
         elif obj.type == 'ARMATURE':
             copy_menu = COPY_ALL_ARMATURE_SETTINGS.copy_menu
 
-        is_synced = group.sync_active_with_scene
+        is_synced = object_ui_sync_enabled(context)
         if is_synced:
             # Get active_object_settings by name of active_build_settings
             scene_group = ScenePropertyGroup.get_group(context.scene)
@@ -399,10 +398,7 @@ class ObjectPanelBase(Panel):
                 active_object_settings = None
 
             if active_object_settings and copy_menu:
-                header_top_row_left_buttons_row2 = header_top_row_left_buttons_col.row()
-                # Change back to EXPAND or LEFT if we add more buttons/menus
-                header_top_row_left_buttons_row2.alignment = 'CENTER'
-                header_top_row_left_buttons_row2.menu(copy_menu.bl_idname, text="", icon='PASTEDOWN')
+                header_top_row.menu(copy_menu.bl_idname, text="", icon='PASTEDOWN')
 
             list_row = header_top_row.row(align=False)
             list_row.template_list(ObjectBuildSettingsUIList.bl_idname, "", group, 'collection', group, 'active_index', rows=3)
@@ -503,7 +499,7 @@ class ObjectBuildSettingsBase(ContextCollectionOperatorBase):
         object_group = cls.get_object_group(context)
         # With sync enabled, we often ignore the active index, instead preferring to use the settings that match the
         # active build settings
-        sync_enabled = object_group.sync_active_with_scene
+        sync_enabled = object_ui_sync_enabled(context)
         if sync_enabled:
             active_scene_settings = ScenePropertyGroup.get_group(context.scene).get_active()
             if active_scene_settings and active_scene_settings.name:
@@ -516,7 +512,7 @@ class ObjectBuildSettingsBase(ContextCollectionOperatorBase):
     @classmethod
     def set_active_index(cls, context: Context, value: int):
         object_group = cls.get_object_group(context)
-        sync_enabled = object_group.sync_active_with_scene
+        sync_enabled = object_ui_sync_enabled(context)
         if sync_enabled:
             # The active index is effectively read-only when sync is enabled
             return
@@ -558,7 +554,7 @@ class ObjectBuildSettingsAdd(ObjectBuildSettingsBase, CollectionAddBase[ObjectBu
     def execute(self, context: Context) -> set[str]:
         obj = context.object
         object_group = ObjectPropertyGroup.get_group(obj)
-        sync_enabled = object_group.sync_active_with_scene
+        sync_enabled = object_ui_sync_enabled(context)
         if sync_enabled:
             synced_active_index = self.get_active_index(context)
             if synced_active_index == -1:
@@ -611,8 +607,7 @@ class ObjectBuildSettingsSync(ObjectBuildSettingsBase, Operator):
 
     @classmethod
     def poll(cls, context: Context) -> bool:
-        object_group = cls.get_object_group(context)
-        return not object_group.sync_active_with_scene
+        return not object_ui_sync_enabled(context)
 
     def execute(self, context: Context) -> set[str]:
         scene_active = ScenePropertyGroup.get_group(context.scene).get_active()

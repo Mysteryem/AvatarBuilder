@@ -3,7 +3,7 @@ from typing import TypeVar, Union, Generic, Optional
 from sys import intern
 
 import bpy
-from bpy.types import Panel, Operator, UIList, Menu, ID, Bone, PoseBone, PropertyGroup, UILayout
+from bpy.types import Panel, Operator, UIList, Menu, ID, Bone, PoseBone, PropertyGroup, UILayout, AddonPreferences
 from bpy.props import PointerProperty, CollectionProperty, IntProperty, EnumProperty
 
 # Prefix
@@ -70,6 +70,8 @@ def prefix_classes(classes):
                 prefix = "AVATAR_BUILDER_UL_"
             elif issubclass(cls, Menu):
                 prefix = "AVATAR_BUILDER_MT_"
+            elif issubclass(cls, AddonPreferences):
+                continue
             else:
                 prefix = f"{_BL_ID_PREFIX}_"
             if not cls.bl_idname.startswith(prefix):
