@@ -166,7 +166,7 @@ class CollectionDuplicateBase(CollectionAddBase[E]):
         source = data[self.index_being_duplicated]
 
         # Copy every property from source to added
-        utils.property_group_copy(source, added)
+        utils.id_prop_group_copy(source, added)
 
         # Set new element name and anything else
         super().modify_newly_created(context, data, added)

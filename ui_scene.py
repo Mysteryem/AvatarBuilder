@@ -287,7 +287,7 @@ class SceneBuildSettingsDuplicateDeep(_DuplicateBase):
                     # Create new, empty/default settings
                     duplicate_object_settings = object_settings_col.add()
                 # Copy all properties across to the duplicate
-                utils.property_group_copy(orig_object_settings, duplicate_object_settings)
+                utils.id_prop_group_copy(orig_object_settings, duplicate_object_settings)
                 # Since copying also replaces the name properties (and we haven't set the name properties if the
                 # duplicate is newly created), we need to set the name properties of the duplicate.
                 # The name is basically guaranteed to be unique since either it wasn't in the collection (guaranteed

@@ -164,7 +164,7 @@ PropertyHolderType = Union[ID, PropertyGroup, Bone, PoseBone]
 """Only ID, PropertyGroup, Bone and PoseBone types can have custom properties assigned"""
 
 
-def property_group_copy(from_group: PropertyHolderType, to_group: PropertyHolderType):
+def id_prop_group_copy(from_group: PropertyHolderType, to_group: PropertyHolderType):
     """Copy all properties from from_group to to_group. This is a direct copy, update functions will not be called."""
     if type(from_group) != type(to_group):
         # To support cases where one type extends another, or even completely separate types, we would first have to
@@ -185,16 +185,28 @@ def property_group_copy(from_group: PropertyHolderType, to_group: PropertyHolder
             del to_group[k]
 
 
-# TODO: Rename to signify that this is really just the same as property_group_copy, but limited to a single property
-def id_property_group_copy(from_owner: PropertyHolderType, to_owner: PropertyHolderType, id_prop_name: str):
+def id_prop_copy(from_owner: PropertyHolderType, to_owner: PropertyHolderType, id_prop_name: str):
     """Copy a single custom property (id property) from one PropertyGroup or ID type to another.
     No checks are made that from_owner and to_owner have the same type because it is allowed for different types to have
     the same custom property.
     No checks are made that to_owner has the property being copied because the property may not be set if it hasn't
     been changed since creation (i.e., the property not existing indicates that the default value should be used).
     """
-    # TODO: Can we check for whether the property should exist on to_owner and that its type matches the type of the
-    #  property on from_owner, by using the rna functions/attributes?
+    # If we want stricter checks:
+    # if strict:
+    #     # Perform checks that both from_owner and to_owner have the property in question and that the type of the
+    #     # properties match
+    #     from_properties = from_owner.bl_rna.properties
+    #     if id_prop_name not in from_properties:
+    #         raise ValueError(f"'{id_prop_name}' not found on {from_owner!r}")
+    #     to_properties = to_owner.bl_rna.properties
+    #     if id_prop_name not in to_properties:
+    #         raise ValueError(f"'{id_prop_name}' not found on {to_owner!r}")
+    #     from_prop_type = type(from_properties[id_prop_name])
+    #     to_prop_type = type(to_properties[id_prop_name])
+    #     if from_prop_type != to_prop_type:
+    #         raise ValueError(f"Property types do not match: Type of '{id_prop_name}' on {from_owner!r} is"
+    #                          f" {from_prop_type}, but type of '{id_prop_name}' on {to_owner!r} is {to_prop_type}")
     if id_prop_name in from_owner:
         # The property exists in from_owner, so copy it to to_owner
         to_owner[id_prop_name] = from_owner[id_prop_name]

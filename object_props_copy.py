@@ -13,7 +13,7 @@ from .extensions import (
     ObjectBuildSettings,
     SceneBuildSettings,
 )
-from .utils import id_property_group_copy
+from .utils import id_prop_copy
 
 
 @dataclass
@@ -391,10 +391,10 @@ class CopyObjectProperties(Operator):
                 paste_to_mesh_settings.ignore_reduce_to_two_meshes = copy_from_mesh_settings.ignore_reduce_to_two_meshes
 
             if COPY_ARMATURE_POSE_SETTINGS.id in props_to_copy:
-                id_property_group_copy(copy_from_settings, paste_to_settings, 'armature_settings')
+                id_prop_copy(copy_from_settings, paste_to_settings, 'armature_settings')
 
             def copy_mesh_group(paste_prop):
-                id_property_group_copy(copy_from_mesh_settings, paste_to_mesh_settings, paste_prop)
+                id_prop_copy(copy_from_mesh_settings, paste_to_mesh_settings, paste_prop)
 
             if COPY_MESH_MATERIALS_SETTINGS.id in props_to_copy:
                 copy_mesh_group('material_settings')
