@@ -453,4 +453,4 @@ _add_copy_prop_menus_to_module()
 del _add_copy_prop_menus_to_module
 
 # Since we added the Menu classes to the module's globals(), this will pick them up for registering
-register, unregister = register_module_classes_factory(__name__, globals())
+register_module_classes_factory(__name__, globals())

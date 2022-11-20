@@ -142,4 +142,4 @@ def draw_material_remap_list(layout: UILayout, obj: Object, material_remap: Mate
         box.operator(RefreshRemapList.bl_idname)
 
 
-register, unregister = register_module_classes_factory(__name__, globals())
+register_module_classes_factory(__name__, globals())

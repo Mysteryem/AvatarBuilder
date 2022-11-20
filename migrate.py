@@ -64,4 +64,4 @@ class MigrateData(Operator):
         return {'FINISHED'}
 
 
-register, unregister = register_module_classes_factory(__name__, globals())
+register_module_classes_factory(__name__, globals())

@@ -194,4 +194,4 @@ def draw_shape_key_ops(shape_keys_box_col: UILayout, settings: ShapeKeySettings,
 
 
 del _op_builder
-register, unregister = register_module_classes_factory(__name__, globals())
+register_module_classes_factory(__name__, globals())

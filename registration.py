@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import TypeVar, Union, Generic, Optional
+from typing import TypeVar, Union, Generic, Optional, Any, Callable, overload, Literal
 from sys import intern
 
 import bpy
@@ -255,43 +255,76 @@ def register_classes_factory(classes):
     return combined_register, bpy_unregister
 
 
-def register_module_classes_factory(calling_module_name, calling_module_globals):
-    # TODO: Alternative could be to iterate through dir(sys.modules[calling_module_name])
-    #  or by importing the module
+@overload
+def register_module_classes_factory(calling_module_name: str,
+                                    calling_module_globals: dict[str, Any],
+                                    return_funcs: Literal[False] = False
+                                    ) -> None: ...
+
+
+@overload
+def register_module_classes_factory(calling_module_name: str,
+                                    calling_module_globals: dict[str, Any],
+                                    return_funcs: Literal[True]
+                                    ) -> tuple[Callable[[], None], Callable[[], None]]: ...
+
+
+def register_module_classes_factory(calling_module_name: str,
+                                    calling_module_globals: dict[str, Any],
+                                    return_funcs: bool = False
+                                    ) -> Optional[tuple[Callable[[], None], Callable[[], None]]]:
     print(f"Looking for classes to register in {calling_module_name}")
     classes: list[type] = []
     id_prop_groups: list[type[IdPropertyGroup]] = []
     for attribute in calling_module_globals.values():
+        # We only want types that have been created in the calling module
         if isinstance(attribute, type) and attribute.__module__ == calling_module_name:
             if hasattr(attribute, 'bl_idname'):
                 print(f"\tFound {attribute.__name__} in {calling_module_name} via bl_idname")
                 classes.append(attribute)
-            elif issubclass(attribute, bpy.types.PropertyGroup):
+            elif issubclass(attribute, PropertyGroup):
                 print(f"\tFound {attribute.__name__} in {calling_module_name} via bpy.types.PropertyGroup")
                 classes.append(attribute)
                 if issubclass(attribute, IdPropertyGroup):
                     print(f"\t\tIt is also an {IdPropertyGroup.__name__} and will be registered on"
                           f" {attribute._registration_type} as {attribute._registration_name}")
                     id_prop_groups.append(attribute)
-            elif issubclass(attribute, bpy.types.bpy_struct):
-                print(f"\tFound {attribute.__name__} in {calling_module_name} via bpy.types.bpy_struct (it has been skipped)")
 
     if id_prop_groups:
+        # For IdPropertyGroup types, we need to register/unregister the properties on the ID type specified by the
+        # IdPropertyGroup in addition to registering the classes.
         register_classes, unregister_classes = register_classes_factory(classes)
 
-        def register():
+        def _register():
+            # Classes must be registered before the properties are registered on ID types
             register_classes()
             for id_prop_group in id_prop_groups:
                 id_prop_group.register_prop()
 
-        def unregister():
+        def _unregister():
+            # Classes must be unregistered after the properties are unregistered on ID types
             for id_prop_group in id_prop_groups:
                 id_prop_group.unregister_prop()
             unregister_classes()
 
-        return register, unregister
+        if return_funcs:
+            # Return the functions as a tuple
+            return _register, _unregister
+        else:
+            # Add the functions directly into the module's globals()
+            calling_module_globals['register'] = _register
+            calling_module_globals['unregister'] = _unregister
     else:
-        return register_classes_factory(classes)
+        if return_funcs:
+            # Return the functions tuple
+            return register_classes_factory(classes)
+        else:
+            # Get the functions
+            _register, _unregister = register_classes_factory(classes)
+            # and add them directly into the module's globals
+            calling_module_globals['register'] = _register
+            calling_module_globals['unregister'] = _unregister
+
 
 # Extension of bpy.utils.register_submodule_factory that will also register modules without register and unregister
 # functions

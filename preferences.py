@@ -30,4 +30,4 @@ def object_ui_sync_enabled(context: Optional[Context] = None):
     return preferences.object_ui_sync
 
 
-register, unregister = register_module_classes_factory(__name__, globals())
+register_module_classes_factory(__name__, globals())

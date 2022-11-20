@@ -214,4 +214,4 @@ def draw_uv_map_list(layout: UILayout, keep_uv_map_list: KeepUVMapList):
 
 
 del _op_builder
-register, unregister = register_module_classes_factory(__name__, globals())
+register_module_classes_factory(__name__, globals())
