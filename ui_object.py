@@ -472,17 +472,17 @@ class ObjectPanel(ObjectPanelBase):
             return context.object
 
 
-class ObjectPanelInScene(ObjectPanelBase):
+class ObjectPanelView3D(ObjectPanelBase):
     """3D View version of the Object Settings Panel"""
-    bl_idname = 'object_panel_scene'
+    # Using the same bl_idname as the PROPERTIES version of the Panel is ok, because Panel subclasses are prefixed
+    # differently based on their bl_space_type during registration
+    bl_idname = 'object_panel'
     bl_label = "Object Settings"
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Avatar Builder"
     # After MMD Shape Mapping Panel by default (since this Panel is not always present)
     bl_order = 3
-    # The 3D View version is intended as an extra way to access Object Settings
-    bl_options = {'DEFAULT_CLOSED'}
 
 
 class ObjectBuildSettingsBase(ContextCollectionOperatorBase):

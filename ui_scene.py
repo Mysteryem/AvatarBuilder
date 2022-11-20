@@ -17,7 +17,7 @@ from collections import defaultdict
 from .registration import register_module_classes_factory
 from .extensions import ScenePropertyGroup, ObjectPropertyGroup, MmdShapeKeySettings, SceneBuildSettings
 from .op_build_avatar import BuildAvatarOp
-from .ui_object import ObjectBuildSettingsAdd, ObjectPanelInScene
+from .ui_object import ObjectBuildSettingsAdd, ObjectPanelView3D
 from .context_collection_ops import (
     PropCollectionType,
     ContextCollectionOperatorBase,
@@ -130,7 +130,7 @@ class SceneBuildSettingsBase(ContextCollectionOperatorBase):
 
 
 def _redraw_object_properties_panels(context: Context):
-    view3d_panel_drawn = ObjectPanelInScene.poll(context)
+    view3d_panel_drawn = ObjectPanelView3D.poll(context)
     # Iterate through all areas in the current screen
     for area in context.screen.areas:
         if area.type == 'PROPERTIES':
