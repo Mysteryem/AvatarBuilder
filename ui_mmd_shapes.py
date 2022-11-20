@@ -169,7 +169,7 @@ class MmdMappingControlBase(ContextCollectionOperatorBase):
 
     @classmethod
     def set_active_index(cls, context: Context, value: int):
-        ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.active = value
+        ScenePropertyGroup.get_group(context.scene).mmd_shape_mapping_group.active_index = value
 
 
 _op_builder = MmdMappingControlBase.op_builder(
