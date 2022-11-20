@@ -5,7 +5,6 @@ from abc import abstractmethod
 from typing import Optional, Generic, TypeVar, Union
 from dataclasses import dataclass, field
 
-from .registration import dummy_register_factory
 from .utils import PropCollectionType
 from . import utils
 
@@ -351,6 +350,3 @@ class SimpleControlOpBuilder(Generic[B]):
         self.move = make_data('Move', '_move', "Move the active {}", CollectionMoveBase)
         self.clear = make_data('Clear', '_clear', "Remove every {}", CollectionClearBase)
         self.duplicate = make_data('Duplicate', '_duplicate', "Duplicate the active {}", CollectionDuplicateBase)
-
-
-register, unregister = dummy_register_factory()

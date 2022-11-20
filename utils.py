@@ -20,7 +20,6 @@ from types import MethodDescriptorType
 from typing import Any, Protocol, Literal, Optional, Union, TypeVar, Sized, Reversible, Iterable
 from contextlib import contextmanager
 import re
-from .registration import dummy_register_factory
 
 
 # bpy_prop_collection_idprop isn't currently exposed in bpy.types, so it can't actually be imported. It's presence here
@@ -299,6 +298,3 @@ def get_deform_bone_names(obj: Object) -> set[str]:
                     if bone.use_deform:
                         deform_bone_names.add(bone.name)
     return deform_bone_names
-
-
-register, unregister = dummy_register_factory()

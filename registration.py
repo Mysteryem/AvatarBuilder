@@ -293,10 +293,46 @@ def register_module_classes_factory(calling_module_name, calling_module_globals)
     else:
         return register_classes_factory(classes)
 
+# Extension of bpy.utils.register_submodule_factory that will also register modules without register and unregister
+# functions
+def register_submodule_factory(module_name, submodule_names):
+    """
+    Utility function to create register and unregister functions
+    which simply load submodules,
+    calling their register & unregister functions if they exist.
 
-def dummy_register_factory():
-    def dummy(): return None
-    return dummy, dummy
+    .. note::
 
+       Modules are registered in the order given,
+       unregistered in reverse order.
 
-register, unregister = dummy_register_factory()
+    :arg module_name: The module name, typically ``__name__``.
+    :type module_name: string
+    :arg submodule_names: List of submodule names to load and unload.
+    :type submodule_names: list of strings
+    :return: register and unregister functions.
+    :rtype: tuple pair of functions
+    """
+
+    module = None
+    submodules = []
+
+    def _register():
+        nonlocal module
+        module = __import__(name=module_name, fromlist=submodule_names)
+        submodules[:] = [getattr(module, name) for name in submodule_names]
+        for mod in submodules:
+            if hasattr(mod, 'register'):
+                mod.register()
+
+    def _unregister():
+        from sys import modules
+        for mod in reversed(submodules):
+            if hasattr(mod, 'unregister'):
+                mod.unregister()
+            name = mod.__name__
+            delattr(module, name.partition(".")[2])
+            del modules[name]
+        submodules.clear()
+
+    return _register, _unregister

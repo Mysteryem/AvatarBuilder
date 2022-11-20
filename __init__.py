@@ -1,6 +1,6 @@
 import pkgutil
 
-from bpy.utils import register_submodule_factory
+from .registration import register_submodule_factory
 bl_info = {
     "name": "Avatar Builder",
     "author": "Mysteryem",
