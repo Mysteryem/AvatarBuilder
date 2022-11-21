@@ -5,7 +5,6 @@ from bpy.types import (
     UILayout,
     Panel,
     SpaceProperties,
-    Operator,
     Object,
     Mesh,
     PropertyGroup,
@@ -597,27 +596,6 @@ class ObjectBuildSettingsAddMenu(Menu):
         layout = self.layout
         layout.operator(ObjectBuildSettingsAdd.bl_idname, text="New").name = ''
         layout.operator(ObjectBuildSettingsDuplicate.bl_idname, text="Copy Active Settings").name = ''
-
-
-class ObjectBuildSettingsSync(ObjectBuildSettingsBase, Operator):
-    """Set the currently displayed settings to the currently active build settings"""
-    bl_idname = 'object_build_settings_sync'
-    bl_label = "Sync"
-    bl_options = {'REGISTER', 'UNDO'}
-
-    @classmethod
-    def poll(cls, context: Context) -> bool:
-        return not object_ui_sync_enabled(context)
-
-    def execute(self, context: Context) -> set[str]:
-        scene_active = ScenePropertyGroup.get_group(context.scene).active
-        object_build_settings = self.get_collection(context)
-        if scene_active:
-            index = object_build_settings.find(scene_active.name)
-            if index != -1:
-                self.set_active_index(context, index)
-                return {'FINISHED'}
-        return {'CANCELLED'}
 
 
 del _op_builder
