@@ -88,7 +88,7 @@ class ScenePanel(Panel):
             row.operator(DisableSelectedFromSceneSettings.bl_idname)
 
             col = layout.column()
-            scene_settings = group.get_active()
+            scene_settings = group.active
             if scene_settings:
                 box = col.box()
                 box_col = box.column()
@@ -447,7 +447,7 @@ class SelectObjectsInSceneSettings(Operator):
     )
 
     def execute(self, context: Context) -> set[str]:
-        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        active = ScenePropertyGroup.get_group(context.scene).active
         if active:
             active_group_name = active.name
             vl = context.view_layer
@@ -469,7 +469,7 @@ class AddSelectedToSceneSettings(Operator):
     # TODO: name property so that the group to add to can be overwritten
 
     def execute(self, context: Context) -> set[str]:
-        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        active = ScenePropertyGroup.get_group(context.scene).active
         if active:
             active_group_name = active.name
             for obj in context.selected_objects:
@@ -488,7 +488,7 @@ class DisableSelectedFromSceneSettings(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context: Context) -> set[str]:
-        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        active = ScenePropertyGroup.get_group(context.scene).active
         if active:
             active_group_name = active.name
             for obj in context.selected_objects:
@@ -506,7 +506,7 @@ class EnableSelectedFromSceneSettings(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context: Context) -> set[str]:
-        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        active = ScenePropertyGroup.get_group(context.scene).active
         if active:
             active_group_name = active.name
             for obj in context.selected_objects:
@@ -524,7 +524,7 @@ class DisableHiddenFromSceneSettings(Operator):
     bl_options = {'REGISTER', 'UNDO'}
 
     def execute(self, context: Context) -> set[str]:
-        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        active = ScenePropertyGroup.get_group(context.scene).active
         if active:
             vl = context.view_layer
             active_group_name = active.name
@@ -546,7 +546,7 @@ class UnhideFromSceneSettings(Operator):
     select: bpy.props.BoolProperty(name="Select", description="Select the objects", default=True)
 
     def execute(self, context: Context) -> set[str]:
-        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        active = ScenePropertyGroup.get_group(context.scene).active
         if active:
             vl = context.view_layer
             active_group_name = active.name

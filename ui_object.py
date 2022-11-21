@@ -61,7 +61,7 @@ class ObjectBuildSettingsUIList(UIList):
         scene_group = ScenePropertyGroup.get_group(context.scene)
         scene_settings = scene_group.collection
 
-        scene_active_name = scene_group.get_active().name
+        scene_active_name = scene_group.active.name
         is_scene_active = item.name == scene_active_name
 
         index_in_scene_settings = scene_settings.find(item.name)
@@ -359,7 +359,7 @@ class ObjectPanelBase(Panel):
         if is_synced:
             # Get active_object_settings by name of active_build_settings
             scene_group = ScenePropertyGroup.get_group(context.scene)
-            active_build_settings = scene_group.get_active()
+            active_build_settings = scene_group.active
 
             active_object_settings: Union[ObjectBuildSettings, None]
             if active_build_settings:
@@ -501,7 +501,7 @@ class ObjectBuildSettingsBase(ContextCollectionOperatorBase):
         # active build settings
         sync_enabled = object_ui_sync_enabled(context)
         if sync_enabled:
-            active_scene_settings = ScenePropertyGroup.get_group(context.scene).get_active()
+            active_scene_settings = ScenePropertyGroup.get_group(context.scene).active
             if active_scene_settings and active_scene_settings.name:
                 return object_group.collection.find(active_scene_settings.name)
             else:
@@ -559,7 +559,7 @@ class ObjectBuildSettingsAdd(ObjectBuildSettingsBase, CollectionAddBase[ObjectBu
             synced_active_index = self.get_active_index(context)
             if synced_active_index == -1:
                 # ObjectSettings for the currently active SceneSettings don't exist
-                active_build_settings = ScenePropertyGroup.get_group(context.scene).get_active()
+                active_build_settings = ScenePropertyGroup.get_group(context.scene).active
                 self.name = active_build_settings.name
             else:
                 # There is no currently active Scene settings
@@ -610,7 +610,7 @@ class ObjectBuildSettingsSync(ObjectBuildSettingsBase, Operator):
         return not object_ui_sync_enabled(context)
 
     def execute(self, context: Context) -> set[str]:
-        scene_active = ScenePropertyGroup.get_group(context.scene).get_active()
+        scene_active = ScenePropertyGroup.get_group(context.scene).active
         object_build_settings = self.get_collection(context)
         if scene_active:
             index = object_build_settings.find(scene_active.name)

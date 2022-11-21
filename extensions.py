@@ -793,14 +793,6 @@ class ScenePropertyGroup(IdPropertyGroup, CollectionPropBase[SceneBuildSettings]
 
     mmd_shape_mapping_group: PointerProperty(type=MmdShapeMappingGroup)
 
-    def get_active(self) -> Optional[SceneBuildSettings]:
-        settings = self.collection
-        active_index = self.active_index
-        if settings and 0 <= active_index < len(settings):
-            return settings[active_index]
-        else:
-            return None
-
 
 class ObjectPropertyGroup(IdPropertyGroup, CollectionPropBase[ObjectBuildSettings]):
     _registration_name = f'{_PROP_PREFIX}_object_settings_group'
@@ -812,18 +804,10 @@ class ObjectPropertyGroup(IdPropertyGroup, CollectionPropBase[ObjectBuildSetting
 
     collection: CollectionProperty(type=ObjectBuildSettings)
 
-    def get_active_settings(self) -> Optional[ObjectBuildSettings]:
-        settings = self.collection
-        active_index = self.active_index
-        if settings and 0 <= active_index < len(settings):
-            return settings[active_index]
-        else:
-            return None
-
     def get_synced_settings(self, scene: Scene) -> Optional[ObjectBuildSettings]:
-        active_build_settings = ScenePropertyGroup.get_group(scene).get_active()
-        if active_build_settings and active_build_settings.name in self.collection:
-            return self.collection[active_build_settings.name]
+        active_build_settings = ScenePropertyGroup.get_group(scene).active
+        if active_build_settings is not None:
+            return self.collection.get(active_build_settings.name)
         else:
             return None
 
@@ -831,7 +815,7 @@ class ObjectPropertyGroup(IdPropertyGroup, CollectionPropBase[ObjectBuildSetting
         if object_ui_sync_enabled():
             return self.get_synced_settings(scene)
         else:
-            return self.get_active_settings()
+            return self.active
 
 
 class WmMeshToggles(PropertyGroup):

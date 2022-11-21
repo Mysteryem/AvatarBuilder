@@ -1093,7 +1093,7 @@ class BuildAvatarOp(Operator):
     def poll(cls, context) -> bool:
         if context.mode != 'OBJECT':
             return False
-        active = ScenePropertyGroup.get_group(context.scene).get_active()
+        active = ScenePropertyGroup.get_group(context.scene).active
         if active is None:
             return False
         if active.reduce_to_two_meshes and (not active.shape_keys_mesh_name or not active.no_shape_keys_mesh_name):
@@ -1103,7 +1103,7 @@ class BuildAvatarOp(Operator):
     def execute(self, context) -> set[str]:
         scene = context.scene
         scene_property_group = ScenePropertyGroup.get_group(context.scene)
-        active_scene_settings = scene_property_group.get_active()
+        active_scene_settings = scene_property_group.active
 
         try:
             validated_build = validate_build(context, active_scene_settings)

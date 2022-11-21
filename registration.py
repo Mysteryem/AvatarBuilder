@@ -238,8 +238,10 @@ class CollectionPropBase(Generic[E], PropertyGroup):
 
     @property
     def active(self) -> Optional[E]:
-        if 0 <= self.active_index < len(self.collection):
-            return self.collection[self.active_index]
+        active_index = self.active_index
+        collection = self.collection
+        if 0 <= active_index < len(collection):
+            return collection[active_index]
         else:
             return None
 
