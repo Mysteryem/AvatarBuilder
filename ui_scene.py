@@ -11,6 +11,8 @@ from bpy.types import (
     SpaceProperties,
     SpaceView3D,
 )
+from bpy.props import BoolProperty
+
 from typing import cast
 from collections import defaultdict
 
@@ -311,17 +313,37 @@ class SceneBuildSettingsAddMenu(Menu):
         layout.operator(SceneBuildSettingsDuplicateDeep.bl_idname)
 
 
-# TODO: Also remove from objects in the scene! (maybe optionally)
 @_op_builder.remove.decorate
 class SceneBuildSettingsRemove(CollectionRemoveBase, SceneBuildSettingsBase):
+    bl_options = {'UNDO', 'REGISTER'}
+
+    also_remove_from_objects: BoolProperty(
+        name="Remove from Objects",
+        description="Also remove the settings from all Objects in the Scene",
+        default=True,
+    )
+
     def execute(self, context: Context) -> set[str]:
-        result = super().execute(context)
+        # Optionally remove the settings from all Objects in the Scene
+        if self.also_remove_from_objects:
+            collection = self.get_collection(context)
+            active_index = self.get_active_index(context)
+            active_name = collection[active_index].name
+
+            for obj in context.scene.objects:
+                object_group_col = ObjectPropertyGroup.get_group(obj).collection
+                idx = object_group_col.find(active_name)
+                if idx != -1:
+                    object_group_col.remove(idx)
+        # Will remove the SceneBuildSettings
+        super().execute(context)
+
         if not self.get_collection(context):
             # If we've just removed the last settings, tell any Object Properties regions to redraw so that they update
             # for the fact that there are no longer any settings, meaning the Panel in Object Properties shouldn't be
             # drawn anymore
             _redraw_object_properties_panels(context)
-        return result
+        return {'FINISHED'}
 
 
 class SceneBuildSettingsPurge(Operator):
