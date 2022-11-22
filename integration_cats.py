@@ -120,6 +120,9 @@ def _cats_setup(calling_operator: Optional[Operator]):
         # force google translations when bpy.context.scene.use_google_only is True. use_google_only defaults
         # to False and is how we want to do our translations always.
         if isinstance(to_translate, list):
+            # update_dictionary is what actually connects to google translate
+            # It might be possible to check calling_op.has_reports to determine if an error has occurred during
+            # translation
             update_dictionary(to_translate, False, calling_op)
             translated = {}
             for s in to_translate:

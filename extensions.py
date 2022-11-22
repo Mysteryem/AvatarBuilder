@@ -149,7 +149,9 @@ class MmdShapeKeySettings(PropertyGroup):
             ('JAPANESE', "Japanese", "Japanese shape keys are the most widely supported"),
             ('CATS', "Cats Translations", "Occasionally, dances support some of the Cats translations of the Japanese"
                                           " shape keys. It is recommended to instead use the original Japanese due to"
-                                          " the wider support."),
+                                          " the wider support.\n"
+                                          "The Japanese name will be used if there is no Cats Translation as some names"
+                                          " cannot be translated, such as '▲'"),
         ),
         default='JAPANESE',
         description="Pick which names to remap to",
@@ -166,7 +168,16 @@ class MmdShapeKeySettings(PropertyGroup):
         name="'Body' Mesh Only",
         description="Only perform remapping on a mesh called Body. VRChat MMD dance worlds usually require that the"
                     " mesh with shape keys on is called Body",
-        default=True
+        default=True,
+    )
+    mode: EnumProperty(
+        name="Mode",
+        description="Mode to use for mappings",
+        items=(
+            ('RENAME', "Rename", "Rename existing shape keys to the corresponding MMD shape"),
+            ('ADD', "Add", "Duplicate existing shape keys and name the duplicates according to the MMD shape names")
+        ),
+        default='RENAME',
     )
 
 

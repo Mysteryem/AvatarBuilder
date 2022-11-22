@@ -55,6 +55,7 @@ class ScenePanel(Panel):
             col.use_property_split = True
             col.prop(mmd_settings, 'limit_to_body')
             col.prop(mmd_settings, 'remap_to')
+            col.prop(mmd_settings, 'mode')
             col.prop(mmd_settings, 'avoid_double_activation')
 
     def draw(self, context: Context):
