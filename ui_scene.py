@@ -445,10 +445,17 @@ class DeleteExportScene(Operator):
         return {'FINISHED'}
 
 
-class _ObjectSelectionInSceneBase(Operator):
+class _ActiveSceneSettingsOp(Operator):
     @classmethod
-    def poll(cls, context: bpy.types.Context) -> bool:
-        return context.mode == 'OBJECT'
+    def poll(cls, context: Context) -> bool:
+        scene = context.scene
+        return scene is not None and ScenePropertyGroup.get_group(context.scene).active is not None
+
+
+class _ObjectSelectionInSceneBase(_ActiveSceneSettingsOp):
+    @classmethod
+    def poll(cls, context: Context) -> bool:
+        return super().poll(context) and context.mode == 'OBJECT'
 
 
 class SelectObjectsInSceneSettings(_ObjectSelectionInSceneBase):
@@ -503,13 +510,11 @@ class DeselectObjectsInSceneSettings(_ObjectSelectionInSceneBase):
         return {'FINISHED'}
 
 
-class AddSelectedToSceneSettings(Operator):
+class AddSelectedToSceneSettings(_ActiveSceneSettingsOp):
     """Add the selected objects to the active scene settings if they do not already exist"""
     bl_idname = "add_selected_to_scene_settings"
     bl_label = "Add"
     bl_options = {'REGISTER', 'UNDO'}
-
-    # TODO: name property so that the group to add to can be overwritten
 
     def execute(self, context: Context) -> set[str]:
         active = ScenePropertyGroup.get_group(context.scene).active
@@ -524,7 +529,7 @@ class AddSelectedToSceneSettings(Operator):
         return {'FINISHED'}
 
 
-class RemoveSelectedFromSceneSettings(Operator):
+class RemoveSelectedFromSceneSettings(_ActiveSceneSettingsOp):
     """Remove the selected objects from the active scene settings"""
     bl_idname = "remove_selected_from_scene_settings"
     bl_label = "Remove"
@@ -543,13 +548,8 @@ class RemoveSelectedFromSceneSettings(Operator):
         return {'FINISHED'}
 
 
-class _IncludeSelectedFromSceneSettingsBase(Operator):
+class _IncludeSelectedFromSceneSettingsBase(_ActiveSceneSettingsOp):
     _include: bool
-
-    @classmethod
-    def poll(cls, context: Context) -> bool:
-        scene = context.scene
-        return scene is not None and ScenePropertyGroup.get_group(context.scene).active is not None
 
     def execute(self, context: Context) -> set[str]:
         active = ScenePropertyGroup.get_group(context.scene).active
