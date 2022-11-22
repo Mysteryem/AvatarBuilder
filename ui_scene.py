@@ -100,6 +100,7 @@ class ScenePanel(Panel):
             if scene_settings:
                 box = col.box()
                 box_col = box.column()
+                box_col.prop(scene_settings, 'limit_to_collection')
                 box_col.prop(scene_settings, 'ignore_hidden_objects')
                 box_col.prop(scene_settings, 'reduce_to_two_meshes')
                 if scene_settings.reduce_to_two_meshes:
@@ -117,7 +118,6 @@ class ScenePanel(Panel):
                     sub = box_col.column()
                     sub.use_property_split = True
                     sub.prop(scene_settings, 'limit_num_groups')
-
 
                 # And finally the button for actually running Build Avatar
                 box_col.operator(BuildAvatarOp.bl_idname, icon='SHADERFX')

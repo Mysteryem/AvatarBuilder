@@ -4,7 +4,7 @@ from itertools import chain
 from dataclasses import dataclass
 
 from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
-from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key, Mesh, Material, WindowManager
+from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key, Mesh, Material, WindowManager, Collection
 
 from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup, CollectionPropBase
 from .preferences import object_ui_sync_enabled
@@ -195,6 +195,21 @@ class SceneBuildSettings(PropertyGroup):
 
     # TODO: Also property/operator for checking NaNs in UV components?
 
+    def _collection_poll(self, collection: Collection) -> bool:
+        """Only allow Collections that are used by the scene"""
+        # id_data should always be a Scene, since this class is only a Property on SceneBuildSettings, which is
+        # registered on the Scene ID type.
+        scene = self.id_data
+        if isinstance(scene, Scene):
+            return scene.user_of_id(collection) > 0
+        else:
+            return False
+    limit_to_collection: PointerProperty(
+        type=Collection,
+        name="Limit to",
+        description="(optional) Limit the build to only Objects in the specified Collection (and its children)",
+        poll=_collection_poll,
+    )
     reduce_to_two_meshes: BoolProperty(
         name="Reduce to two meshes",
         description="Reduce to two meshes after individual object processing. One mesh that has shape keys and a second"

@@ -850,15 +850,19 @@ def validate_build(context: Context, active_scene_settings: SceneBuildSettings) 
     if not export_scene_name:
         raise ValueError("Active build settings' name must not be empty")
 
-    if active_scene_settings.ignore_hidden_objects:
-        scene_objects_gen = [o for o in scene.objects if o.visible_get(view_layer=view_layer)]
+    collection = active_scene_settings.limit_to_collection
+    if collection is not None:
+        objects_gen = collection.all_objects
     else:
-        scene_objects_gen = scene.objects
+        objects_gen = scene.objects
+
+    if active_scene_settings.ignore_hidden_objects:
+        objects_gen = (o for o in objects_gen if o.visible_get(view_layer=view_layer))
 
     objects_for_build: list[ObjectHelper] = []
 
     allowed_object_types = {'MESH', 'ARMATURE'}
-    for obj in scene_objects_gen:
+    for obj in objects_gen:
         if obj.type in allowed_object_types:
             group = ObjectPropertyGroup.get_group(obj)
             object_settings = group.get_synced_settings(scene)
@@ -1201,7 +1205,6 @@ def _get_join_sort_key(helper: ObjectHelper) -> tuple:
         # Attempting to join Objects of different types is an error, so we won't include a dummy value for shape key
         # ordering.
         return helper.settings.join_order, helper.orig_object_name
-
 
 
 class BuildAvatarOp(Operator):
