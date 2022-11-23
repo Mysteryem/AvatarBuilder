@@ -1018,28 +1018,13 @@ def mmd_remap(scene_property_group: ScenePropertyGroup, mmd_settings: MmdShapeKe
                     # TODO: Do we want to include Cats translations that aren't used by this mesh? Then the option
                     #  would be less about avoiding double activation and more about avoiding potentially any
                     #  unwanted activation
-                    # FIXME: Some mappings won't have a Cats translation because the mmd name is something
-                    #  like ^, what will/should happen in such cases? (needs to use the japanese name if we're
-                    #  maping to Cats translation names)
-                    # for shape_name in orig_shape_names_to_shapes:
-                    #     if shape_name in shape_name_to_mapping:
-                    #         # This shape key is mapped to an MMD shape, get the mapping
-                    #         mapping = shape_name_to_mapping[shape_name]
-                    #         if remap_to_japanese:
-                    #             # Since we're
-                    #             cats_translation = mapping.cats_translation_name
-                    #             if cats_translation:
-                    #                 avoid_names.add(cats_translation)
-                    #
-                    # cats_names = (s.cats_translation_name for s in shape_name_to_mapping.values())
-                    # avoid_names = set(filter(bool, cats_names))
-                    # Only the names for shapes that are actually used
-                    avoid_names = {shape_name_to_mapping[shape_name].cats_translation_name for shape_name in orig_shape_names_to_shapes if shape_name in shape_name_to_mapping}
+                    # Only the names for shapes that are actually used by this Mesh
+                    avoid_names = {
+                        shape_name_to_mapping[shape_name].cats_translation_name
+                        for shape_name in orig_shape_names_to_shapes
+                        if shape_name in shape_name_to_mapping
+                    }
                 else:
-                    # If we were to instead check against even the mmd_names that aren't used by this mesh:
-                    # japanese_names = (s.mmd_name for s in shape_name_to_mapping.values())
-                    # avoid_names = set(filter(bool, japanese_names))
-
                     # Very unlikely that an mmd_name will end up as a conflict unless an avatar with Japanese
                     # shape keys is set to map to the Cats translations
                     avoid_names = set()

@@ -148,7 +148,6 @@ class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
         return {'FINISHED'}
 
 
-# TODO: Add Duplicate to ContextCollectionOperatorBase's control Operator creation methods
 # noinspection PyAbstractClass
 class CollectionDuplicateBase(CollectionAddBase[E]):
     """Duplicate the active item of the collection"""

@@ -67,6 +67,7 @@ _OP_RETURN = set[Literal['RUNNING_MODAL', 'CANCELLED', 'FINISHED', 'PASS_THROUGH
 
 class _OperatorProtocol(Protocol):
     """Protocol matching the signature of __call__ of operators from bpy.ops"""
+    # todo: Add some other functions such as poll
     def __call__(self, *args, **kwargs) -> _OP_RETURN:
         ...
 

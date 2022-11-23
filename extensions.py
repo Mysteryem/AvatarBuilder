@@ -33,6 +33,9 @@ def update_name_ensure_unique(element_updating: PropertyGroup, collection_prop: 
     new_name = getattr(element_updating, name_prop_name)
     if extra_disallowed_names is None:
         extra_disallowed_names = set()
+    if new_name == '':
+        # Empty string names are not allowed
+        new_name = old_name
 
     if new_name != old_name:
         try:
@@ -188,9 +191,9 @@ class SceneBuildSettings(PropertyGroup):
 
     # TODO: Property enabled by default to 're-sync vertices with basis shape keys' with description about how the two
     #  can become desynced outside of edit mode and how the FBX exporter exports vertices and not the basis
-    # TODO: Or add operator to re-sync vertices with basis shape keys for all objects in scene, maybe in an extra
+    #       Or add operator to re-sync vertices with basis shape keys for all objects in scene, maybe in an extra
     #  'tools' panel for Avatar Builder
-    # TODO: Or both: add a small button next to the property, that allows users to run the re-sync manually. The
+    #       Or both: add a small button next to the property, that allows users to run the re-sync manually. The
     #  operator should report the number of meshes it checked and how many had their sync fixed
 
     # TODO: Also property/operator for checking NaNs in UV components?
@@ -229,8 +232,8 @@ class SceneBuildSettings(PropertyGroup):
         default=True,
         description="Ignore hidden Objects from the build"
     )
-    # TODO: Needs UI and needs to actually be used
-    remove_settings_from_built_avatar: BoolProperty(name="Remove settings from built avatar", default=True)
+    # TODO: Add property that by default will cause settings to be stripped from built Objects
+    # remove_settings_from_built_avatar: BoolProperty(name="Remove settings from built avatar", default=True)
     # TODO: Add the option below to join mesh UVMaps by index instead of name
     # uv_map_joining: EnumProperty(
     #     items=[
@@ -251,6 +254,9 @@ class SceneBuildSettings(PropertyGroup):
     #     default='INDEX',
     #     description="Specify how UV Maps of meshes should be combined when meshes are joined together",
     # )
+    # TODO: Add the option to always join reference shape keys (by renaming the reference key of the joining
+    #  meshes to match the reference key of the mesh they are being joined into)
+    # force_reference_key_joining: BoolProperty()
     # TODO: Try smartly limiting vertex group weights (dissolving weights into parents or parents of parents if the
     #  vertex is also in that group)
     do_limit_total: BoolProperty(
@@ -260,11 +266,23 @@ class SceneBuildSettings(PropertyGroup):
     )
     limit_num_groups: IntProperty(
         name="Number of weights",
-        description="Limit the number of weights per vertex.",
+        description="Limit the number of weights per vertex",
         default=4,
         min=1,
     )
     mmd_settings: PointerProperty(type=MmdShapeKeySettings)
+    # TODO: Use bpy.ops.mesh.sort_elements(type='MATERIAL', elements={'FACES'}).
+    #       Note: requires edit mode (works with multi-editing) and requires unhiding and selecting all polygons since
+    #             it only works on the current selection
+    #       Alternatively, this would be good as a separate, easily accessed button.
+    # TODO: Find out
+    # order_polygons_by_materials: BoolProperty(
+    #     name="Match Unity and Blender material order",
+    #     # TODO: Some comment about running the operator from the a Tools/Utilities Panel (doesn't currently exist) in
+    #     #   advance instead if this is slow
+    #     description="Unity orders material slots based on polygon order, enabling this will ensure that the polygon"
+    #                 " order matches the order of materials in Blender"
+    # )
 
     def set_name_no_propagate(self, new_name: str):
         change_name_no_propagate(self, 'name_prop', new_name)
@@ -496,7 +514,6 @@ class ArmatureSettings(PropertyGroup):
 
 
 class ShapeKeySettings(PropertyGroup):
-    # TODO: Might there be any merit in allowing for APPLY_MIX after running CUSTOM ops?
     shape_keys_main_op: EnumProperty(
         name="Operation",
         items=[
@@ -510,7 +527,9 @@ class ShapeKeySettings(PropertyGroup):
     )
     shape_key_ops: PointerProperty(type=ShapeKeyOps)
     # TODO: BoolProperty to remove shape keys that do next to nothing
-    # TODO: FloatProperty to specify how much movement is still considered nothing
+    #       and FloatProperty to specify how much movement is still considered nothing (only show when the bool is True)
+    #       Would need to figure something out so that we don't remove the common vrc.sil shape key though.
+
 
 
 class KeepUVMapList(CollectionPropBase[PropertyGroup]):
@@ -726,6 +745,7 @@ class MeshSettings(PropertyGroup):
     shape_key_settings: PointerProperty(type=ShapeKeySettings)
     uv_settings: PointerProperty(type=UVSettings)
     vertex_group_settings: PointerProperty(type=VertexGroupSettings)
+    # TODO: Add UI
     vertex_color_settings: PointerProperty(type=VertexColorSettings)
     material_settings: PointerProperty(type=MaterialSettings)
     modifier_settings: PointerProperty(type=ModifierSettings)

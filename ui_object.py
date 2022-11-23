@@ -91,16 +91,12 @@ class ObjectBuildSettingsUIList(UIList):
 class ObjectPanelBase(Panel):
     @staticmethod
     def _poll_object(obj: Object):
-        # TODO: Currently, we're only building these types, should we be including any others?
-        # TODO: Make the set a global variable and uses it elsewhere too
+        # Object must exist and be one of the buildable types
         return obj and obj.type in ObjectPropertyGroup.ALLOWED_TYPES
 
     @staticmethod
     def _poll_scene(scene: Scene):
         # Build settings must be non-empty
-        # TODO: Should add a 'clean' or 'purge' button to Scene panel that purges non-existent build settings from all
-        #       objects in the current scene. This is because we otherwise have no way to remove the object settings
-        #       if we hide the panel when there's no build settings
         return scene and ScenePropertyGroup.get_group(scene).collection
 
     @staticmethod
@@ -220,8 +216,6 @@ class ObjectPanelBase(Panel):
         if box:
             ui_vertex_group_swaps.draw_vertex_group_swaps(box, settings.vertex_group_swaps)
             box.prop(settings, 'remove_non_deform_vertex_groups')
-            # TODO: Remove empty vertex groups? Probably not very important, since it won't result in much
-            #  extra data, assuming they even get exported at all
 
     @staticmethod
     def draw_shape_keys_box(properties_col: UILayout, settings: ShapeKeySettings, me: Mesh,

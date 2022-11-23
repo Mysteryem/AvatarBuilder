@@ -132,8 +132,7 @@ def _cats_setup(calling_operator: Optional[Operator]):
             return translated
         else:
             update_dictionary([to_translate], False, calling_op)
-            # TODO: Cats sets the second argument, add_space to True when translating shape keys, not sure
-            #  why
+            # Cats sets the second argument, add_space to True when translating shape keys, not sure why
             translation, success = translate(to_translate, is_shape_key, False)
             if success:
                 return translation
@@ -161,9 +160,9 @@ def _cats_setup(calling_operator: Optional[Operator]):
 
 
 def cats_exists() -> bool:
-    """A quick check for if the Cats addon is loaded"""
-    # TODO: Check other operator modules in-case this specific one gets removed
-    return hasattr(bpy.ops, 'cats_common')
+    """A quick check for if the Cats addon is loaded, intended for use in poll functions"""
+    # Check a few in-case one gets removed in the future
+    return hasattr(bpy.ops, 'cats_common') or hasattr(bpy.ops, 'cats_manual') or hasattr(bpy.ops, 'cats_updater')
 
 
 @overload
