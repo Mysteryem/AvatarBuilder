@@ -9,10 +9,17 @@ from .registration import register_module_classes_factory, CollectionPropBase
 in the future"""
 
 
-def property_migrate(holder, old_name, new_name):
-    if old_name in holder:
-        holder[new_name] = holder[old_name]
-        del holder[old_name]
+def property_migrate(old_holder, old_name, new_name=None, new_holder=None):
+    # Default to the same name if no new_name is provided
+    if new_name is None:
+        new_name = old_name
+    # Default to the same holder if no new_holder is provided
+    if new_holder is None:
+        new_holder = old_holder
+
+    if old_name in old_holder:
+        new_holder[new_name] = old_holder[old_name]
+        del old_holder[old_name]
 
 
 def migrate_collection_prop_base_data_to_collection():
@@ -48,9 +55,22 @@ def migrate_all_collection_props_to_collection_prop_base():
         property_migrate(group, 'object_settings_active_index', 'active_index')
 
 
+def migrate_general_object_settings():
+    """Changes:
+    target_object_name and join_order properties have been moved to their own PropertyGroup, this makes it easier to
+    copy all general object settings"""
+    for obj in bpy.data.objects:
+        group = ObjectPropertyGroup.get_group(obj)
+        for settings in group.collection:
+            general_settings = settings.general_settings
+            property_migrate(settings, 'target_object_name', new_holder=general_settings)
+            property_migrate(settings, 'join_order', new_holder=general_settings)
+
+
 def migrate_0_0_1_to_0_1_0():
     migrate_all_collection_props_to_collection_prop_base()
     migrate_collection_prop_base_data_to_collection()
+    migrate_general_object_settings()
 
 
 class MigrateData(Operator):

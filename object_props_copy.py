@@ -311,7 +311,7 @@ class CopyObjectProperties(Operator):
     )
     props_to_copy: EnumProperty(
         items=tuple(map(CopyPropsItem.to_enum_item, _all_copy_props)),
-        options={'ENUM_FLAG'},
+        options={'ENUM_FLAG', 'HIDDEN'},
         default={COPY_ALL_SETTINGS.id},
     )
     mode: EnumProperty(
@@ -328,11 +328,12 @@ class CopyObjectProperties(Operator):
         default=True
     )
 
-    def draw(self, context: Context):
-        layout = self.layout
-        layout.prop(self, 'mode')
-        layout.prop(self, 'paste_to_name')
-        layout.prop(self, 'create')
+    @classmethod
+    def poll(cls, context: Context) -> bool:
+        # Must have an Object to copy from
+        # The Objects being pasted to can change depending on the arguments passed to the Operator, so we can't check
+        # those in the poll method
+        return bool(context.object)
 
     def execute(self, context: Context) -> set[str]:
         props_to_copy: set[str] = self.props_to_copy
@@ -345,6 +346,7 @@ class CopyObjectProperties(Operator):
             return {'FINISHED'}
         mode = self.mode
         copy_object = context.object
+        copy_object_type = copy_object.type
         copy_from_settings = ObjectPropertyGroup.get_group(copy_object).get_displayed_settings(context.scene)
         paste_settings_name = self.paste_to_name
         if copy_from_settings is None:
@@ -382,37 +384,44 @@ class CopyObjectProperties(Operator):
             else:
                 continue
 
-            paste_to_mesh_settings = paste_to_settings.mesh_settings
-            copy_from_mesh_settings = copy_from_settings.mesh_settings
-
             if COPY_GENERAL_OBJECT_SETTINGS.id in props_to_copy:
-                paste_to_settings.join_order = copy_from_settings.join_order
-                paste_to_settings.target_object_name = copy_from_settings.target_object_name
-                paste_to_mesh_settings.ignore_reduce_to_two_meshes = copy_from_mesh_settings.ignore_reduce_to_two_meshes
+                id_prop_copy(copy_from_settings, paste_to_settings, 'general_settings')
 
-            if COPY_ARMATURE_POSE_SETTINGS.id in props_to_copy:
-                id_prop_copy(copy_from_settings, paste_to_settings, 'armature_settings')
+            # We will assume that we're copying settings that are used by copy_object, and therefore, that if the
+            # type of paste_to_obj matches copy_object, the settings being copied will also be settings that are
+            # used by paste_to_obj
+            if paste_to_obj.type == copy_object_type:
+                paste_to_mesh_settings = paste_to_settings.mesh_settings
+                copy_from_mesh_settings = copy_from_settings.mesh_settings
 
-            def copy_mesh_group(paste_prop):
-                id_prop_copy(copy_from_mesh_settings, paste_to_mesh_settings, paste_prop)
+                def copy_mesh_settings(paste_prop):
+                    id_prop_copy(copy_from_mesh_settings, paste_to_mesh_settings, paste_prop)
 
-            if COPY_MESH_MATERIALS_SETTINGS.id in props_to_copy:
-                copy_mesh_group('material_settings')
+                # The ignore_reduce_to_two settings is part of MeshSettings, but is shown in the general Object
+                # settings area, since it doesn't belong to any other group of settings within the MeshSettings
+                if COPY_GENERAL_OBJECT_SETTINGS.id in props_to_copy:
+                    copy_mesh_settings('ignore_reduce_to_two_meshes')
 
-            if COPY_MESH_MODIFIERS_SETTINGS.id in props_to_copy:
-                copy_mesh_group('modifier_settings')
+                if COPY_ARMATURE_POSE_SETTINGS.id in props_to_copy:
+                    id_prop_copy(copy_from_settings, paste_to_settings, 'armature_settings')
 
-            if COPY_MESH_UV_LAYERS_SETTINGS.id in props_to_copy:
-                copy_mesh_group('uv_settings')
+                if COPY_MESH_MATERIALS_SETTINGS.id in props_to_copy:
+                    copy_mesh_settings('material_settings')
 
-            if COPY_MESH_VERTEX_GROUPS_SETTINGS.id in props_to_copy:
-                copy_mesh_group('vertex_group_settings')
+                if COPY_MESH_MODIFIERS_SETTINGS.id in props_to_copy:
+                    copy_mesh_settings('modifier_settings')
 
-            if COPY_MESH_SHAPE_KEYS_SETTINGS.id in props_to_copy:
-                copy_mesh_group('shape_key_settings')
+                if COPY_MESH_UV_LAYERS_SETTINGS.id in props_to_copy:
+                    copy_mesh_settings('uv_settings')
 
-            if COPY_MESH_VERTEX_COLORS_SETTINGS.id in props_to_copy:
-                copy_mesh_group('vertex_color_settings')
+                if COPY_MESH_VERTEX_GROUPS_SETTINGS.id in props_to_copy:
+                    copy_mesh_settings('vertex_group_settings')
+
+                if COPY_MESH_SHAPE_KEYS_SETTINGS.id in props_to_copy:
+                    copy_mesh_settings('shape_key_settings')
+
+                if COPY_MESH_VERTEX_COLORS_SETTINGS.id in props_to_copy:
+                    copy_mesh_settings('vertex_color_settings')
 
         return {'FINISHED'}
 

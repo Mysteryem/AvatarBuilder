@@ -816,8 +816,8 @@ def set_build_name_for_existing_object_about_to_be_renamed(name: str):
         # object name must be set in order for build behaviour to remain the same.
         object_build_settings: ObjectBuildSettings
         for object_build_settings in existing_object_settings:
-            if not object_build_settings.target_object_name:
-                object_build_settings.target_object_name = name
+            if not object_build_settings.general_settings.target_object_name:
+                object_build_settings.general_settings.target_object_name = name
 
 
 @dataclass
@@ -873,7 +873,7 @@ def validate_build(context: Context, active_scene_settings: SceneBuildSettings) 
                 if obj.mode != 'OBJECT':
                     override = {'active_object': obj}
                     utils.op_override(bpy.ops.object.mode_set, override, context, mode='OBJECT')
-                desired_name = object_settings.target_object_name
+                desired_name = object_settings.general_settings.target_object_name
                 if not desired_name:
                     desired_name = obj.name
                 helper_tuple = ObjectHelper(
@@ -1199,12 +1199,12 @@ def _get_join_sort_key(helper: ObjectHelper) -> tuple:
             shape_key_ordering = -len(shape_keys.key_blocks)
         else:
             shape_key_ordering = 0
-        return helper.settings.join_order, shape_key_ordering, helper.orig_object_name
+        return helper.settings.general_settings.join_order, shape_key_ordering, helper.orig_object_name
     else:
         # Not a Mesh, which currently means it must be an Armature, which doesn't have shape keys.
         # Attempting to join Objects of different types is an error, so we won't include a dummy value for shape key
         # ordering.
-        return helper.settings.join_order, helper.orig_object_name
+        return helper.settings.general_settings.join_order, helper.orig_object_name
 
 
 class BuildAvatarOp(Operator):

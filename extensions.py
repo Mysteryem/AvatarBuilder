@@ -727,10 +727,7 @@ class MeshSettings(PropertyGroup):
     modifier_settings: PointerProperty(type=ModifierSettings)
 
 
-class ObjectBuildSettings(PropertyGroup):
-    name_prop: StringProperty(default="BuildSettings", update=object_build_settings_update_name)
-
-    include_in_build: BoolProperty(name="Include in build", default=True, description="Include these build settings. This lets you disable the export without deleting settings")
+class GeneralObjectSettings(PropertyGroup):
     target_object_name: StringProperty(
         name="Built name",
         description="The name of the object once building is complete.\n"
@@ -749,6 +746,16 @@ class ObjectBuildSettings(PropertyGroup):
                     "If there is a tie for Join Order, the tie will be solved by comparing the number of Shape Keys"
                     " (most Shape Keys first) and then the Object's name"
     )
+
+
+class ObjectBuildSettings(PropertyGroup):
+    name_prop: StringProperty(default="BuildSettings", update=object_build_settings_update_name)
+    include_in_build: BoolProperty(
+        name="Include in build",
+        description="Include these build settings. This lets you disable the export without deleting settings",
+        default=True,
+    )
+    general_settings: PointerProperty(type=GeneralObjectSettings)
     armature_settings: PointerProperty(type=ArmatureSettings)
     mesh_settings: PointerProperty(type=MeshSettings)
 

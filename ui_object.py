@@ -165,8 +165,8 @@ class ObjectPanelBase(Panel):
         box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'general', enabled,
                                                  COPY_GENERAL_OBJECT_SETTINGS, text="Object", icon='OBJECT_DATA')
         if box:
-            box.prop(settings, 'target_object_name')
-            box.prop(settings, 'join_order')
+            box.prop(settings.general_settings, 'target_object_name')
+            box.prop(settings.general_settings, 'join_order')
 
     @staticmethod
     def draw_armature_box(properties_col: UILayout, settings: ArmatureSettings, obj: Object,
