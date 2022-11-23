@@ -160,13 +160,26 @@ class ObjectPanelBase(Panel):
             return None
 
     @staticmethod
-    def draw_general_object_box(properties_col: UILayout, settings: ObjectBuildSettings,
-                                ui_toggle_data: WmObjectToggles, enabled: bool):
+    def draw_general_object_box(
+            scene_group: ScenePropertyGroup,
+            obj: Object,
+            properties_col: UILayout,
+            settings: ObjectBuildSettings,
+            ui_toggle_data: WmObjectToggles,
+            enabled: bool
+    ):
         box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'general', enabled,
                                                  COPY_GENERAL_OBJECT_SETTINGS, text="Object", icon='OBJECT_DATA')
         if box:
             box.prop(settings.general_settings, 'target_object_name')
             box.prop(settings.general_settings, 'join_order')
+            if obj.type == 'MESH':
+                scene_settings = scene_group.collection.get(settings.name)
+                # Only enable ignore_reduce_to_two_meshes if the ObjectBuildSettings are orphaned from scene settings
+                # or the scene settings has reduce_to_two_meshes enabled
+                sub = box.column()
+                sub.enabled = not scene_settings or scene_settings.reduce_to_two_meshes
+                sub.prop(settings.mesh_settings, 'ignore_reduce_to_two_meshes')
 
     @staticmethod
     def draw_armature_box(properties_col: UILayout, settings: ArmatureSettings, obj: Object,
@@ -354,10 +367,10 @@ class ObjectPanelBase(Panel):
         elif obj.type == 'ARMATURE':
             copy_menu = COPY_ALL_ARMATURE_SETTINGS.copy_menu
 
+        scene_group = ScenePropertyGroup.get_group(context.scene)
         is_synced = object_ui_sync_enabled(context)
         if is_synced:
             # Get active_object_settings by name of active_build_settings
-            scene_group = ScenePropertyGroup.get_group(context.scene)
             active_build_settings = scene_group.active
 
             active_object_settings: Union[ObjectBuildSettings, None]
@@ -431,7 +444,8 @@ class ObjectPanelBase(Panel):
             toggles = WindowManagerPropertyGroup.get_group(context.window_manager).ui_toggles.object
 
             # Display the box for general object settings
-            self.draw_general_object_box(properties_col, active_object_settings, toggles, settings_enabled)
+            self.draw_general_object_box(
+                scene_group, obj, properties_col, active_object_settings, toggles, settings_enabled)
 
             # Display the box for armature settings if the object is an armature
             if obj.type == 'ARMATURE':

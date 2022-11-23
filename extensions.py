@@ -716,9 +716,13 @@ class ModifierSettings(PropertyGroup):
 
 
 class MeshSettings(PropertyGroup):
-    # TODO: IntProperty for Join priority, used to order meshes that are being joined together (and deciding which mesh
-    #  will be the mesh that all the others are joined to, used for both initial joining by name and reduce_to_two)
-    ignore_reduce_to_two_meshes: BoolProperty(default=False)
+    ignore_reduce_to_two_meshes: BoolProperty(
+        name="Ignore 'Reduce to two meshes'",
+        description="If enabled, this Mesh will be excluded from the optional 'Reduce to two meshes' operation that can"
+                    " be enabled in the Scene settings. This is useful if this Mesh needs to remain separate for"
+                    " animation purposes",
+        default=False,
+    )
     shape_key_settings: PointerProperty(type=ShapeKeySettings)
     uv_settings: PointerProperty(type=UVSettings)
     vertex_group_settings: PointerProperty(type=VertexGroupSettings)
