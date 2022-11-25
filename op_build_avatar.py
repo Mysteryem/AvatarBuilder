@@ -323,8 +323,8 @@ class BuildAvatarOp(Operator):
     bl_description = "Build an avatar based on the meshes in the current scene, creating a new scene with the created avatar"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def build_mesh_shape_key_op_delete(self, obj: Object, op: ShapeKeyOp, op_type: str, shape_keys: Key,
-                                       available_key_blocks: set[ShapeKey]):
+    def _shape_key_op_delete(self, obj: Object, op: ShapeKeyOp, op_type: str, shape_keys: Key,
+                             available_key_blocks: set[ShapeKey]):
         key_blocks = shape_keys.key_blocks
         keys_to_delete = set()
         if op_type == ShapeKeyOp.DELETE_SINGLE:
@@ -352,7 +352,9 @@ class BuildAvatarOp(Operator):
                     pattern = re.compile(pattern_str)
                     keys_to_delete = {k for k in key_blocks if pattern.fullmatch(k.name) is not None}
                 except re.error as err:
-                    print(f"Regex error for '{pattern_str}' for {ShapeKeyOp.DELETE_REGEX}:\n\t{err}")
+                    self.report({'WARNING'}, f"Regex error for '{pattern_str}' on {obj!r} for"
+                                             f" {ShapeKeyOp.DELETE_REGEX}:\n"
+                                             f"\t{err}")
 
         # Limit the deleted keys to those available
         keys_to_delete.intersection_update(available_key_blocks)
@@ -382,8 +384,8 @@ class BuildAvatarOp(Operator):
             # "."
             return name
 
-    def build_mesh_shape_key_op_merge_all(self, op: ShapeKeyOp, op_type: str, key_blocks_to_search: Iterable[ShapeKey]
-                                          ) -> _SHAPE_MERGE_LIST:
+    def _shape_key_op_merge_all(self, op: ShapeKeyOp, op_type: str, key_blocks_to_search: Iterable[ShapeKey]
+                                ) -> _SHAPE_MERGE_LIST:
         merge_lists: _SHAPE_MERGE_LIST = []
         matched: list[ShapeKey] = []
         matched_grouped: dict[Union[str, tuple[AnyStr, ...]], list[ShapeKey]] = defaultdict(list)
@@ -412,8 +414,8 @@ class BuildAvatarOp(Operator):
                     else:
                         matched = [k for k in key_blocks_to_search if pattern.fullmatch(k.name)]
                 except re.error as err:
-                    print(f"Regex error for '{pattern_str}' for {ShapeKeyOp.MERGE_REGEX}:\n"
-                          f"\t{err}")
+                    self.report({'WARNING'}, f"Regex error for '{pattern_str}' for {ShapeKeyOp.MERGE_REGEX}:\n"
+                                             f"\t{err}")
         elif op_type == ShapeKeyOp.MERGE_COMMON_BEFORE_DELIMITER:
             delimiter = op.pattern
             if delimiter:
@@ -435,14 +437,14 @@ class BuildAvatarOp(Operator):
         return merge_lists
 
     @staticmethod
-    def _merge_consecutive_simple_suffix_or_prefix(compare_func: Callable[[str, str], bool], op: ShapeKeyOp,
-                                                   matched_consecutive: list, key_blocks_to_search: Iterable[ShapeKey]):
-        prefix_or_suffix = op.pattern
-        if prefix_or_suffix:
+    def _shape_key_op_merge_consecutive_compare(compare_func: Callable[[str, str], bool], op: ShapeKeyOp,
+                                                matched_consecutive: list, key_blocks_to_search: Iterable[ShapeKey]):
+        compare_against = op.pattern
+        if compare_against:
             previous_shape_matched = False
             current_merge_list = None
             for shape in key_blocks_to_search:
-                current_shape_matches = compare_func(shape.name, prefix_or_suffix)
+                current_shape_matches = compare_func(shape.name, compare_against)
                 if current_shape_matches:
                     if not previous_shape_matched:
                         # Create a new merge list
@@ -472,18 +474,22 @@ class BuildAvatarOp(Operator):
                 # Add to the current merge list
                 current_merge_list.append(key)
 
-    def build_mesh_shape_key_op_merge_consecutive(self, op: ShapeKeyOp, op_type: str, key_blocks_to_search: Iterable[ShapeKey]
-                                                  ) -> _SHAPE_MERGE_LIST:
+    def _shape_key_op_merge_consecutive(self, op: ShapeKeyOp, op_type: str, key_blocks_to_search: Iterable[ShapeKey]
+                                        ) -> _SHAPE_MERGE_LIST:
         # Similar to 'ALL', but check against the previous and create a new sub-list each time the previous
         # didn't match
         merge_lists: _SHAPE_MERGE_LIST = []
         matched_consecutive = []
         if op_type == ShapeKeyOp.MERGE_PREFIX:
-            self._merge_consecutive_simple_suffix_or_prefix(str.startswith,
-                                                            op, matched_consecutive, key_blocks_to_search)
+            # PyCharm bug. It thinks str.startswith doesn't match Callable[[str,str], bool]
+            # noinspection PyTypeChecker
+            self._shape_key_op_merge_consecutive_compare(str.startswith,
+                                                         op, matched_consecutive, key_blocks_to_search)
         elif op_type == ShapeKeyOp.MERGE_SUFFIX:
-            self._merge_consecutive_simple_suffix_or_prefix(str.endswith,
-                                                            op, matched_consecutive, key_blocks_to_search)
+            # PyCharm bug. It thinks str.endswith doesn't match Callable[[str,str], bool]
+            # noinspection PyTypeChecker
+            self._shape_key_op_merge_consecutive_compare(str.endswith,
+                                                         op, matched_consecutive, key_blocks_to_search)
         elif op_type == ShapeKeyOp.MERGE_REGEX:
             pattern_str = op.pattern
             if pattern_str:
@@ -524,8 +530,8 @@ class BuildAvatarOp(Operator):
 
         return merge_lists
 
-    def build_mesh_shape_key_op_merge(self, obj: Object, op: ShapeKeyOp, op_type: str, key_blocks: bpy_prop_collection,
-                                      available_key_blocks: set[ShapeKey]):
+    def _shape_key_op_merge(self, obj: Object, op: ShapeKeyOp, op_type: str, key_blocks: bpy_prop_collection,
+                            available_key_blocks: set[ShapeKey]):
         grouping = op.merge_grouping
 
         # Collect all the shapes to be merged into a common dictionary format that the merge function uses
@@ -539,9 +545,9 @@ class BuildAvatarOp(Operator):
         key_blocks_to_search = (k for k in key_blocks[1:] if k in available_key_blocks)
 
         if grouping == 'ALL':
-            merge_lists = self.build_mesh_shape_key_op_merge_all(op, op_type, key_blocks_to_search)
+            merge_lists = self._shape_key_op_merge_all(op, op_type, key_blocks_to_search)
         elif grouping == 'CONSECUTIVE':
-            merge_lists = self.build_mesh_shape_key_op_merge_consecutive(op, op_type, key_blocks_to_search)
+            merge_lists = self._shape_key_op_merge_consecutive(op, op_type, key_blocks_to_search)
 
         # Merge all the specified shapes
         merge_shapes_into_first(obj, merge_lists)
@@ -567,9 +573,9 @@ class BuildAvatarOp(Operator):
         if key_blocks:
             op_type = op.type
             if op_type in ShapeKeyOp.DELETE_OPS_DICT:
-                self.build_mesh_shape_key_op_delete(obj, op, op_type, shape_keys, available_key_blocks)
+                self._shape_key_op_delete(obj, op, op_type, shape_keys, available_key_blocks)
             elif op_type in ShapeKeyOp.MERGE_OPS_DICT:
-                self.build_mesh_shape_key_op_merge(obj, op, op_type, key_blocks, available_key_blocks)
+                self._shape_key_op_merge(obj, op, op_type, key_blocks, available_key_blocks)
 
     def build_mesh_shape_keys(self, obj: Object, me: Mesh, settings: ShapeKeySettings):
         """Note that this function may invalidate old references to Mesh.shape_keys as it may delete them entirely"""
@@ -1033,6 +1039,138 @@ class BuildAvatarOp(Operator):
             no_shape_keys_mesh_name=no_shape_keys_mesh_name,
         )
 
+    def _mmd_remap_rename(self, mesh_obj: Object, key_blocks: bpy_prop_collection,
+                          shape_name_to_mapping: dict[str, MmdShapeMapping], remap_to_japanese: bool,
+                          avoid_names: set[str]):
+        # Go through existing shape keys
+        #   If the shape has a mapping, get what it wants to be renamed to
+        #   Else set the desired name to its current name
+        #   If the desired name already exists (or is to otherwise be avoided), get a unique name using the
+        #     desired name as a base
+        #   Store the shape key and its unique, desired name into a list
+        # If we were to rename the shape keys during this iteration, we could end up renaming a shape key we are
+        # yet to iterate, which would cause its mapping in shape_name_to_mapping to no longer be found.
+        desired_names: list[tuple[ShapeKey, str]] = []
+        for shape in key_blocks:
+            shape_name = shape.name
+            if shape_name in shape_name_to_mapping:
+                mapping = shape_name_to_mapping[shape_name]
+                if remap_to_japanese:
+                    map_to = mapping.mmd_name
+                else:
+                    cats_translation = mapping.cats_translation_name
+                    # Fallback to mmd_name if there's no cats translation
+                    map_to = cats_translation if cats_translation else mapping.mmd_name
+                desired_name = map_to if map_to else shape_name
+                # Get a unique version of the desired name
+                unique_desired_name = utils.get_unique_name(desired_name, avoid_names)
+                if unique_desired_name != desired_name:
+                    self.report({'WARNING'}, f"The desired mmd mapping name of '{desired_name}' for the Shape Key"
+                                             f" '{mapping.model_shape}' on {mesh_obj!r} was already in use. It has been"
+                                             f" renamed to '{unique_desired_name}' instead")
+            else:
+                # No mapping for this shape key
+                unique_desired_name = utils.get_unique_name(shape_name, avoid_names)
+            # Each shape key must have a unique name, so add this shape key's unique desired name to the set
+            # so that other shape keys can't pick the same name
+            avoid_names.add(unique_desired_name)
+            desired_names.append((shape, unique_desired_name))
+
+        # Now go through the shape keys and rename them to their desired names
+        for shape, unique_desired_name in desired_names:
+            if shape.name != unique_desired_name:
+                # Unlike most types in Blender, if you rename a ShapeKey to one that already exists, the shape
+                # key that was renamed will be given a different, unique name, instead of the existing ShapeKey
+                # being renamed.
+                # For this reason, if we want to rename a ShapeKey to the same name as a ShapeKey that already
+                # exists, the ShapeKey that already exists has to be renamed to something else first.
+                # TODO: Make this faster by keeping track of all current shape key names in a set and passing in
+                #  that set instead of key_blocks directly
+                temporary_new_name = utils.get_unique_name(unique_desired_name, key_blocks)
+                if temporary_new_name != unique_desired_name:
+                    # Since we guarantee beforehand that all the names will end up unique, this name typically
+                    # won't end up used unless it just so happens to match the desired name.
+                    key_blocks[unique_desired_name].name = temporary_new_name
+                shape.name = unique_desired_name
+
+    def _mmd_remap_add(self, mesh_obj: Object, key_blocks: bpy_prop_collection,
+                       shape_name_to_mapping: dict[str, MmdShapeMapping], remap_to_japanese: bool,
+                       avoid_names: set[str]):
+        # Go through existing shape keys
+        #  If the shape has a mapping, add a duplicate
+        #  Set the duplicated shape key to the name it wanted if possible
+        #  If avoid double activation is enabled and the other version exists in the shape keys, rename it
+        #    Not that we need to make sure that if we rename a shape key we are yet to iterate to, that mmd
+        #    mapping will still occur based on the original name. Maybe we should do the avoid-double-
+        #    activation step afterwards instead?
+
+        current_names = avoid_names.copy()
+        current_names.update(s.name for s in key_blocks)
+        # Rename shape keys that are in the set of names to avoid, we'll get the MmdShapeMapping before renaming
+        # since they are mapped by name and add all the information we need to a list.
+        # While we could combine this loop and the next loop together, the order in which shape keys get named
+        # can become confusing. For simplicity, we'll rename existing shape keys first and then add the copies
+        # with their mapped names
+        shapes_and_mappings: list[tuple[ShapeKey, MmdShapeMapping]] = []
+        for shape in key_blocks:
+            shape_name = shape.name
+            shapes_and_mappings.append((shape, shape_name_to_mapping.get(shape_name)))
+            # Rename the shape key if it's using a name that must be avoided
+            if shape_name in avoid_names:
+                avoided_name = utils.get_unique_name(shape_name, current_names)
+                shape.name = avoided_name
+                current_names.add(avoided_name)
+
+        # Create a copy of each shape key and name the copy according to the desired_name
+        #
+        # An alternative would be to create new shape keys and then copy the co of the original shape key to
+        # the copy shape key with foreach_get/set, but this takes about twice the time for meshes with few
+        # vertices and gets comparatively worse as the number of vertices increases.
+
+        # Enable 'shape key pinning', showing the active shape key at 1.0 value regardless of its current
+        # value and ignoring all other shape keys. We do this so we can easily create a new shape key from
+        # mix, where the mix is only the shape key we want to copy.
+        orig_pinning = mesh_obj.show_only_shape_key
+        mesh_obj.show_only_shape_key = True
+        # We're going to add shapes, so make sure we have a copy of the list that isn't going to update as
+        # we add more
+        for idx, (shape, mapping) in enumerate(shapes_and_mappings):
+            if mapping is None:
+                continue
+
+            # Get the desired name for the copy
+            if remap_to_japanese:
+                desired_name = mapping.mmd_name
+            else:
+                cats_translation = mapping.cats_translation_name
+                # Fall back to mmd_name if cats_translation doesn't exist
+                desired_name = cats_translation if cats_translation else mapping.mmd_name
+
+            # Get a unique version of the desired name for the copy
+            unique_desired_name = utils.get_unique_name(desired_name, avoid_names)
+            if unique_desired_name != desired_name:
+                self.report({'WARNING'}, f"The desired mmd mapping name of '{desired_name}' for the Shape Key"
+                                         f" '{mapping.model_shape}' on {mesh_obj!r} was already in use. It has been"
+                                         f" named '{unique_desired_name}' instead")
+
+            # Shape key must not be muted otherwise it won't be pinned, we will restore the mute state after
+            if shape.mute:
+                mute = True
+                shape.mute = False
+            else:
+                mute = False
+            # Set the active shape key index to 'shape' so that it is pinned
+            mesh_obj.active_shape_key_index = idx
+            # Create a new shape key from mix (only the pinned shape key) and with the desired name,
+            # copying the active shape key.
+            mesh_obj.shape_key_add(name=unique_desired_name, from_mix=True)
+            current_names.add(unique_desired_name)
+            # Restore the mute if the shape key was muted
+            if mute:
+                shape.mute = True
+        # Restore pinning state
+        mesh_obj.show_only_shape_key = orig_pinning
+
     def mmd_remap(self, scene_property_group: ScenePropertyGroup, mmd_settings: MmdShapeKeySettings,
                   mesh_objects: list[Object]):
         if mmd_settings.do_remap:
@@ -1110,132 +1248,12 @@ class BuildAvatarOp(Operator):
                     avoid_names = set()
 
                 if mmd_settings.mode == 'RENAME':
-                    # Go through existing shape keys
-                    #   If the shape has a mapping, get what it wants to be renamed to
-                    #   Else set the desired name to its current name
-                    #   If the desired name already exists (or is to otherwise be avoided), get a unique name using the
-                    #     desired name as a base
-                    #   Store the shape key and its unique, desired name into a list
-                    # If we were to rename the shape keys during this iteration, we could end up renaming a shape key we are
-                    # yet to iterate, which would cause its mapping in shape_name_to_mapping to no longer be found.
-                    desired_names: list[tuple[ShapeKey, str]] = []
-                    for shape in key_blocks:
-                        shape_name = shape.name
-                        if shape_name in shape_name_to_mapping:
-                            mapping = shape_name_to_mapping[shape_name]
-                            if remap_to_japanese:
-                                map_to = mapping.mmd_name
-                            else:
-                                cats_translation = mapping.cats_translation_name
-                                # Fallback to mmd_name if there's no cats translation
-                                map_to = cats_translation if cats_translation else mapping.mmd_name
-                            desired_name = map_to if map_to else shape_name
-                            # TODO: Report a warning if the unique_desired_name does not match the desired name, this
-                            #  means that the shape key won't work for mmd because it now has the wrong name!
-                            #  (alternatively, forcefully rename the other shape key that has the desired name already)
-                            # Get a unique version of the desired name
-                            unique_desired_name = utils.get_unique_name(desired_name, avoid_names)
-                        else:
-                            # No mapping for this shape key
-                            unique_desired_name = utils.get_unique_name(shape_name, avoid_names)
-                        # Each shape key must have a unique name, so add this shape key's unique desired name to the set
-                        # so that other shape keys can't pick the same name
-                        avoid_names.add(unique_desired_name)
-                        desired_names.append((shape, unique_desired_name))
-
-                    # Now go through the shape keys and rename them to their desired names
-                    for shape, unique_desired_name in desired_names:
-                        if shape.name != unique_desired_name:
-                            # Unlike most types in Blender, if you rename a ShapeKey to one that already exists, the shape
-                            # key that was renamed will be given a different, unique name, instead of the existing ShapeKey
-                            # being renamed.
-                            # For this reason, if we want to rename a ShapeKey to the same name as a ShapeKey that already
-                            # exists, the ShapeKey that already exists has to be renamed to something else first.
-                            # TODO: Make this faster by keeping track of all current shape key names in a set and passing in
-                            #  that set instead of key_blocks directly
-                            temporary_new_name = utils.get_unique_name(unique_desired_name, key_blocks)
-                            if temporary_new_name != unique_desired_name:
-                                # Since we guarantee beforehand that all the names will end up unique, this name typically
-                                # won't end up used unless it just so happens to match the desired name.
-                                key_blocks[unique_desired_name].name = temporary_new_name
-                            shape.name = unique_desired_name
+                    self._mmd_remap_rename(mesh_obj, key_blocks, shape_name_to_mapping, remap_to_japanese, avoid_names)
                 elif mmd_settings.mode == 'ADD':
-                    # Go through existing shape keys
-                    #  If the shape has a mapping, add a duplicate
-                    #  Set the duplicated shape key to the name it wanted if possible
-                    #  If avoid double activation is enabled and the other version exists in the shape keys, rename it
-                    #    Not that we need to make sure that if we rename a shape key we are yet to iterate to, that mmd
-                    #    mapping will still occur based on the original name. Maybe we should do the avoid-double-
-                    #    activation step afterwards instead?
-
-                    current_names = avoid_names.copy()
-                    current_names.update(s.name for s in key_blocks)
-                    # Rename shape keys that are in the set of names to avoid, we'll get the MmdShapeMapping before renaming
-                    # since they are mapped by name and add all the information we need to a list.
-                    # While we could combine this loop and the next loop together, the order in which shape keys get named
-                    # can become confusing. For simplicity, we'll rename existing shape keys first and then add the copies
-                    # with their mapped names
-                    shapes_and_mappings: list[tuple[ShapeKey, MmdShapeMapping]] = []
-                    for shape in key_blocks:
-                        shape_name = shape.name
-                        shapes_and_mappings.append((shape, shape_name_to_mapping.get(shape_name)))
-                        # Rename the shape key if it's using a name that must be avoided
-                        if shape_name in avoid_names:
-                            avoided_name = utils.get_unique_name(shape_name, current_names)
-                            shape.name = avoided_name
-                            current_names.add(avoided_name)
-
-                    # Create a copy of each shape key and name the copy according to the desired_name
-                    #
-                    # An alternative would be to create new shape keys and then copy the co of the original shape key to
-                    # the copy shape key with foreach_get/set, but this takes about twice the time for meshes with few
-                    # vertices and gets comparatively worse as the number of vertices increases.
-
-                    # Enable 'shape key pinning', showing the active shape key at 1.0 value regardless of its current
-                    # value and ignoring all other shape keys. We do this so we can easily create a new shape key from
-                    # mix, where the mix is only the shape key we want to copy.
-                    orig_pinning = mesh_obj.show_only_shape_key
-                    mesh_obj.show_only_shape_key = True
-                    # We're going to add shapes, so make sure we have a copy of the list that isn't going to update as
-                    # we add more
-                    for idx, (shape, mapping) in enumerate(shapes_and_mappings):
-                        if mapping is None:
-                            continue
-
-                        # Get the desired name for the copy
-                        if remap_to_japanese:
-                            desired_name = mapping.mmd_name
-                        else:
-                            cats_translation = mapping.cats_translation_name
-                            # Fall back to mmd_name if cats_translation doesn't exist
-                            desired_name = cats_translation if cats_translation else mapping.mmd_name
-
-                        # Get a unique version of the desired name for the copy
-                        # TODO: Report a warning if the unique_desired_name does not match the desired name, this
-                        #  means that the shape key won't work for mmd because it now has the wrong name!
-                        #  (alternatively, forcefully rename the other shape key that has the desired name already)
-                        unique_desired_name = utils.get_unique_name(desired_name, avoid_names)
-
-                        # Shape key must not be muted otherwise it won't be pinned, we will restore the mute state after
-                        if shape.mute:
-                            mute = True
-                            shape.mute = False
-                        else:
-                            mute = False
-                        # Set the active shape key index to 'shape' so that it is pinned
-                        mesh_obj.active_shape_key_index = idx
-                        # Create a new shape key from mix (only the pinned shape key) and with the desired name,
-                        # copying the active shape key.
-                        mesh_obj.shape_key_add(name=unique_desired_name, from_mix=True)
-                        current_names.add(unique_desired_name)
-                        # Restore the mute if the shape key was muted
-                        if mute:
-                            shape.mute = True
-                    # Restore pinning state
-                    mesh_obj.show_only_shape_key = orig_pinning
+                    self._mmd_remap_add(mesh_obj, key_blocks, shape_name_to_mapping, remap_to_japanese, avoid_names)
 
     @staticmethod
-    def create_export_scene(scene: Scene, export_scene_name: str):
+    def create_export_scene(scene: Scene, export_scene_name: str) -> Scene:
         export_scene = bpy.data.scenes.new(name=export_scene_name)
         export_scene_group = ScenePropertyGroup.get_group(export_scene)
         export_scene_group.is_export_scene = True
