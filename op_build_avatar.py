@@ -21,7 +21,6 @@ from bpy.types import (
     Scene,
     ShapeKey,
     ViewLayer,
-    bpy_prop_collection,
 )
 
 from .extensions import (
@@ -44,6 +43,7 @@ from .extensions import (
 from .integration_gret import run_gret_shape_key_apply_modifiers
 from .registration import register_module_classes_factory
 from . import utils
+from .util_generic_bpy_typing import PropCollection
 
 
 def merge_shapes_into_first(mesh_obj: Object, shapes_to_merge: list[tuple[ShapeKey, list[ShapeKey]]]):
@@ -530,7 +530,7 @@ class BuildAvatarOp(Operator):
 
         return merge_lists
 
-    def _shape_key_op_merge(self, obj: Object, op: ShapeKeyOp, op_type: str, key_blocks: bpy_prop_collection,
+    def _shape_key_op_merge(self, obj: Object, op: ShapeKeyOp, op_type: str, key_blocks: PropCollection[ShapeKey],
                             available_key_blocks: set[ShapeKey]):
         grouping = op.merge_grouping
 
@@ -1039,7 +1039,7 @@ class BuildAvatarOp(Operator):
             no_shape_keys_mesh_name=no_shape_keys_mesh_name,
         )
 
-    def _mmd_remap_rename(self, mesh_obj: Object, key_blocks: bpy_prop_collection,
+    def _mmd_remap_rename(self, mesh_obj: Object, key_blocks: PropCollection[ShapeKey],
                           shape_name_to_mapping: dict[str, MmdShapeMapping], remap_to_japanese: bool,
                           avoid_names: set[str]):
         # Go through existing shape keys
@@ -1093,7 +1093,7 @@ class BuildAvatarOp(Operator):
                     key_blocks[unique_desired_name].name = temporary_new_name
                 shape.name = unique_desired_name
 
-    def _mmd_remap_add(self, mesh_obj: Object, key_blocks: bpy_prop_collection,
+    def _mmd_remap_add(self, mesh_obj: Object, key_blocks: PropCollection[ShapeKey],
                        shape_name_to_mapping: dict[str, MmdShapeMapping], remap_to_japanese: bool,
                        avoid_names: set[str]):
         # Go through existing shape keys

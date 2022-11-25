@@ -9,17 +9,10 @@ from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key, Mesh
 from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup, CollectionPropBase
 from .preferences import object_ui_sync_enabled
 from . import utils
-
-# bpy_prop_collection_idprop isn't currently exposed in bpy.types, so it can't actually be imported. It's presence here
-# is purely to assist with development where it exists as a fake class.
-if hasattr(bpy.types, '_bpy_prop_collection_idprop'):
-    # noinspection PyProtectedMember
-    from bpy.types import _bpy_prop_collection_idprop as bpy_prop_collection_idprop
-else:
-    bpy_prop_collection_idprop = bpy.types.bpy_prop_collection
+from .util_generic_bpy_typing import PropCollectionIdProp
 
 
-def update_name_ensure_unique(element_updating: PropertyGroup, collection_prop: bpy_prop_collection_idprop,
+def update_name_ensure_unique(element_updating: PropertyGroup, collection_prop: PropCollectionIdProp,
                               name_prop_name: str, extra_disallowed_names: set[str] = None):
     """Helper function for ensuring name uniqueness with collection properties"""
     # Ensure name uniqueness by renaming the other found element with the same name, if it exists
