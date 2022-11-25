@@ -496,8 +496,8 @@ class BuildAvatarOp(Operator):
                 try:
                     pattern = re.compile(pattern_str)
                 except re.error as err:
-                    print(f"Regex error for '{pattern_str}' for {ShapeKeyOp.MERGE_REGEX}:\n"
-                          f"\t{err}")
+                    self.report({'WARNING'}, f"Regex error for '{pattern_str}' for {ShapeKeyOp.MERGE_REGEX}:\n"
+                                             f"\t{err}")
                     return []
 
                 previous_shape_match: Optional[re.Match] = None
@@ -564,8 +564,8 @@ class BuildAvatarOp(Operator):
                 available_key_blocks = {k for k in key_blocks if ignore_pattern.fullmatch(k.name) is None}
             except re.error as err:
                 # TODO: Check patterns in advance for validity, see ShapeKeyOp comments for details
-                print(f"Regex error occurred for ignore_regex '{ignore_regex}' on {obj!r}:\n"
-                      f"\t{err}")
+                self.report({'WARNING'}, f"Regex error occurred for ignore_regex '{ignore_regex}' on {obj!r}:\n"
+                                         f"\t{err}")
                 available_key_blocks = set(key_blocks)
         else:
             available_key_blocks = set(key_blocks)
@@ -1196,8 +1196,10 @@ class BuildAvatarOp(Operator):
                 model_shape = mapping.model_shape
                 if model_shape in shape_name_to_mapping:
                     existing = shape_name_to_mapping[model_shape]
-                    print(f"Already mapping {model_shape} to {(existing.mmd_name, existing.cats_translation_name)},"
-                          f" ignoring the additional mapping to {(mapping.mmd_name, mapping.cats_translation_name)}")
+                    self.report({'WARNING'}, f"Already mapping {model_shape} to"
+                                             f" {(existing.mmd_name, existing.cats_translation_name)},"
+                                             f" ignoring the additional mapping to"
+                                             f" {(mapping.mmd_name, mapping.cats_translation_name)}")
                 else:
                     shape_name_to_mapping[model_shape] = mapping
 
