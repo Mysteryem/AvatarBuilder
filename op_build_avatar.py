@@ -1,6 +1,6 @@
 import numpy as np
 import re
-from typing import Union, Optional, AnyStr, Callable, Literal, cast
+from typing import Union, Optional, AnyStr, Callable, Literal, cast, Iterable
 from collections import defaultdict
 from dataclasses import dataclass
 import itertools
@@ -21,6 +21,7 @@ from bpy.types import (
     Scene,
     ShapeKey,
     ViewLayer,
+    bpy_prop_collection,
 )
 
 from .extensions import (
@@ -240,8 +241,8 @@ class ObjectHelper:
     orig_object_name: str
     settings: ObjectBuildSettings
     desired_name: str
-    copy_object: Union[Object, None] = None
-    joined_settings_ignore_reduce_to_two_meshes: Union[bool, None] = None
+    copy_object: Optional[Object] = None
+    joined_settings_ignore_reduce_to_two_meshes: Optional[bool] = None
 
     def to_join_sort_key(self) -> Union[tuple[int, int, str], tuple[int, str]]:
         """Ordering for joining objects together"""
@@ -268,16 +269,52 @@ class ObjectHelper:
             # ordering.
             return self.settings.general_settings.join_order, self.orig_object_name
 
+    def init_copy(self, export_scene: Scene):
+        """Create and initialise the copy object"""
+        obj = self.orig_object
+        # Copy object
+        copy_obj = obj.copy()
+        self.copy_object = copy_obj
+
+        # Copy data (also will make single user any linked data)
+        copy_data = obj.data.copy()
+        copy_obj.data = copy_data
+
+        # Remove drivers from copy
+        copy_obj.animation_data_clear()
+        copy_data.animation_data_clear()
+        if isinstance(copy_data, Mesh):
+            shape_keys = copy_data.shape_keys
+            if shape_keys:
+                shape_keys.animation_data_clear()
+
+        # TODO: Do we need to make the copy objects visible at all, or will they automatically not be hidden in the
+        #  export scene's view_layer?
+        # Add the copy object to the export scene (needed in order to join meshes)
+        export_scene.collection.objects.link(copy_obj)
+
+        # Currently, we don't copy Materials or any other data
+        # We don't do anything else to each copy object yet to ensure that we fully populate the dictionary before
+        # continuing as some operations will need to get the copy obj of an original object that they are related to
+        return copy_obj
+
 
 @dataclass
 class ValidatedBuild:
     """Helper class"""
     export_scene_name: str
-    objects_for_build: list[ObjectHelper]
+    orig_object_to_helper: dict[Object, ObjectHelper]
     desired_name_meshes: dict[str, list[ObjectHelper]]
     desired_name_armatures: dict[str, list[ObjectHelper]]
     shape_keys_mesh_name: str
     no_shape_keys_mesh_name: str
+
+    @property
+    def objects_for_build(self):
+        return self.orig_object_to_helper.values()
+
+
+_SHAPE_MERGE_LIST = list[tuple[ShapeKey, list[ShapeKey]]]
 
 
 class BuildAvatarOp(Operator):
@@ -285,6 +322,229 @@ class BuildAvatarOp(Operator):
     bl_label = "Build Avatar"
     bl_description = "Build an avatar based on the meshes in the current scene, creating a new scene with the created avatar"
     bl_options = {'REGISTER', 'UNDO'}
+
+    def build_mesh_shape_key_op_delete(self, obj: Object, op: ShapeKeyOp, op_type: str, shape_keys: Key,
+                                       available_key_blocks: set[ShapeKey]):
+        key_blocks = shape_keys.key_blocks
+        keys_to_delete = set()
+        if op_type == ShapeKeyOp.DELETE_SINGLE:
+            key_name = op.pattern
+            if key_name in key_blocks:
+                keys_to_delete = {key_blocks[key_name]}
+        elif op_type == ShapeKeyOp.DELETE_AFTER:
+            delete_after_index = key_blocks.find(op.delete_after_name)
+            if delete_after_index != -1:
+                keys_to_delete = set(key_blocks[delete_after_index + 1:])
+        elif op_type == ShapeKeyOp.DELETE_BEFORE:
+            delete_before_index = key_blocks.find(op.delete_before_name)
+            if delete_before_index != -1:
+                # Start from 1 to avoid including the reference key
+                keys_to_delete = set(key_blocks[1:delete_before_index])
+        elif op_type == ShapeKeyOp.DELETE_BETWEEN:
+            delete_after_index = key_blocks.find(op.delete_after_name)
+            delete_before_index = key_blocks.find(op.delete_before_name)
+            if delete_after_index != -1 and delete_before_index != -1:
+                keys_to_delete = set(key_blocks[delete_after_index + 1:delete_before_index])
+        elif op_type == ShapeKeyOp.DELETE_REGEX:
+            pattern_str = op.pattern
+            if pattern_str:
+                try:
+                    pattern = re.compile(pattern_str)
+                    keys_to_delete = {k for k in key_blocks if pattern.fullmatch(k.name) is not None}
+                except re.error as err:
+                    print(f"Regex error for '{pattern_str}' for {ShapeKeyOp.DELETE_REGEX}:\n\t{err}")
+
+        # Limit the deleted keys to those available
+        keys_to_delete.intersection_update(available_key_blocks)
+
+        # Remove all the shape keys being deleted, automatically adjusting any shape keys relative to or recursively
+        # relative the shape keys being deleted
+        smart_delete_shape_keys(obj, shape_keys, keys_to_delete)
+
+    @staticmethod
+    def _common_before_delimiter(name: str, delimiter: str) -> str:
+        """Get the common part before a delimiter. If the delimiter is not found, returns the input string"""
+        before, _found_delimiter, _after = name.partition(delimiter)
+        # Note that if the delimiter is not found, before will contain the original string. We
+        # include this so that "MyShape" can combine with "MyShape_adjustments" when the
+        # delimiter is "_"
+        return before
+
+    @staticmethod
+    def _common_after_delimiter(name: str, delimiter: str) -> str:
+        """Get the common part after a delimiter. If the delimiter is not found, returns the input string"""
+        _before, found_delimiter, after = name.partition(delimiter)
+        if found_delimiter:
+            return after
+        else:
+            # When the delimiter is not found, we will consider the common part to be the original
+            # string, so that "MyShape" can be merged with "adjust.MyShape" when the delimiter is
+            # "."
+            return name
+
+    def build_mesh_shape_key_op_merge_all(self, op: ShapeKeyOp, op_type: str, key_blocks_to_search: Iterable[ShapeKey]
+                                          ) -> _SHAPE_MERGE_LIST:
+        merge_lists: _SHAPE_MERGE_LIST = []
+        matched: list[ShapeKey] = []
+        matched_grouped: dict[Union[str, tuple[AnyStr, ...]], list[ShapeKey]] = defaultdict(list)
+        if op_type == ShapeKeyOp.MERGE_PREFIX:
+            prefix = op.pattern
+            if prefix:
+                matched = [shape for shape in key_blocks_to_search if shape.name.startswith(prefix)]
+        elif op_type == ShapeKeyOp.MERGE_SUFFIX:
+            suffix = op.pattern
+            if suffix:
+                matched = [shape for shape in key_blocks_to_search if shape.name.endswith(suffix)]
+        elif op_type == ShapeKeyOp.MERGE_REGEX:
+            pattern_str = op.pattern
+            if pattern_str:
+                try:
+                    pattern = re.compile(pattern_str)
+                    if pattern.groups:
+                        # If the pattern contains groups, they need to match too
+                        for key in key_blocks_to_search:
+                            name = key.name
+                            match = pattern.fullmatch(name)
+                            if match:
+                                # Create key from all capture groups, so that if capture groups are used, they
+                                # must match
+                                matched_grouped[match.groups()].append(key)
+                    else:
+                        matched = [k for k in key_blocks_to_search if pattern.fullmatch(k.name)]
+                except re.error as err:
+                    print(f"Regex error for '{pattern_str}' for {ShapeKeyOp.MERGE_REGEX}:\n"
+                          f"\t{err}")
+        elif op_type == ShapeKeyOp.MERGE_COMMON_BEFORE_DELIMITER:
+            delimiter = op.pattern
+            if delimiter:
+                for key in key_blocks_to_search:
+                    matched_grouped[self._common_before_delimiter(key.name, delimiter)].append(key)
+        elif op_type == ShapeKeyOp.MERGE_COMMON_AFTER_DELIMITER:
+            delimiter = op.pattern
+            if delimiter:
+                for key in key_blocks_to_search:
+                    matched_grouped[self._common_after_delimiter(key.name, delimiter)].append(key)
+
+        # Only one of the data structures we declared will actually be used, but we'll check them both for
+        # simplicity
+        for shapes_to_merge in itertools.chain([matched], matched_grouped.values()):
+            if len(shapes_to_merge) > 1:
+                # The shapes in each list are going to be merged into the first shape of the list
+                merge_lists.append((shapes_to_merge[0], shapes_to_merge[1:]))
+
+        return merge_lists
+
+    @staticmethod
+    def _merge_consecutive_simple_suffix_or_prefix(compare_func: Callable[[str, str], bool], op: ShapeKeyOp,
+                                                   matched_consecutive: list, key_blocks_to_search: Iterable[ShapeKey]):
+        prefix_or_suffix = op.pattern
+        if prefix_or_suffix:
+            previous_shape_matched = False
+            current_merge_list = None
+            for shape in key_blocks_to_search:
+                current_shape_matches = compare_func(shape.name, prefix_or_suffix)
+                if current_shape_matches:
+                    if not previous_shape_matched:
+                        # Create a new merge list
+                        current_merge_list = []
+                        matched_consecutive.append(current_merge_list)
+                    # Add to the current merge list
+                    current_merge_list.append(shape)
+                # Update for the next shape in the list
+                previous_shape_matched = current_shape_matches
+
+    @staticmethod
+    def _delimiter_match_consecutive(common_part_func: Callable[[str, str], str], op: ShapeKeyOp,
+                                     matched_consecutive: list, key_blocks_to_search: Iterable[ShapeKey]):
+        delimiter = op.pattern
+        if delimiter:
+            previous_common_part = None
+            current_merge_list = None
+            for key in key_blocks_to_search:
+                name = key.name
+                common_part = common_part_func(name, delimiter)
+                if common_part != previous_common_part:
+                    # Create a new merge list
+                    current_merge_list = []
+                    matched_consecutive.append(current_merge_list)
+                    # Set the previous_common_part to the new, different common_part, for the next iteration
+                    previous_common_part = common_part
+                # Add to the current merge list
+                current_merge_list.append(key)
+
+    def build_mesh_shape_key_op_merge_consecutive(self, op: ShapeKeyOp, op_type: str, key_blocks_to_search: Iterable[ShapeKey]
+                                                  ) -> _SHAPE_MERGE_LIST:
+        # Similar to 'ALL', but check against the previous and create a new sub-list each time the previous
+        # didn't match
+        merge_lists: _SHAPE_MERGE_LIST = []
+        matched_consecutive = []
+        if op_type == ShapeKeyOp.MERGE_PREFIX:
+            self._merge_consecutive_simple_suffix_or_prefix(str.startswith,
+                                                            op, matched_consecutive, key_blocks_to_search)
+        elif op_type == ShapeKeyOp.MERGE_SUFFIX:
+            self._merge_consecutive_simple_suffix_or_prefix(str.endswith,
+                                                            op, matched_consecutive, key_blocks_to_search)
+        elif op_type == ShapeKeyOp.MERGE_REGEX:
+            pattern_str = op.pattern
+            if pattern_str:
+                try:
+                    pattern = re.compile(pattern_str)
+                except re.error as err:
+                    print(f"Regex error for '{pattern_str}' for {ShapeKeyOp.MERGE_REGEX}:\n"
+                          f"\t{err}")
+                    return []
+
+                previous_shape_match: Optional[re.Match] = None
+                current_merge_list = None
+                for key in key_blocks_to_search:
+                    name = key.name
+                    match = pattern.fullmatch(name)
+                    if match:
+                        if not previous_shape_match or previous_shape_match.groups() != match.groups():
+                            # If the previous shape key didn't match, or it did, but the groups of the
+                            # match are different to the current match, create a new merge list.
+                            # If the pattern has no capture groups, then .groups() will be an empty tuple
+                            current_merge_list = []
+                            matched_consecutive.append(current_merge_list)
+                        # Add to the current merge list
+                        current_merge_list.append(key)
+                    # Update for the next shape in the list
+                    previous_shape_match = match
+        elif op_type == ShapeKeyOp.MERGE_COMMON_BEFORE_DELIMITER:
+            self._delimiter_match_consecutive(self._common_before_delimiter,
+                                              op, matched_consecutive, key_blocks_to_search)
+        elif op_type == ShapeKeyOp.MERGE_COMMON_AFTER_DELIMITER:
+            self._delimiter_match_consecutive(self._common_after_delimiter,
+                                              op, matched_consecutive, key_blocks_to_search)
+
+        # Collect all lists of shapes to merge that have more than one element into merge_lists
+        for shapes_to_merge in matched_consecutive:
+            if len(shapes_to_merge) > 1:
+                merge_lists.append((shapes_to_merge[0], shapes_to_merge[1:]))
+
+        return merge_lists
+
+    def build_mesh_shape_key_op_merge(self, obj: Object, op: ShapeKeyOp, op_type: str, key_blocks: bpy_prop_collection,
+                                      available_key_blocks: set[ShapeKey]):
+        grouping = op.merge_grouping
+
+        # Collect all the shapes to be merged into a common dictionary format that the merge function uses
+        # The first shape in each list will be picked as the shape that the other shapes in the list should be
+        # merged into
+        # We will skip any lists that don't have more than one element since merging only happens with two or
+        # more shapes
+        merge_lists: list[tuple[ShapeKey, list[ShapeKey]]] = []
+
+        # Skip the reference shape and any other ignored shape keys
+        key_blocks_to_search = (k for k in key_blocks[1:] if k in available_key_blocks)
+
+        if grouping == 'ALL':
+            merge_lists = self.build_mesh_shape_key_op_merge_all(op, op_type, key_blocks_to_search)
+        elif grouping == 'CONSECUTIVE':
+            merge_lists = self.build_mesh_shape_key_op_merge_consecutive(op, op_type, key_blocks_to_search)
+
+        # Merge all the specified shapes
+        merge_shapes_into_first(obj, merge_lists)
 
     def build_mesh_shape_key_op(self, obj: Object, shape_keys: Key, op: ShapeKeyOp):
         # TODO: Replace ignore_regex with 'IGNORE_' ops. See ShapeKeyOp comments for details. Note that key_blocks would
@@ -298,7 +558,8 @@ class BuildAvatarOp(Operator):
                 available_key_blocks = {k for k in key_blocks if ignore_pattern.fullmatch(k.name) is None}
             except re.error as err:
                 # TODO: Check patterns in advance for validity, see ShapeKeyOp comments for details
-                print(f"Regex error occurred for ignore_regex '{ignore_regex}' :\n\t{err}")
+                print(f"Regex error occurred for ignore_regex '{ignore_regex}' on {obj!r}:\n"
+                      f"\t{err}")
                 available_key_blocks = set(key_blocks)
         else:
             available_key_blocks = set(key_blocks)
@@ -306,224 +567,9 @@ class BuildAvatarOp(Operator):
         if key_blocks:
             op_type = op.type
             if op_type in ShapeKeyOp.DELETE_OPS_DICT:
-                keys_to_delete = set()
-                if op_type == ShapeKeyOp.DELETE_SINGLE:
-                    key_name = op.pattern
-                    if key_name in key_blocks:
-                        keys_to_delete = {key_blocks[key_name]}
-                if op_type == ShapeKeyOp.DELETE_AFTER:
-                    delete_after_index = key_blocks.find(op.delete_after_name)
-                    if delete_after_index != -1:
-                        keys_to_delete = set(key_blocks[delete_after_index + 1:])
-                elif op_type == ShapeKeyOp.DELETE_BEFORE:
-                    delete_before_index = key_blocks.find(op.delete_before_name)
-                    if delete_before_index != -1:
-                        # Start from 1 to avoid including the reference key
-                        keys_to_delete = set(key_blocks[1:delete_before_index])
-                elif op_type == ShapeKeyOp.DELETE_BETWEEN:
-                    delete_after_index = key_blocks.find(op.delete_after_name)
-                    delete_before_index = key_blocks.find(op.delete_before_name)
-                    if delete_after_index != -1 and delete_before_index != -1:
-                        keys_to_delete = set(key_blocks[delete_after_index + 1:delete_before_index])
-                elif op_type == ShapeKeyOp.DELETE_REGEX:
-                    pattern_str = op.pattern
-                    if pattern_str:
-                        try:
-                            pattern = re.compile(pattern_str)
-                            keys_to_delete = {k for k in key_blocks if pattern.fullmatch(k.name) is not None}
-                        except re.error as err:
-                            print(f"Regex error for '{pattern_str}' for {ShapeKeyOp.DELETE_REGEX}:\n\t{err}")
-
-                # Limit the deleted keys to those available
-                keys_to_delete.intersection_update(available_key_blocks)
-
-                # Remove all the shape keys being deleted, automatically adjusting any shape keys relative to or recursively
-                # relative the shape keys being deleted
-                smart_delete_shape_keys(obj, shape_keys, keys_to_delete)
-
+                self.build_mesh_shape_key_op_delete(obj, op, op_type, shape_keys, available_key_blocks)
             elif op_type in ShapeKeyOp.MERGE_OPS_DICT:
-                grouping = op.merge_grouping
-
-                # Collect all the shapes to be merged into a common dictionary format that the merge function uses
-                # The first shape in each list will be picked as the shape that the other shapes in the list should be
-                # merged into
-                # We will skip any lists that don't have more than one element since merging only happens with two or
-                # more shapes
-                merge_lists: list[tuple[ShapeKey, list[ShapeKey]]] = []
-
-                # Skip the reference shape and any other ignored shape keys
-                key_blocks_to_search = (k for k in key_blocks[1:] if k in available_key_blocks)
-
-                if grouping == 'ALL':
-                    matched: list[ShapeKey] = []
-                    matched_grouped: dict[Union[str, tuple[AnyStr, ...]], list[ShapeKey]] = defaultdict(list)
-                    if op_type == ShapeKeyOp.MERGE_PREFIX:
-                        prefix = op.pattern
-                        if prefix:
-                            matched = [shape for shape in key_blocks_to_search if shape.name.startswith(prefix)]
-                    elif op_type == ShapeKeyOp.MERGE_SUFFIX:
-                        suffix = op.pattern
-                        if suffix:
-                            matched = [shape for shape in key_blocks_to_search if shape.name.endswith(suffix)]
-                    elif op_type == ShapeKeyOp.MERGE_REGEX:
-                        pattern_str = op.pattern
-                        if pattern_str:
-                            try:
-                                pattern = re.compile(pattern_str)
-                                if pattern.groups:
-                                    # If the pattern contains groups, they need to match too
-                                    for key in key_blocks_to_search:
-                                        name = key.name
-                                        match = pattern.fullmatch(name)
-                                        if match:
-                                            # Create key from all capture groups, so that if capture groups are used, they
-                                            # must match
-                                            matched_grouped[match.groups()].append(key)
-                                else:
-                                    matched = [k for k in key_blocks_to_search if pattern.fullmatch(k.name)]
-                            except re.error as err:
-                                print(f"Regex error for '{pattern_str}' for {ShapeKeyOp.MERGE_REGEX}:\n\t{err}")
-                    elif op_type == ShapeKeyOp.MERGE_COMMON_BEFORE_DELIMITER:
-                        delimiter = op.pattern
-                        if delimiter:
-                            for key in key_blocks_to_search:
-                                name = key.name
-                                before, _found_delimiter, _after = name.partition(delimiter)
-                                # Note that if the delimiter is not found, before will contain the original string. We
-                                # include this so that "MyShape" can combine with "MyShape_adjustments" when the
-                                # delimiter is "_"
-                                matched_grouped[before].append(key)
-                    elif op_type == ShapeKeyOp.MERGE_COMMON_AFTER_DELIMITER:
-                        delimiter = op.pattern
-                        if delimiter:
-                            for key in key_blocks_to_search:
-                                name = key.name
-                                _before, found_delimiter, after = name.partition(delimiter)
-                                if found_delimiter:
-                                    common_part = after
-                                else:
-                                    # When the delimiter is not found, we will consider the common part to be the original
-                                    # string, so that "MyShape" can be merged with "adjust.MyShape" when the delimiter is
-                                    # "."
-                                    common_part = name
-                                matched_grouped[common_part].append(key)
-
-                    # Only one of the data structures we declared will actually be used, but we'll check them both for
-                    # simplicity
-                    for shapes_to_merge in itertools.chain([matched], matched_grouped.values()):
-                        if len(shapes_to_merge) > 1:
-                            merge_lists.append((shapes_to_merge[0], shapes_to_merge[1:]))
-
-                elif grouping == 'CONSECUTIVE':
-                    # Similar to 'ALL', but check against the previous and create a new sub-list each time the previous
-                    # didn't match
-                    matched_consecutive = []
-                    if op_type == ShapeKeyOp.MERGE_PREFIX:
-                        prefix = op.pattern
-                        if prefix:
-                            previous_shape_matched = False
-                            current_merge_list = None
-                            for shape in key_blocks_to_search:
-                                current_shape_matches = shape.name.startswith(prefix)
-                                if current_shape_matches:
-                                    if not previous_shape_matched:
-                                        # Create a new merge list
-                                        current_merge_list = []
-                                        matched_consecutive.append(current_merge_list)
-                                    # Add to the current merge list
-                                    current_merge_list.append(shape)
-                                # Update for the next shape in the list
-                                previous_shape_matched = current_shape_matches
-                    elif op_type == ShapeKeyOp.MERGE_SUFFIX:
-                        suffix = op.pattern
-                        if suffix:
-                            previous_shape_matched = False
-                            current_merge_list = None
-                            for shape in key_blocks_to_search:
-                                current_shape_matches = shape.name.endswith(suffix)
-                                if current_shape_matches:
-                                    if not previous_shape_matched:
-                                        # Create a new merge list
-                                        current_merge_list = []
-                                        matched_consecutive.append(current_merge_list)
-                                    # Add to the current merge list
-                                    current_merge_list.append(shape)
-                                # Update for the next shape in the list
-                                previous_shape_matched = current_shape_matches
-                    elif op_type == ShapeKeyOp.MERGE_REGEX:
-                        pattern_str = op.pattern
-                        if pattern_str:
-                            try:
-                                pattern = re.compile(pattern_str)
-                                previous_shape_match: Optional[re.Match] = None
-                                current_merge_list = None
-                                for key in key_blocks_to_search:
-                                    name = key.name
-                                    match = pattern.fullmatch(name)
-                                    if match:
-                                        if not previous_shape_match or previous_shape_match.groups() != match.groups():
-                                            # If the previous shape key didn't match, or it did, but the groups of the
-                                            # match are different to the current match, create a new merge list.
-                                            # If the pattern has no capture groups, then .groups() will be an empty tuple
-                                            current_merge_list = []
-                                            matched_consecutive.append(current_merge_list)
-                                        # Add to the current merge list
-                                        current_merge_list.append(key)
-                                    # Update for the next shape in the list
-                                    previous_shape_match = match
-                            except re.error as err:
-                                print(f"Regex error for '{pattern_str}' for {ShapeKeyOp.MERGE_REGEX}:\n\t{err}")
-                    elif op_type == ShapeKeyOp.MERGE_COMMON_BEFORE_DELIMITER:
-                        delimiter = op.pattern
-                        if delimiter:
-                            previous_common_part = None
-                            current_merge_list = None
-                            for key in key_blocks_to_search:
-                                name = key.name
-                                before, _found_delimiter, _after = name.partition(delimiter)
-                                # Note that if the delimiter is not found, before will contain the original string. We
-                                # include this so that "MyShape" can combine with "MyShape_adjustments" when the
-                                # delimiter is "_"
-                                common_part = before
-                                if common_part != previous_common_part:
-                                    # Create a new merge list
-                                    current_merge_list = []
-                                    matched_consecutive.append(current_merge_list)
-                                    # Set the previous_common_part to the new, different common_part, for the next iteration
-                                    previous_common_part = common_part
-                                # Add to the current merge list
-                                current_merge_list.append(key)
-                    elif op_type == ShapeKeyOp.MERGE_COMMON_AFTER_DELIMITER:
-                        delimiter = op.pattern
-                        if delimiter:
-                            previous_common_part = None
-                            current_merge_list = None
-                            for key in key_blocks_to_search:
-                                name = key.name
-                                _before, found_delimiter, after = name.partition(delimiter)
-                                if found_delimiter:
-                                    common_part = after
-                                else:
-                                    # When the delimiter is not found, we will consider the common part to be the original
-                                    # string, so that "MyShape" can be merged with "adjust.MyShape" when the delimiter is
-                                    # "."
-                                    common_part = name
-                                if common_part != previous_common_part:
-                                    # Create a new merge list
-                                    current_merge_list = []
-                                    matched_consecutive.append(current_merge_list)
-                                    # Set the previous_common_part to the new, different common_part, for the next iteration
-                                    previous_common_part = common_part
-                                # Add to the current merge list
-                                current_merge_list.append(key)
-
-                    # Collect all lists of shapes to merge that have more than one element into merge_lists
-                    for shapes_to_merge in matched_consecutive:
-                        if len(shapes_to_merge) > 1:
-                            merge_lists.append((shapes_to_merge[0], shapes_to_merge[1:]))
-
-                # Merge all the specified shapes
-                merge_shapes_into_first(obj, merge_lists)
+                self.build_mesh_shape_key_op_merge(obj, op, op_type, key_blocks, available_key_blocks)
 
     def build_mesh_shape_keys(self, obj: Object, me: Mesh, settings: ShapeKeySettings):
         """Note that this function may invalidate old references to Mesh.shape_keys as it may delete them entirely"""
@@ -829,7 +875,7 @@ class BuildAvatarOp(Operator):
         # utils.op_override(bpy.ops.object.transform_apply, {'selected_editable_objects': [obj]},
         #                   location=True, rotation=True, scale=True)
 
-    def build_armature(self, obj: Object, armature: Armature, settings: ArmatureSettings, copy_objects: set[Object]):
+    def build_armature(self, obj: Object, armature: Armature, settings: ArmatureSettings, copy_objects: Iterable[Object]):
         export_pose = settings.armature_export_pose
         if export_pose == "REST":
             armature.pose_position = 'REST'
@@ -870,6 +916,8 @@ class BuildAvatarOp(Operator):
         export_scene_name = active_scene_settings.name
         if not export_scene_name:
             raise ValueError("Active build settings' name must not be empty")
+        else:
+            export_scene_name += " Export Scene"
 
         collection = active_scene_settings.limit_to_collection
         if collection is not None:
@@ -880,7 +928,7 @@ class BuildAvatarOp(Operator):
         if active_scene_settings.ignore_hidden_objects:
             objects_gen = (o for o in objects_gen if o.visible_get(view_layer=view_layer))
 
-        objects_for_build: list[ObjectHelper] = []
+        object_to_helper: dict[Object, ObjectHelper] = {}
 
         allowed_object_types = {'MESH', 'ARMATURE'}
         for obj in objects_gen:
@@ -897,18 +945,18 @@ class BuildAvatarOp(Operator):
                     desired_name = object_settings.general_settings.target_object_name
                     if not desired_name:
                         desired_name = obj.name
-                    helper_tuple = ObjectHelper(
+                    helper = ObjectHelper(
                         orig_object=obj,
                         orig_object_name=obj.name,
                         settings=object_settings,
                         desired_name=desired_name,
                     )
-                    objects_for_build.append(helper_tuple)
+                    object_to_helper[obj] = helper
 
         # Get desired object names and validate that there won't be any attempt to join Objects of different types
         desired_name_meshes: dict[str, list[ObjectHelper]] = defaultdict(list)
         desired_name_armatures: dict[str, list[ObjectHelper]] = defaultdict(list)
-        for helper in objects_for_build:
+        for helper in object_to_helper.values():
             obj = helper.orig_object
             data = obj.data
             if isinstance(data, Mesh):
@@ -977,12 +1025,12 @@ class BuildAvatarOp(Operator):
                                            f" by the 'Reduce to two meshes' option.")
 
         return ValidatedBuild(
-            export_scene_name,
-            objects_for_build,
-            desired_name_meshes,
-            desired_name_armatures,
-            shape_keys_mesh_name,
-            no_shape_keys_mesh_name,
+            export_scene_name=export_scene_name,
+            orig_object_to_helper=object_to_helper,
+            desired_name_meshes=desired_name_meshes,
+            desired_name_armatures=desired_name_armatures,
+            shape_keys_mesh_name=shape_keys_mesh_name,
+            no_shape_keys_mesh_name=no_shape_keys_mesh_name,
         )
 
     def mmd_remap(self, scene_property_group: ScenePropertyGroup, mmd_settings: MmdShapeKeySettings,
@@ -1186,6 +1234,139 @@ class BuildAvatarOp(Operator):
                     # Restore pinning state
                     mesh_obj.show_only_shape_key = orig_pinning
 
+    @staticmethod
+    def create_export_scene(scene: Scene, export_scene_name: str):
+        export_scene = bpy.data.scenes.new(name=export_scene_name)
+        export_scene_group = ScenePropertyGroup.get_group(export_scene)
+        export_scene_group.is_export_scene = True
+        export_scene_group.export_scene_source_scene = scene.name
+
+        # Copy Color Management from original scene to export scene
+        # Copy Display Device
+        export_scene.display_settings.display_device = scene.display_settings.display_device
+        # Copy View Settings
+        orig_view_settings = scene.view_settings
+        export_view_settings = export_scene.view_settings
+        export_view_settings.view_transform = orig_view_settings.view_transform
+        export_view_settings.look = orig_view_settings.look
+        export_view_settings.exposure = orig_view_settings.exposure
+        export_view_settings.gamma = orig_view_settings.gamma
+        # TODO: Copy .curve_mapping too
+        export_view_settings.use_curve_mapping = orig_view_settings.use_curve_mapping
+        # Copy Sequencer
+        export_scene.sequencer_colorspace_settings.name = scene.sequencer_colorspace_settings.name
+        return export_scene
+
+    @staticmethod
+    def set_armature_modifiers_to_copies(helper: ObjectHelper, orig_object_to_helper: dict[Object, ObjectHelper]):
+        """Set the Objects used """
+        copy_obj = helper.copy_object
+
+        # Set armature modifier objects to the copies
+        for mod in copy_obj.modifiers:
+            if mod.type == 'ARMATURE':
+                mod_object = mod.object
+                if mod_object and mod_object in orig_object_to_helper:
+                    armature_copy = orig_object_to_helper[mod_object].copy_object
+                    mod.object = armature_copy
+
+    @staticmethod
+    def set_parenting(helper: ObjectHelper, orig_object_to_helper: dict[Object, ObjectHelper], export_scene: Scene):
+        """Set parenting such that copy Objects become parented to the copy Object equivalent of their original parent.
+        If no such parent exists, search recursively for a 'grandparent' etc. that does have a copy Object equivalent
+        and parent to that instead.
+        If no recursive parent exists, remove the parent.
+        In each case, modify the parent, but in such a way that the transform of the copy Object doesn't change."""
+        copy_obj = helper.copy_object
+
+        # Maybe add a setting for whether to parent all meshes to the armature or not OR a setting for parenting
+        #  objects without a parent (either because their parent isn't in the build or because they didn't have one
+        #  to start with) to the first found armature for that object.
+        # Note that having the meshes parented to the armature results in the same hierarchy in Unity as not having
+        #  the meshes parented.
+
+        # TODO: Maybe we should give an option to re-parent to first armature?
+        # Swap parents to copy object parent
+        orig_parent = copy_obj.parent
+        if orig_parent:
+            if orig_parent in orig_object_to_helper:
+                parent_copy = orig_object_to_helper[orig_parent].copy_object
+                # TODO: Why doesn't this work?
+                # copy_obj.parent = parent_copy
+                override = {
+                    'object': parent_copy,
+                    # Not sure if the list needs to contain the new parent too, but it would usually be selected
+                    # when re-parenting through the UI
+                    'selected_editable_objects': [parent_copy, copy_obj],
+                    # TODO: Not sure if scene is required, we'll include it anyway
+                    'scene': export_scene,
+                }
+                utils.op_override(bpy.ops.object.parent_set, override, type='OBJECT', keep_transform=True)
+                print(f"Swapped parent of copy of {helper.orig_object.name} to copy of {orig_parent.name}")
+            else:
+                # Look for a recursive parent that does have a copy object and reparent to that
+                recursive_parent = orig_parent.parent
+                while recursive_parent and recursive_parent not in orig_object_to_helper:
+                    orig_parent = orig_parent.parent
+                if recursive_parent:
+                    # Re-parent to the found recursive parent
+                    orig_recursive_parent_copy = orig_object_to_helper[recursive_parent].copy_object
+                    # Transform must change to remain in the same place, run the operator to reparent and keep
+                    # transforms
+                    # Context override to act on the objects we want and not the current context
+                    override = {
+                        'object': orig_recursive_parent_copy,
+                        # Not sure if the list needs to contain the new parent too, but it would usually be selected
+                        # when re-parenting through the UI
+                        'selected_editable_objects': [orig_recursive_parent_copy, copy_obj],
+                        # TODO: Not sure if scene is required, we'll include it anyway
+                        'scene': export_scene,
+                    }
+                    utils.op_override(bpy.ops.object.parent_set, override, type='OBJECT', keep_transform=True)
+                    print(f"Swapped parent of copy of {helper.orig_object.name} to copy of its recursive parent"
+                          f" {recursive_parent.name}")
+                else:
+                    # No recursive parent has a copy object, so clear parent, but keep transforms
+                    # Context override to act on only the copy object
+                    override = {
+                        'selected_editable_objects': [copy_obj],
+                        # Scene isn't required, but it could be good to include in-case it does become one
+                        'scene': export_scene,
+                    }
+                    utils.op_override(bpy.ops.object.parent_clear, override, type='CLEAR_KEEP_TRANSFORM')
+                    print(f"Remove parent of copy of {helper.orig_object.name}, none of its recursive parents have copy"
+                          f" objects")
+        else:
+            # No parent to start with, so the copy will remain with no parent
+            pass
+
+    def build_object(self, helper: ObjectHelper, validated_build: ValidatedBuild, export_scene: Scene,
+                     original_scene: Scene):
+        copy_obj = helper.copy_object
+
+        orig_object_to_helper = validated_build.orig_object_to_helper
+
+        # TODO: Should this be done after build_mesh/build_armature and are there any other modifiers we would want to
+        #  change to use copy Objects rather than the originals?
+        # Set modifiers (currently only Armature Modifiers) to use the equivalent copy Objects.
+        self.set_armature_modifiers_to_copies(helper, orig_object_to_helper)
+
+        # Set parenting such that copy Objects become parented to the copy Object equivalent of their original parent.
+        # If no such parent exists, search recursively for a 'grandparent' etc. that does have a copy Object equivalent
+        # and parent to that instead.
+        # If no recursive parent exists, remove the parent.
+        # In each case, modify the parent, but in such a way that the transform of the copy Object doesn't change.
+        self.set_parenting(helper, orig_object_to_helper, export_scene)
+
+        # TODO: Should we run build first (and apply all transforms) before re-parenting?
+        # Run build based on Object data type
+        object_settings = helper.settings
+        data = copy_obj.data
+        if isinstance(data, Armature):
+            self.build_armature(copy_obj, data, object_settings.armature_settings, (h.copy_object for h in orig_object_to_helper.values()))
+        elif isinstance(data, Mesh):
+            self.build_mesh(original_scene, copy_obj, data, object_settings.mesh_settings)
+
     @classmethod
     def poll(cls, context) -> bool:
         if context.mode != 'OBJECT':
@@ -1208,140 +1389,20 @@ class BuildAvatarOp(Operator):
             self.report({'ERROR'}, str(err))
             return {'FINISHED'}
 
-        # Creation and modification can now commence as all checks have passed
-        export_scene = bpy.data.scenes.new(validated_build.export_scene_name + " Export Scene")
-        export_scene_group = ScenePropertyGroup.get_group(export_scene)
-        export_scene_group.is_export_scene = True
-        export_scene_group.export_scene_source_scene = scene.name
+        # Creation and modification can now commence as all initial checks have passed
 
-        # Copy Color Management from original scene to export scene
-        # Copy Display Device
-        export_scene.display_settings.display_device = scene.display_settings.display_device
-        # Copy View Settings
-        orig_view_settings = scene.view_settings
-        export_view_settings = export_scene.view_settings
-        export_view_settings.view_transform = orig_view_settings.view_transform
-        export_view_settings.look = orig_view_settings.look
-        export_view_settings.exposure = orig_view_settings.exposure
-        export_view_settings.gamma = orig_view_settings.gamma
-        # TODO: Copy .curve_mapping too
-        export_view_settings.use_curve_mapping = orig_view_settings.use_curve_mapping
-        # Copy Sequencer
-        export_scene.sequencer_colorspace_settings.name = scene.sequencer_colorspace_settings.name
+        # Create the export scene
+        export_scene = self.create_export_scene(scene, validated_build.export_scene_name)
 
-        orig_object_to_helper: dict[Object, ObjectHelper] = {}
-        # TODO: Change to store helpers?
-        copy_objects: set[Object] = set()
-        for helper in validated_build.objects_for_build:
-            obj = helper.orig_object
-            # Copy object
-            copy_obj = obj.copy()
-            helper.copy_object = copy_obj
-            copy_objects.add(copy_obj)
-
-            # Store mapping from original object to helper for easier access
-            orig_object_to_helper[obj] = helper
-
-            # Copy data (also will make single user any linked data)
-            copy_data = obj.data.copy()
-            copy_obj.data = copy_data
-
-            # Remove drivers from copy
-            copy_obj.animation_data_clear()
-            copy_data.animation_data_clear()
-            if isinstance(copy_data, Mesh):
-                shape_keys = copy_data.shape_keys
-                if shape_keys:
-                    shape_keys.animation_data_clear()
-
-            # TODO: Do we need to make the copy objects visible at all, or will they automatically not be hidden in the
-            #  export scene's view_layer?
-            # Add the copy object to the export scene (needed in order to join meshes)
-            export_scene.collection.objects.link(copy_obj)
-
-            # Currently, we don't copy Materials or any other data
-            # We don't do anything else to each copy object yet to ensure that we fully populate the dictionary before
-            # continuing as some operations will need to get the copy obj of an original object that they are related to
-
-        # Operations within this loop must not cause Object ID blocks to be recreated
+        # Initialise the copy Object (Object that will be built, since we don't modify existing Objects) for each Helper
+        orig_object_to_helper = validated_build.orig_object_to_helper
         for helper in orig_object_to_helper.values():
-            copy_obj = helper.copy_object
-            object_settings = helper.settings
-            # TODO: Add a setting for whether to parent all meshes to the armature or not OR a setting for parenting
-            #  objects without a parent (either because their parent isn't in the build or because they didn't have one
-            #  to start with) to the first found armature for that object
-            first_armature_copy = None
+            helper.init_copy(export_scene)
 
-            # Set armature modifier objects to the copies
-            for mod in copy_obj.modifiers:
-                if mod.type == 'ARMATURE':
-                    mod_object = mod.object
-                    if mod_object and mod_object in orig_object_to_helper:
-                        armature_copy = orig_object_to_helper[mod_object].copy_object
-                        mod.object = armature_copy
-                        if first_armature_copy is None:
-                            first_armature_copy = armature_copy
-
-            # TODO: Maybe we should give an option to re-parent to first armature?
-            # Swap parents to copy object parent
-            orig_parent = copy_obj.parent
-            if orig_parent:
-                if orig_parent in orig_object_to_helper:
-                    parent_copy = orig_object_to_helper[orig_parent].copy_object
-                    # TODO: Why doesn't this work?
-                    # copy_obj.parent = parent_copy
-                    override = {
-                        'object': parent_copy,
-                        # Not sure if the list needs to contain the new parent too, but it would usually be selected
-                        # when re-parenting through the UI
-                        'selected_editable_objects': [parent_copy, copy_obj],
-                        # TODO: Not sure if scene is required, we'll include it anyway
-                        'scene': export_scene,
-                    }
-                    utils.op_override(bpy.ops.object.parent_set, override, type='OBJECT', keep_transform=True)
-                    print(f"Swapped parent of copy of {helper.orig_object.name} to copy of {orig_parent.name}")
-                else:
-                    # Look for a recursive parent that does have a copy object and reparent to that
-                    recursive_parent = orig_parent.parent
-                    while recursive_parent and recursive_parent not in orig_object_to_helper:
-                        orig_parent = orig_parent.parent
-                    if recursive_parent:
-                        # Re-parent to the found recursive parent
-                        orig_recursive_parent_copy = orig_object_to_helper[recursive_parent].copy_object
-                        # Transform must change to remain in the same place, run the operator to reparent and keep
-                        # transforms
-                        # Context override to act on the objects we want and not the current context
-                        override = {
-                            'object': orig_recursive_parent_copy,
-                            # Not sure if the list needs to contain the new parent too, but it would usually be selected
-                            # when re-parenting through the UI
-                            'selected_editable_objects': [orig_recursive_parent_copy, copy_obj],
-                            # TODO: Not sure if scene is required, we'll include it anyway
-                            'scene': export_scene,
-                        }
-                        utils.op_override(bpy.ops.object.parent_set, override, type='OBJECT', keep_transform=True)
-                        print(f"Swapped parent of copy of {helper.orig_object.name} to copy of its recursive parent {recursive_parent.name}")
-                    else:
-                        # No recursive parent has a copy object, so clear parent, but keep transforms
-                        # Context override to act on only the copy object
-                        override = {
-                            'selected_editable_objects': [copy_obj],
-                            # Scene isn't required, but it could be good to include in-case it does become one
-                            'scene': export_scene,
-                        }
-                        utils.op_override(bpy.ops.object.parent_clear, override, type='CLEAR_KEEP_TRANSFORM')
-                        print(f"Remove parent of copy of {helper.orig_object.name}, none of its recursive parents have copy objects")
-            else:
-                # No parent to start with, so the copy will remain with no parent
-                pass
-
-            # TODO: Should we run build first (and apply all transforms) before re-parenting?
-            # Run build based on Object data type
-            data = copy_obj.data
-            if isinstance(data, Armature):
-                self.build_armature(copy_obj, data, object_settings.armature_settings, copy_objects)
-            elif isinstance(data, Mesh):
-                self.build_mesh(scene, copy_obj, data, object_settings.mesh_settings)
+        # Operations within this loop must not cause Object ID blocks to be recreated (otherwise the references we're
+        # keeping to Objects will become invalid)
+        for helper in orig_object_to_helper.values():
+            self.build_object(helper, validated_build, export_scene, scene)
 
         # Join meshes and armatures by desired names and rename the combined objects to those desired names
 
@@ -1435,7 +1496,7 @@ class BuildAvatarOp(Operator):
                     remove_func(data_by_name)
 
         # After performing deletions, these structures are no good anymore because some objects may be deleted
-        del orig_object_to_helper, copy_objects
+        del orig_object_to_helper
 
         # Join meshes based on whether they have shape keys
         # The ignore_reduce_to_two_meshes setting will need to only be True if it was True for all the joined meshes
