@@ -46,6 +46,12 @@ class KeepOnlyMaterialSlotSearch(OperatorBase):
 
     slots_enum: EnumProperty(items=_material_slot_items, options={'HIDDEN'})
 
+    @classmethod
+    def poll(cls, context: Context) -> bool:
+        if not context.object:
+            return cls.poll_fail("An Object is required")
+        return True
+
     def execute(self, context: Context) -> set[str]:
         obj = context.object
         # Get the index of the EnumProperty
@@ -70,6 +76,12 @@ class KeepOnlyMaterialSlotSearch(OperatorBase):
 class RefreshRemapList(OperatorBase):
     bl_idname = 'material_remap_refresh_list'
     bl_label = "Refresh Remap List"
+
+    @classmethod
+    def poll(cls, context: Context) -> bool:
+        if not context.object:
+            return cls.poll_fail("An Object is required")
+        return True
 
     def execute(self, context: Context) -> set[str]:
         obj = context.object

@@ -1389,12 +1389,13 @@ class BuildAvatarOp(OperatorBase):
     @classmethod
     def poll(cls, context) -> bool:
         if context.mode != 'OBJECT':
-            return False
+            return cls.poll_fail("Must be in Object mode")
         active = ScenePropertyGroup.get_group(context.scene).active
         if active is None:
-            return False
+            return cls.poll_fail("No active Scene Settings")
         if active.reduce_to_two_meshes and (not active.shape_keys_mesh_name or not active.no_shape_keys_mesh_name):
-            return False
+            return cls.poll_fail("Names for the 'Shape keys' Mesh and 'No shape keys' Mesh must be set when 'Reduce to"
+                                 " two meshes' is enabled")
         return True
 
     def execute(self, context) -> set[str]:

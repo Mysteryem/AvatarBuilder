@@ -418,6 +418,8 @@ class CatsTranslateAll(OperatorBase):
 
     @classmethod
     def poll(cls, context: Context) -> bool:
+        # TODO: This probably won't display poll messages correctly, since the CatsTranslate poll method is called with
+        #  its own type as the cls argument
         return integration_cats.CatsTranslate.poll(context)
 
     def execute(self, context: Context) -> set[str]:

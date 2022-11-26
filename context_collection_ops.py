@@ -185,7 +185,9 @@ class CollectionRemoveBase(ContextCollectionOperatorBase, OperatorBase):
 
     @classmethod
     def poll(cls, context: Context) -> bool:
-        return cls.active_index_in_bounds(context)
+        if not cls.active_index_in_bounds(context):
+            return cls.poll_fail("No active element")
+        return True
 
     def execute(self, context: Context) -> set[str]:
         data = self.get_collection(context)
@@ -234,13 +236,16 @@ class CollectionMoveBase(ContextCollectionOperatorBase, OperatorBase):
 
     @classmethod
     def poll(cls, context: Context) -> bool:
-        if cls.active_index_in_bounds(context):
-            collection = cls.get_collection(context)
-            # Check the collection separately in-case cls.active_index_in_bounds has been overridden and doesn't care
-            # about whether the collection is None
-            if collection is not None:
-                return len(collection) > 1
-        return False
+        if not cls.active_index_in_bounds(context):
+            return cls.poll_fail("No active element")
+        collection = cls.get_collection(context)
+        # Check the collection separately in-case cls.active_index_in_bounds has been overridden and doesn't care
+        # about whether the collection is None
+        if collection is None:
+            return cls.poll_fail("Collection not found")
+        if len(collection) <= 1:
+            return cls.poll_fail("Collection must have two or more elements")
+        return True
 
     def execute(self, context: Context) -> set[str]:
         data = self.get_collection(context)

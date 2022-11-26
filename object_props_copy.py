@@ -333,7 +333,9 @@ class CopyObjectProperties(OperatorBase):
         # Must have an Object to copy from
         # The Objects being pasted to can change depending on the arguments passed to the Operator, so we can't check
         # those in the poll method
-        return bool(context.object)
+        if not context.object:
+            return cls.poll_fail("An Object is required")
+        return True
 
     def execute(self, context: Context) -> set[str]:
         props_to_copy: set[str] = self.props_to_copy

@@ -235,7 +235,15 @@ class CatsTranslate(OperatorBase):
 
     @classmethod
     def poll(cls, context: Context) -> bool:
-        return not _cats_op_exists_but_translate_not_found and cats_exists()
+        if _cats_op_exists_but_translate_not_found:
+            # Might just need to disable and re-enable Avatar Builder instead of requiring a Blender restart
+            return cls.poll_fail("Cats appears to exist, but its translate functions could not be found. This could be"
+                                 " a bug, an unsupported Cats version or could be because an error occurred when trying"
+                                 " a test translation. Blender will need to be restarted to try again.")
+        if not cats_exists():
+            return cls.poll_fail("Cats Addon not found (or version not supported)")
+
+        return True
 
     @classmethod
     def description(cls, context: Context, properties: OperatorProperties) -> str:

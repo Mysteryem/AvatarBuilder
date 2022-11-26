@@ -352,7 +352,7 @@ class SceneBuildSettingsPurge(OperatorBase):
     bl_label = "Purge Orphaned"
     bl_options = {'REGISTER', 'UNDO'}
 
-    def execute(self, context: bpy.types.Context) -> set[str]:
+    def execute(self, context: Context) -> set[str]:
         total_num_settings_removed = 0
         num_objects_removed_from = 0
 
@@ -409,7 +409,11 @@ class DeleteExportScene(OperatorBase):
 
     @classmethod
     def poll(cls, context) -> bool:
-        return bpy.ops.scene.delete.poll() and ScenePropertyGroup.get_group(context.scene).is_export_scene
+        if not bpy.ops.scene.delete.poll():
+            return cls.poll_fail("Current Scene cannot be deleted (is it the only Scene?)")
+        if not ScenePropertyGroup.get_group(context.scene).is_export_scene:
+            return cls.poll_fail("Current Scene is not an export Scene")
+        return True
 
     def execute(self, context: Context) -> set[str]:
         export_scene = context.scene
@@ -448,13 +452,21 @@ class _ActiveSceneSettingsOp(OperatorBase):
     @classmethod
     def poll(cls, context: Context) -> bool:
         scene = context.scene
-        return scene is not None and ScenePropertyGroup.get_group(context.scene).active is not None
+        if scene is None:
+            return cls.poll_fail("No Scene")
+        if ScenePropertyGroup.get_group(context.scene).active is None:
+            return cls.poll_fail("No active Scene Settings")
+        return True
 
 
 class _ObjectSelectionInSceneBase(_ActiveSceneSettingsOp):
     @classmethod
     def poll(cls, context: Context) -> bool:
-        return super().poll(context) and context.mode == 'OBJECT'
+        if not super().poll(context):
+            return False
+        if context.mode != 'OBJECT':
+            return cls.poll_fail("Must be in Object mode")
+        return True
 
 
 class SelectObjectsInSceneSettings(_ObjectSelectionInSceneBase):
