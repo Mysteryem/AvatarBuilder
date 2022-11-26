@@ -1,4 +1,4 @@
-from bpy.types import Context, Operator, Menu
+from bpy.types import Context, Menu
 from bpy.props import StringProperty, EnumProperty, BoolProperty
 
 from typing import cast, Optional, Iterable, Literal, Union
@@ -6,7 +6,7 @@ import operator
 from functools import reduce
 from dataclasses import dataclass, InitVar, field
 
-from .registration import register_module_classes_factory
+from .registration import register_module_classes_factory, OperatorBase
 from .extensions import (
     ObjectPropertyGroup,
     ScenePropertyGroup,
@@ -297,7 +297,7 @@ _grouped_copy_props = (COPY_ALL_SETTINGS, COPY_ALL_ARMATURE_SETTINGS, COPY_ALL_M
 _all_copy_props = _all_unique_copy_props + _grouped_copy_props
 
 
-class CopyObjectProperties(Operator):
+class CopyObjectProperties(OperatorBase):
     """Copy Object properties from the active object to other selected objects or a different group on the active
     object"""
     bl_idname = 'copy_object_props'

@@ -1,11 +1,11 @@
-from bpy.types import Operator, Context, UILayout, Object, Event, SpaceProperties
+from bpy.types import Context, UILayout, Object, Event, SpaceProperties
 from bpy.props import EnumProperty
 
 from sys import intern
 from typing import Union
 
 from .extensions import MaterialRemap, ObjectPropertyGroup
-from .registration import register_module_classes_factory
+from .registration import register_module_classes_factory, OperatorBase
 from . import utils
 
 
@@ -37,7 +37,7 @@ def _material_slot_items(self, context: Context):
     return items
 
 
-class KeepOnlyMaterialSlotSearch(Operator):
+class KeepOnlyMaterialSlotSearch(OperatorBase):
     """Pick Material Slot"""
     bl_idname = 'keep_only_material_slot_search'
     bl_label = "Pick Material Slot"
@@ -67,7 +67,7 @@ class KeepOnlyMaterialSlotSearch(Operator):
         return {'FINISHED'}
 
 
-class RefreshRemapList(Operator):
+class RefreshRemapList(OperatorBase):
     bl_idname = 'material_remap_refresh_list'
     bl_label = "Refresh Remap List"
 

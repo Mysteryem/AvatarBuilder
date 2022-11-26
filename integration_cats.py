@@ -8,7 +8,7 @@ from bpy.types import Operator, Context, OperatorProperties
 from bpy.props import StringProperty, BoolProperty
 import addon_utils
 
-from .registration import register_module_classes_factory
+from .registration import register_module_classes_factory, OperatorBase
 
 """This module packages up the cats translation functions into a function and callable operator"""
 
@@ -209,7 +209,7 @@ def cats_translate(
             return None
 
 
-class CatsTranslate(Operator):
+class CatsTranslate(OperatorBase):
     """Translate a string using Cats and then store it into a string property accessible from the current context"""
     bl_idname = "cats_translate"
     bl_label = "Cats Translate"

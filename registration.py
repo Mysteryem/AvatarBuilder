@@ -6,6 +6,20 @@ import bpy
 from bpy.types import Panel, Operator, UIList, Menu, ID, Bone, PoseBone, PropertyGroup, UILayout, AddonPreferences
 from bpy.props import PointerProperty, CollectionProperty, IntProperty, EnumProperty
 
+
+class OperatorBase(Operator):
+    if bpy.app.version < (3, 0):
+        # Support for older versions that don't have poll_message_set
+        @classmethod
+        def poll_message_set(cls, message, *args):
+            pass
+
+    @classmethod
+    def poll_fail(cls, message: str):
+        cls.poll_message_set(message)
+        return False
+
+
 # Prefix
 _BL_ID_PREFIX = "em_av_builder"
 _PROP_PREFIX = _BL_ID_PREFIX

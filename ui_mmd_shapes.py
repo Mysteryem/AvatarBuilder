@@ -1,4 +1,4 @@
-from bpy.types import Panel, Operator, UIList, Context, UILayout, Mesh, Menu, OperatorProperties, UIPopover
+from bpy.types import Panel, UIList, Context, UILayout, Mesh, Menu, OperatorProperties, UIPopover
 from bpy.props import EnumProperty, IntProperty, BoolProperty
 from bpy_extras.io_utils import ImportHelper, ExportHelper
 
@@ -8,14 +8,14 @@ import csv
 
 from . import integration_cats
 from .extensions import ScenePropertyGroup, MmdShapeMapping, MmdShapeMappingGroup
-from .registration import register_module_classes_factory
+from .registration import register_module_classes_factory, OperatorBase
 from .context_collection_ops import (
     ContextCollectionOperatorBase,
     PropCollectionType,
 )
 
 
-class ShowMappingComment(Operator):
+class ShowMappingComment(OperatorBase):
     bl_idname = 'mmd_shape_comment_modify'
     # When non-empty, the label is displayed when mousing over the operator in UI. The description is then displayed
     # below.
@@ -180,7 +180,7 @@ MmdMappingMove = _op_builder.move.build()
 MmdMappingsClear = _op_builder.clear.build()
 
 
-class MmdMappingsClearShapeNames(MmdMappingControlBase, Operator):
+class MmdMappingsClearShapeNames(MmdMappingControlBase, OperatorBase):
     """Clear the Shape Key for each shape key mapping"""
     bl_idname = 'mmd_shape_mappings_clear_shape_keys'
     bl_label = "Clear Shape Keys"
@@ -193,7 +193,7 @@ class MmdMappingsClearShapeNames(MmdMappingControlBase, Operator):
         return {'FINISHED'}
 
 
-class MmdMappingsAddFromSearchMesh(MmdMappingControlBase, Operator):
+class MmdMappingsAddFromSearchMesh(MmdMappingControlBase, OperatorBase):
     """Load Shape Keys from Search Mesh. Will not add mappings that already exist"""
     bl_idname = 'mmd_shape_mappings_add_from_search_mesh'
     bl_label = "Add From Search Mesh"
@@ -219,7 +219,7 @@ class MmdMappingsAddFromSearchMesh(MmdMappingControlBase, Operator):
         return {'FINISHED'}
 
 
-class MmdMappingsAddMmdFromSearchMesh(MmdMappingControlBase, Operator):
+class MmdMappingsAddMmdFromSearchMesh(MmdMappingControlBase, OperatorBase):
     """Load MMD Shapes from Search Mesh. Make sure that your Search Mesh is from an imported MMD model
      and still has its Japanese Shape Key names. Will not add mappings that already exist"""
     bl_idname = 'mmd_shape_mappings_add_mmd_from_search_mesh'
@@ -300,7 +300,7 @@ class MappingCsvLine(NamedTuple):
         )
 
 
-class ExportShapeSettings(Operator, ExportHelper):
+class ExportShapeSettings(OperatorBase, ExportHelper):
     """Export a .csv containing mmd shape data"""
     bl_idname = "mmd_shapes_export"
     bl_label = "Export Mappings"
@@ -320,7 +320,7 @@ class ExportShapeSettings(Operator, ExportHelper):
         return {'FINISHED'}
 
 
-class ImportShapeSettings(Operator, ImportHelper):
+class ImportShapeSettings(OperatorBase, ImportHelper):
     """Import a .csv containing mmd shape data"""
     bl_idname = "mmd_shapes_import"
     bl_label = "Import Mappings"
@@ -410,7 +410,7 @@ class ImportPresetMenu(Menu):
             options.filepath = filepath
 
 
-class CatsTranslateAll(Operator):
+class CatsTranslateAll(OperatorBase):
     """Translate all shapes with Cats"""
     bl_idname = "mmd_shapes_translate_all"
     bl_label = "Translate All MMD with Cats"

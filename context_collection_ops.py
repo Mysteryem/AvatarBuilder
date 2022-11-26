@@ -6,6 +6,7 @@ from typing import Optional, Generic, TypeVar, Union
 from dataclasses import dataclass, field
 
 from .utils import PropCollectionType
+from .registration import OperatorBase
 from . import utils
 
 
@@ -64,7 +65,7 @@ E = TypeVar('E', bound=PropertyGroup)
 
 
 # noinspection PyAbstractClass
-class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], Operator):
+class CollectionAddBase(ContextCollectionOperatorBase, Generic[E], OperatorBase):
     """Add a new item to the collection and optionally set it as the active item"""
     bl_label = "Add"
     bl_options = {'UNDO'}
@@ -177,7 +178,7 @@ class CollectionDuplicateBase(CollectionAddBase[E]):
 
 
 # noinspection PyAbstractClass
-class CollectionRemoveBase(ContextCollectionOperatorBase, Operator):
+class CollectionRemoveBase(ContextCollectionOperatorBase, OperatorBase):
     """Remove the active item from the collection"""
     bl_label = "Remove"
     bl_options = {'UNDO'}
@@ -203,7 +204,7 @@ class CollectionRemoveBase(ContextCollectionOperatorBase, Operator):
 
 
 # noinspection PyAbstractClass
-class CollectionClearBase(ContextCollectionOperatorBase, Operator):
+class CollectionClearBase(ContextCollectionOperatorBase, OperatorBase):
     """Clear the collection"""
     bl_label = "Clear"
     bl_options = {'UNDO'}
@@ -216,7 +217,7 @@ class CollectionClearBase(ContextCollectionOperatorBase, Operator):
 
 
 # noinspection PyAbstractClass
-class CollectionMoveBase(ContextCollectionOperatorBase, Operator):
+class CollectionMoveBase(ContextCollectionOperatorBase, OperatorBase):
     """Move the active item in the collection"""
     bl_label = "Move"
     bl_options = {'UNDO'}

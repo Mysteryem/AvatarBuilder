@@ -1,9 +1,9 @@
 import bpy
 
-from bpy.types import Operator, Context
+from bpy.types import Context
 
 from .extensions import ObjectPropertyGroup, ScenePropertyGroup
-from .registration import register_module_classes_factory, CollectionPropBase
+from .registration import register_module_classes_factory, CollectionPropBase, OperatorBase
 
 """For now, this is a module to assist with development only, but may be expanded upon if further migration is required
 in the future"""
@@ -73,7 +73,7 @@ def migrate_0_0_1_to_0_1_0():
     migrate_general_object_settings()
 
 
-class MigrateData(Operator):
+class MigrateData(OperatorBase):
     """Internal use Operator for migrating data"""
     bl_idname = 'internal_migrate'
     bl_label = "Migrate"

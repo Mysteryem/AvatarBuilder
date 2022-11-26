@@ -17,7 +17,6 @@ from bpy.types import (
     MeshUVLoopLayer,
     Modifier,
     Object,
-    Operator,
     Scene,
     ShapeKey,
     ViewLayer,
@@ -41,7 +40,7 @@ from .extensions import (
     MmdShapeMapping,
 )
 from .integration_gret import run_gret_shape_key_apply_modifiers
-from .registration import register_module_classes_factory
+from .registration import register_module_classes_factory, OperatorBase
 from . import utils
 from .util_generic_bpy_typing import PropCollection
 
@@ -317,7 +316,7 @@ class ValidatedBuild:
 _SHAPE_MERGE_LIST = list[tuple[ShapeKey, list[ShapeKey]]]
 
 
-class BuildAvatarOp(Operator):
+class BuildAvatarOp(OperatorBase):
     bl_idname = "build_avatar"
     bl_label = "Build Avatar"
     bl_description = "Build an avatar based on the meshes in the current scene, creating a new scene with the created avatar"

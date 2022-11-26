@@ -4,7 +4,6 @@ from bpy.types import (
     UILayout,
     Menu,
     Panel,
-    Operator,
     Object,
     Mesh,
     Armature,
@@ -16,7 +15,7 @@ from bpy.props import BoolProperty
 from typing import cast
 from collections import defaultdict
 
-from .registration import register_module_classes_factory
+from .registration import register_module_classes_factory, OperatorBase
 from .extensions import ScenePropertyGroup, ObjectPropertyGroup, MmdShapeKeySettings, SceneBuildSettings
 from .op_build_avatar import BuildAvatarOp
 from .ui_object import ObjectBuildSettingsAdd, ObjectPanelView3D
@@ -347,7 +346,7 @@ class SceneBuildSettingsRemove(CollectionRemoveBase, SceneBuildSettingsBase):
         return {'FINISHED'}
 
 
-class SceneBuildSettingsPurge(Operator):
+class SceneBuildSettingsPurge(OperatorBase):
     """Remove orphaned Build Settings from all Objects in every Scene."""
     bl_idname = "scene_build_settings_purge"
     bl_label = "Purge Orphaned"
@@ -403,7 +402,7 @@ class SceneBuildSettingsPurge(Operator):
         return {'FINISHED'}
 
 
-class DeleteExportScene(Operator):
+class DeleteExportScene(OperatorBase):
     bl_idname = "delete_export_scene"
     bl_label = "Delete Export Scene"
     bl_options = {'REGISTER', 'UNDO'}
@@ -445,7 +444,7 @@ class DeleteExportScene(Operator):
         return {'FINISHED'}
 
 
-class _ActiveSceneSettingsOp(Operator):
+class _ActiveSceneSettingsOp(OperatorBase):
     @classmethod
     def poll(cls, context: Context) -> bool:
         scene = context.scene

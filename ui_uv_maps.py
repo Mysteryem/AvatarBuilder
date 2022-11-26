@@ -6,7 +6,6 @@ from bpy.types import (
     bpy_struct,
     Mesh,
     PropertyGroup,
-    Operator,
     SpaceProperties,
     Event,
 )
@@ -21,7 +20,7 @@ from .context_collection_ops import (
     CollectionAddBase,
 )
 from .extensions import ObjectPropertyGroup, KeepUVMapList
-from .registration import register_module_classes_factory
+from .registration import register_module_classes_factory, OperatorBase
 from . import utils
 
 
@@ -64,7 +63,7 @@ def _uv_map_items(self, context: Context):
     return items
 
 
-class KeepUVMapSearch(Operator):
+class KeepUVMapSearch(OperatorBase):
     """Pick UV Map"""
     bl_idname = 'keep_uv_map_search'
     bl_label = "Pick UV Map"
