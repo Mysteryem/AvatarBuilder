@@ -474,8 +474,8 @@ class ArmatureSettings(PropertyGroup):
         items=[
             ('REST', "Rest Position", ""),
             ('POSE', "Pose Position", ""),
-            ('CUSTOM_ASSET_LIBRARY', "Custom", ""),
-            ('CUSTOM_POSE_LIBRARY', "Pose Library Marker (deprecated)", ""),
+            ('CUSTOM_ASSET_LIBRARY', "Custom (not yet implemented)", ""),
+            ('CUSTOM_POSE_LIBRARY', "Legacy Pose Library Marker", "Deprecated, will be removed in Blender 3.3"),
         ],
         default="POSE"
     )
@@ -483,9 +483,6 @@ class ArmatureSettings(PropertyGroup):
 
     # TODO: Find out how asset viewer stuff works as the replacement for Pose Libraries
     #armature_export_pose_asset_library: PointerProperty()
-
-    # TODO: Access via obj.pose_markers[name] when used
-    armature_export_pose_pose_library_marker_name: StringProperty()
 
     # Change all the armature modifiers on meshes using this armature to the following setting for Preserve volume
     # modifier-controlled/yes/no

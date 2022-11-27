@@ -50,6 +50,7 @@ from .object_props_copy import (
     COPY_ALL_ARMATURE_SETTINGS,
 )
 from .preferences import object_ui_sync_enabled
+from .version_compatibility import LEGACY_POSE_LIBRARY_AVAILABLE
 
 
 class ObjectBuildSettingsUIList(UIList):
@@ -185,27 +186,32 @@ class ObjectPanelBase(Panel):
         if box:
             export_pose = settings.armature_export_pose
 
-            box.prop(settings, 'armature_export_pose')
+            export_pose_col = box.column()
+            export_pose_col.prop(settings, 'armature_export_pose')
+
+            armature_pose_custom_col = export_pose_col.column()
+            if export_pose == 'CUSTOM_POSE_LIBRARY':
+                if LEGACY_POSE_LIBRARY_AVAILABLE:
+                    pose_library = obj.pose_library
+
+                    if pose_library:
+                        armature_pose_custom_col.prop_search(
+                            settings,
+                            'armature_export_pose_library_marker',
+                            pose_library,
+                            'pose_markers', icon="DOT")
+                else:
+                    armature_pose_custom_col.alert = True
+                    armature_pose_custom_col.label(text="The Legacy Pose Library system has been removed")
+
+            elif export_pose == 'CUSTOM_ASSET_LIBRARY':
+                # TODO: Implement poses via the new pose libraries (asset libraries)
+                armature_pose_custom_col.prop(settings, 'armature_export_pose_library_marker', icon="DOT")
+                armature_pose_custom_col.label(text="(not yet implemented)")
 
             armature_preserve_volume_col = box.column()
             armature_preserve_volume_col.enabled = export_pose != 'REST'
             armature_preserve_volume_col.prop(settings, 'armature_export_pose_preserve_volume')
-
-            armature_pose_custom_col = box.column()
-            armature_pose_custom_col.enabled = export_pose.startswith("CUSTOM")
-            if export_pose == 'CUSTOM_POSE_LIBRARY' and obj.pose_library:
-                pose_library = obj.pose_library
-
-                if pose_library:
-                    armature_pose_custom_col.prop_search(
-                        settings,
-                        'armature_export_pose_library_marker',
-                        pose_library,
-                        'pose_markers', icon="DOT")
-            else:
-                # TODO: elif for `export_pose == 'CUSTOM_ASSET_LIBRARY':`
-                armature_pose_custom_col.enabled = False
-                armature_pose_custom_col.prop(settings, 'armature_export_pose_library_marker', icon="DOT")
 
     @staticmethod
     def draw_vertex_groups_box(properties_col: UILayout, settings: VertexGroupSettings, ui_toggle_data: WmMeshToggles,
