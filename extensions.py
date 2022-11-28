@@ -4,7 +4,19 @@ from itertools import chain
 from dataclasses import dataclass
 
 from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
-from bpy.types import PropertyGroup, Scene, Context, Object, UILayout, Key, Mesh, Material, WindowManager, Collection
+from bpy.types import (
+    PropertyGroup,
+    Scene,
+    Context,
+    Object,
+    UILayout,
+    Key,
+    Mesh,
+    Material,
+    WindowManager,
+    Collection,
+    Action,
+)
 
 from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup, CollectionPropBase
 from .preferences import object_ui_sync_enabled
@@ -472,17 +484,33 @@ class ArmatureSettings(PropertyGroup):
         name="Export pose",
         description="Pose to set when exporting",
         items=[
-            ('REST', "Rest Position", ""),
-            ('POSE', "Pose Position", ""),
-            ('CUSTOM_ASSET_LIBRARY', "Custom (not yet implemented)", ""),
-            ('CUSTOM_POSE_LIBRARY', "Legacy Pose Library Marker", "Deprecated, will be removed in Blender 3.3"),
+            ('CURRENT', "Current Position", "The current pose will left as is", "NONE", 4),
+            ('REST', "Rest Position", "Rest Position will be enabled", "NONE", 0),
+            ('POSE', "Pose Position", "Pose Position will be enabled", "NONE", 1),
+            (
+                'CUSTOM_ASSET_LIBRARY',
+                "Pose Library Asset",
+                "Pose will be set based on a Pose Library Asset (currently limited to Actions of local Assets)",
+                "NONE",
+                2,
+            ),
+            (
+                'CUSTOM_POSE_LIBRARY',
+                "Legacy Pose Library Marker",
+                "Deprecated, will be removed in Blender 3.3",
+                "NONE",
+                3,
+            ),
         ],
-        default="POSE"
+        default="CURRENT",
     )
     armature_export_pose_library_marker: StringProperty(name="Pose", description="Pose Library Marker (deprecated)")
 
-    # TODO: Find out how asset viewer stuff works as the replacement for Pose Libraries
-    #armature_export_pose_asset_library: PointerProperty()
+    # Set via an operator instead of being set by users directly
+    armature_export_pose_local_asset_action: PointerProperty(
+        type=Action,
+        options={'HIDDEN'},
+    )
 
     # Change all the armature modifiers on meshes using this armature to the following setting for Preserve volume
     # modifier-controlled/yes/no

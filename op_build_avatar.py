@@ -20,7 +20,6 @@ from bpy.types import (
     Scene,
     ShapeKey,
     ViewLayer,
-    Operator,
 )
 
 from .extensions import (
@@ -41,6 +40,7 @@ from .extensions import (
     MmdShapeMapping,
 )
 from .integration_gret import run_gret_shape_key_apply_modifiers
+from .integration_pose_library import apply_pose_from_action, apply_legacy_pose_marker
 from .registration import register_module_classes_factory, OperatorBase
 from . import utils
 from .util_generic_bpy_typing import PropCollection
@@ -203,52 +203,6 @@ def smart_delete_shape_keys(obj: Object, shape_keys: Key, to_delete: set[ShapeKe
         # Removing the shape will automatically set shape keys that were relative to it, to be relative to the reference
         # key instead
         obj.shape_key_remove(shape)
-
-
-def apply_legacy_pose_marker(calling_op: Operator, obj: Object, marker_name: str):
-    """Apply a legacy pose marker.
-
-    The bpy.ops.poselib.apply_pose Operator can only be run from either the Properties Editor or from Pose mode, so we
-    apply the pose_marker manually.
-
-    For most models, this seems to actually be faster than calling the operator from within Pose mode and that's not
-    even including the time that would be needed to switch to Pose mode, select all the bones, restore the
-    bone selection afterwards and set the mode back to Object mode."""
-    pose_lib = obj.pose_library
-    if pose_lib is None:
-        calling_op.report({'WARNING'}, f"Could not apply legacy pose library marker '{marker_name}':"
-                                       f" no legacy pose library exists on {obj!r}")
-        return
-
-    marker = pose_lib.pose_markers.get(marker_name)
-    if marker is None:
-        calling_op.report({'WARNING'}, f"Could not find legacy pose library marker '{marker_name}' on"
-                                       f" {obj!r}")
-        return
-
-    # Each path will be resolved as many times as there are indices for the property (3 for location/scale properties, 4
-    # for rotation properties), so we can use a cache to only resolve once per property
-    @functools.cache
-    def resolve(data_path: str):
-        return obj.path_resolve(data_path)
-
-    # Get the frame for this marker
-    frame = marker.frame
-    # Iterate through all the fcurves
-    for c in pose_lib.fcurves:
-        # We can't evaluate the fcurve at the time of the frame because pose_markers don't have to affect all bones. The
-        # way this is represented in the fcurves is as keyframes. If we were to evaluate the fcurve at a time where a
-        # keyframe doesn't exist, we could cause unwanted changes to the pose, instead, we must iterate through the
-        # keyframes and find the keyframe at the time of the frame we want (if it exists)
-        #
-        # Iterate through all the keyframes
-        for k in c.keyframe_points:
-            # co is a Vector of (time, value)
-            co = k.co
-            if co.x == frame:
-                # array_index indicates the index within the resolved path
-                resolve(c.data_path)[c.array_index] = co.y
-                break
 
 
 # All modifier types that are eModifierTypeType_NonGeometrical
@@ -937,8 +891,11 @@ class BuildAvatarOp(OperatorBase):
             if export_pose == 'POSE':
                 pass
             elif export_pose == 'CUSTOM_ASSET_LIBRARY':
-                raise NotImplementedError()
-            elif export_pose == ' CUSTOM_POSE_LIBRARY':
+                action = settings.armature_export_pose_local_asset_action
+                if action:
+                    # Poses from the Pose Library addon use frame 1 only
+                    apply_pose_from_action(obj, action, 1)
+            elif export_pose == 'CUSTOM_POSE_LIBRARY':
                 if not LEGACY_POSE_LIBRARY_AVAILABLE:
                     self.report({'WARNING'}, f"Legacy Pose Library has been removed. The pose for {obj!r} could not be"
                                              f" applied")
