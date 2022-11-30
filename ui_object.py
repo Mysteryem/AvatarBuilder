@@ -255,6 +255,9 @@ class ObjectPanelBase(Panel):
                             'armature_export_pose_library_marker',
                             pose_library,
                             'pose_markers', icon="DOT")
+                    else:
+                        armature_pose_custom_col.alert = True
+                        armature_pose_custom_col.label(text="No Legacy Pose Library")
                 else:
                     armature_pose_custom_col.alert = True
                     armature_pose_custom_col.label(text="The Legacy Pose Library system has been removed")
