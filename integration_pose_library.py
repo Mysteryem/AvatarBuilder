@@ -40,7 +40,7 @@ def find_keyframe(fcurve: FCurve, frame: float) -> Optional[Keyframe]:
 _POSE_BONE_ARRAY_PROPERTIES = {prop.identifier: getattr(prop, 'is_array', False) for prop in PoseBone.bl_rna.properties}
 
 
-def apply_pose_from_action(obj: Object, action: Action, frame: int):
+def apply_pose_from_action(obj: Object, action: Action, frame: Optional[int] = None):
     # @functools.cache
     # def is_indexed_property(pose_bone_prop_name: str):
     #     prop = PoseBone.bl_rna.properties[pose_bone_prop_name]
@@ -95,30 +95,39 @@ def apply_pose_from_action(obj: Object, action: Action, frame: int):
             print(f"Unknown PoseBone property {bone_prop_name} in {action!r}")
             return None, None
 
-    # Iterate through all the fcurves
-    for c in action.fcurves:
-        # We can't evaluate the fcurve at the time of the frame because pose_markers don't have to affect all bones. The
-        # way this is represented in the fcurves is as keyframes. If we were to evaluate the fcurve at a time where a
-        # keyframe doesn't exist, we could cause unwanted changes to the pose, instead, we must iterate through the
-        # keyframes and find the keyframe at the time of the frame we want (if it exists)
-        #
-        # Find the keyframe that is sufficiently close enough to the frame we want (frame time (co.x) is stored as a
-        # float, so there may be precision errors)
-        k = find_keyframe(c, frame)
-        if k:
-            # co is a Vector of (time, value)
-            co = k.co
-            if co.x == frame:
-                holder_attribute, prop_or_holder = data_path_setter_resolve(c.data_path)
-                if prop_or_holder:
-                    if holder_attribute:
-                        # The property is not an array, so we access it via its name on the holder of the attribute
-                        setattr(prop_or_holder, holder_attribute, co.y)
-                    else:
-                        # array_index indicates the index within the resolved path
-                        prop_or_holder[c.array_index] = co.y
-                else:
-                    print(f"Could not apply pose for data_path '{c.data_path}' in {action!r} on {obj!r}")
+    def apply_to_fcurve(fcurve: FCurve, value: float):
+        holder_attribute, prop_or_holder = data_path_setter_resolve(fcurve.data_path)
+        if prop_or_holder:
+            if holder_attribute:
+                # The property is not an array, so we access it via its name on the holder of the attribute
+                setattr(prop_or_holder, holder_attribute, value)
+            else:
+                # array_index indicates the index within the resolved path
+                prop_or_holder[fcurve.array_index] = value
+        else:
+            print(f"Could not apply pose for data_path '{fcurve.data_path}' in {action!r} on {obj!r}")
+
+    if frame is not None:
+        # Iterate through all the fcurves
+        for c in action.fcurves:
+            # We can't evaluate the fcurve at the time of the frame because pose_markers don't have to affect all bones.
+            # The way this is represented in the fcurves is as keyframes. If we were to evaluate the fcurve at a time
+            # where a keyframe doesn't exist, we could cause unwanted changes to the pose, instead, we must iterate
+            # through the keyframes and find the keyframe at the time of the frame we want (if it exists)
+            #
+            # Find the keyframe that is sufficiently close enough to the frame we want (frame time (co.x) is stored as a
+            # float, so there may be precision errors)
+            k = find_keyframe(c, frame)
+            if k:
+                # co is a Vector of (time, value)
+                co = k.co
+                if co.x == frame:
+                    apply_to_fcurve(c, co.y)
+    else:
+        # Iterate through all the fcurves
+        for c in action.fcurves:
+            # Pose Library Assets appear to evaluate at frame 0
+            apply_to_fcurve(c, c.evaluate(0))
 
 
 def apply_legacy_pose_marker(calling_op: Operator, obj: Object, marker_name: str):

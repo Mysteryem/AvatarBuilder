@@ -20,6 +20,7 @@ from bpy.types import (
     Scene,
     ShapeKey,
     ViewLayer,
+    BlendData,
 )
 
 from .extensions import (
@@ -44,7 +45,7 @@ from .integration_pose_library import apply_pose_from_action, apply_legacy_pose_
 from .registration import register_module_classes_factory, OperatorBase
 from . import utils
 from .util_generic_bpy_typing import PropCollection
-from .version_compatibility import LEGACY_POSE_LIBRARY_AVAILABLE
+from .version_compatibility import LEGACY_POSE_LIBRARY_AVAILABLE, ASSET_BROWSER_AVAILABLE
 
 
 def merge_shapes_into_first(mesh_obj: Object, shapes_to_merge: list[tuple[ShapeKey, list[ShapeKey]]]):
@@ -891,10 +892,33 @@ class BuildAvatarOp(OperatorBase):
             if export_pose == 'POSE':
                 pass
             elif export_pose == 'CUSTOM_ASSET_LIBRARY':
-                action = settings.armature_export_pose_local_asset_action
-                if action:
-                    # Poses from the Pose Library addon use frame 1 only
-                    apply_pose_from_action(obj, action, 1)
+                if ASSET_BROWSER_AVAILABLE:
+                    asset_settings = settings.export_pose_asset_settings
+                    if asset_settings.asset_is_local_action:
+                        action = asset_settings.local_action
+                        if action:
+                            # Poses from the Pose Library addon use frame 1 only
+                            apply_pose_from_action(obj, action)
+                    else:
+                        library_path = asset_settings.external_action_filepath
+                        asset_name = asset_settings.external_action_name
+                        if library_path and asset_name:
+                            # Load Action from library into temp data and then apply pose from the loaded Action
+                            with BlendData.temp_data() as temp_data:
+                                with temp_data.libraries.load(library_path) as (data_from, data_to):
+                                    data_to.actions = [asset_name]
+
+                                action = data_to.actions[0]
+                                if action:
+                                    # Poses from the Pose Library addon use frame 1 only
+                                    apply_pose_from_action(obj, action)
+                                else:
+                                    self.report({'WARNING'}, f"Tried to apply Asset pose '{asset_name}' from"
+                                                             f" '{library_path}' to {obj!r}, but the Asset could not be"
+                                                             f" found in the library")
+                else:
+                    self.report({'WARNING'}, f"Tried to apply Asset pose to {obj!r}, but the Asset Browser does not"
+                                             f" exist in your version of Blender")
             elif export_pose == 'CUSTOM_POSE_LIBRARY':
                 if not LEGACY_POSE_LIBRARY_AVAILABLE:
                     self.report({'WARNING'}, f"Legacy Pose Library has been removed. The pose for {obj!r} could not be"

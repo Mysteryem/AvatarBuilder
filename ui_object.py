@@ -15,6 +15,8 @@ from bpy.types import (
 )
 from bpy.props import IntProperty
 
+from os import path
+
 from . import shape_key_ops, ui_material_remap, utils, ui_uv_maps, ui_vertex_group_swaps
 from .registration import register_module_classes_factory
 from .extensions import (
@@ -60,87 +62,49 @@ from .integration_pose_library import is_pose_library_enabled
 
 
 class PickPoseLibraryAsset(OperatorBase):
-    """Pick an Action from an Asset in the local Pose Library (external libraries are not currently supported due to a
-    lack of stable API in Blender)"""
+    """Pick an Action Asset"""
     bl_idname = "pick_pose_asset"
     bl_label = "Pick Pose Asset"
     bl_options = {'UNDO', 'REGISTER'}
 
     @classmethod
     def poll(cls, context: Context) -> bool:
-        return is_pose_library_enabled()
-
-    # Currently, only local Action assets can be used, so ideally we would force it to be 'LOCAL' by using our own
-    # property. Unfortunately, the asset_library property passed into layout.template_asset_view uses enum indices
-    # directly meaning the values we set in our EnumProperty are useless aside from the unique number of each item.
-    # It seems that an item with unique number of 1 will get us the 'LOCAL' asset library, but relying on a magic number
-    # like this is a bad idea.
-    # forced_local_library: EnumProperty(
-    #     items=(
-    #         ('LOCAL', "Local", "", "NONE", 1),
-    #     ),
-    #     get=lambda self: 1,
-    # )
-    # We could re-use the active_pose_asset_index of context.workspace, but it's simple to use our own property to avoid
-    # changing the existing one.
-    active_pose_asset_index: IntProperty(options={'HIDDEN'})
-
-    def draw(self, context: Context):
-        layout = self.layout
-        # This is the same way the Pose Library addon displays pose_assets in the right shelf of the 3D View
-        if hasattr(layout, "template_asset_view"):
-            workspace = context.workspace
-            _activate_op_props, _drag_op_props = layout.template_asset_view(
-                # This is the same list_id that is used by the Pose Library Addon
-                "pose_assets",
-                # Ideally, we would add our own property to self and just use that, but template_asset_view is hardcoded
-                # to use enum indices, it appears that the index 1 gives the local library, but relying on that as a
-                # magic number is not a good idea
-                workspace,
-                "asset_library_ref",
-                # This is the same CollectionProperty that is used by the Pose Library Addon
-                context.window_manager,
-                "pose_assets",
-                self,
-                "active_pose_asset_index",
-                filter_id_types={"filter_action"},
-                display_options={'NO_LIBRARY'},
-            )
-        else:
-            # TODO: Why would Blender's official addon be checking for the existence of template_asset_view?
-            layout.label("Error: template_asset_view is missing???")
-
-    def invoke(self, context: Context, event: Event) -> set[str]:
-        # Can't use our own property since we have no idea what the correct indices are to refer to the 'LOCAL' asset
-        # library, so we'll set context.workspace.asset_library_ref to 'LOCAL' and then use that property
-        context.workspace.asset_library_ref = 'LOCAL'
-        # FIXME: Each asset becomes difficult to select, requiring the user to click in the blank area beneath the name
-        #  of the asset. Not sure what can be done about this. If we were to use invoke_props_dialog instead, the
-        #  'redo Panel' will show the template_asset_view and also be easy to click on, but it will only show up if the
-        #  user is running this Operator from within the 3D View.
-        return context.window_manager.invoke_props_popup(self, event)
+        return context.asset_file_handle is not None and context.asset_library_ref is not None
 
     def execute(self, context: Context) -> set[str]:
-        settings = ObjectPropertyGroup.get_group(context.object).get_displayed_settings(context.scene)
-        index = self.active_pose_asset_index
-        # noinspection PyUnresolvedReferences
-        assets_col = cast(PropCollectionIdProp[ASSET_HANDLE_TYPE], context.window_manager.pose_assets)
-
-        if 0 <= index < len(assets_col):
-            handle = assets_col[index]
-            local_id = handle.local_id
-            if not local_id:
-                self.report({'ERROR'}, "Only local Assets are currently supported (Blender doesn't currently have a"
-                                       " stable API for working with library assets)")
-                return {'FINISHED'}
-            if not isinstance(local_id, Action):
-                self.report({'ERROR'}, f"Unexpected local_id type, expected {Action!r}, but got {type(local_id)!r}")
-                return {'FINISHED'}
-            settings.armature_settings.armature_export_pose_local_asset_action = local_id
+        space_data = context.space_data
+        if isinstance(space_data, SpaceProperties):
+            pin_id = space_data.pin_id
+            if isinstance(pin_id, Object):
+                obj = pin_id
+            else:
+                obj = context.object
         else:
-            settings.armature_settings.armature_export_pose_local_asset_action = None
-        # Needed if using invoke_props_dialog instead of invoke_props_popup
-        # ui_common.redraw_object_properties_panels(context)
+            obj = context.object
+
+        if obj is None:
+            return {'CANCELLED'}
+
+        armature_settings = ObjectPropertyGroup.get_group(obj).get_displayed_settings(context.scene).armature_settings
+        pose_asset_settings = armature_settings.export_pose_asset_settings
+
+        asset = context.asset_file_handle
+        if asset:
+            local_id = asset.local_id
+            if isinstance(local_id, Action):
+                pose_asset_settings.asset_is_local_action = True
+                pose_asset_settings.local_action = local_id
+            else:
+                asset_lib_path = ASSET_HANDLE_TYPE.get_full_library_path(asset, context.asset_library_ref)
+                if not asset_lib_path:
+                    self.report({'ERROR'}, f"Selected asset {asset.name} could not be located inside the asset library")
+                    return {'CANCELLED'}
+                if asset.id_type != 'ACTION':
+                    self.report({"ERROR"}, f"Selected asset {asset.name} is not an Action")
+                    return {'CANCELLED'}
+                pose_asset_settings.asset_is_local_action = False
+                pose_asset_settings.external_action_filepath = asset_lib_path
+                pose_asset_settings.external_action_name = asset.name
         return {'FINISHED'}
 
 
@@ -201,7 +165,7 @@ class ObjectPanelBase(Panel):
 
     @staticmethod
     def draw_expandable_header(properties_col: UILayout, ui_toggle_data: PropertyGroup, ui_toggle_prop: str,
-                               enabled: bool, copy_type: CopyPropsItem, **header_args):
+                               enabled: bool, copy_type: Optional[CopyPropsItem], **header_args):
         """Draw an expandable header
         :return: a box UILayout when expanded, otherwise None"""
         header_row = properties_col.row(align=True)
@@ -270,7 +234,7 @@ class ObjectPanelBase(Panel):
                 sub.prop(settings.mesh_settings, 'ignore_reduce_to_two_meshes')
 
     @staticmethod
-    def draw_armature_box(properties_col: UILayout, settings: ArmatureSettings, obj: Object,
+    def draw_armature_box(context: Context, properties_col: UILayout, settings: ArmatureSettings, obj: Object,
                           ui_toggle_data: WmArmatureToggles, enabled: bool):
         box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'pose', enabled,
                                                  COPY_ARMATURE_POSE_SETTINGS, text="Pose", icon='ARMATURE_DATA')
@@ -297,12 +261,36 @@ class ObjectPanelBase(Panel):
 
             elif export_pose == 'CUSTOM_ASSET_LIBRARY':
                 if is_pose_library_enabled():
-                    pose_action = settings.armature_export_pose_local_asset_action
-                    if pose_action:
-                        pose_action_label = pose_action.name
+                    pose_asset_settings = settings.export_pose_asset_settings
+                    pose_asset_disabled_col = armature_pose_custom_col.column()
+                    pose_asset_disabled_col.enabled = False
+                    if pose_asset_settings.asset_is_local_action:
+                        pose_asset_disabled_col.prop(pose_asset_settings, 'local_action')
                     else:
-                        pose_action_label = "(none)"
-                    armature_pose_custom_col.operator(PickPoseLibraryAsset.bl_idname, text=pose_action_label)
+                        pose_asset_disabled_col.prop(pose_asset_settings, 'external_action_name', icon='ACTION')
+                        pose_asset_disabled_col.prop(pose_asset_settings, 'external_action_file_display', icon='BLENDER')
+                    asset_picker_box = ObjectPanel.draw_expandable_header(armature_pose_custom_col,
+                                                                          ui_toggle_data, 'pose_asset_picker',
+                                                                          enabled, None, text="Asset Picker")
+                    if asset_picker_box:
+                        workspace = context.workspace
+                        _activate_op_props, _drag_op_props = asset_picker_box.template_asset_view(
+                            "em_avatar_builder_pose_assets",
+                            # Ideally, we would add our own property to self and just use that, but
+                            # template_asset_view is hardcoded to use enum indices, it appears that the index 1
+                            # gives the local library, but relying on that as a magic number is not a good idea
+                            workspace,
+                            "asset_library_ref",
+                            # This is the same CollectionProperty that is used by the Pose Library Addon
+                            context.window_manager,
+                            "pose_assets",
+                            workspace,
+                            "active_pose_asset_index",
+                            filter_id_types={"filter_action"},
+                            activate_operator=PickPoseLibraryAsset.bl_idname,
+                            # Have to include a drag_operator due to https://developer.blender.org/T102856
+                            drag_operator=PickPoseLibraryAsset.bl_idname,
+                        )
                 else:
                     text_col = armature_pose_custom_col.column(align=True)
                     text_col.alert = True
@@ -549,7 +537,8 @@ class ObjectPanelBase(Panel):
 
             # Display the box for armature settings if the object is an armature
             if obj.type == 'ARMATURE':
-                self.draw_armature_box(properties_col, active_object_settings.armature_settings, obj, toggles.armature, settings_enabled)
+                self.draw_armature_box(context, properties_col, active_object_settings.armature_settings, obj,
+                                       toggles.armature, settings_enabled)
             # Display the boxes for mesh settings if the object is a mesh
             elif obj.type == 'MESH':
                 mesh_settings = active_object_settings.mesh_settings

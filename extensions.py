@@ -2,6 +2,7 @@ import bpy
 from typing import Optional, Callable, Any
 from itertools import chain
 from dataclasses import dataclass
+from os import path
 
 from bpy.props import CollectionProperty, IntProperty, BoolProperty, StringProperty, EnumProperty, PointerProperty
 from bpy.types import (
@@ -478,7 +479,36 @@ def object_build_settings_update_name(self: 'ObjectBuildSettings', context: Cont
     update_name_ensure_unique(self, object_group.collection, 'name_prop', extra_disallowed_names=all_scene_build_settings)
 
 
+class ArmaturePoseAssetSettings(PropertyGroup):
+    asset_is_local_action: BoolProperty(default=True)
+    local_action: PointerProperty(type=Action, name="Action")
+    local_action_str: StringProperty()
+    external_action_filepath: StringProperty()
+
+    def library_file_display(self):
+        basename = path.basename(self.external_action_filepath)
+        if basename.endswith('.blend'):
+            basename = basename[:-len('.blend')]
+        return basename
+    external_action_file_display: StringProperty(name="Library", get=library_file_display)
+    external_action_name: StringProperty(name="Action")
+
+
 class ArmatureSettings(PropertyGroup):
+    def export_pose_update(self, context: Context):
+        """Restore an Action pointer from saved string or clear the Action pointer and save its name as a string. This
+         way we don't remain a user of the Action while it's not being used, but we restore the pointer when it's needed
+         again"""
+        pose_asset_settings = self.export_pose_asset_settings
+        if self.armature_export_pose == 'CUSTOM_ASSET_LIBRARY':
+            local_action_str = pose_asset_settings.local_action_str
+            if local_action_str:
+                pose_asset_settings.local_action = bpy.data.actions.get(local_action_str)
+        else:
+            local_action = pose_asset_settings.local_action
+            if local_action:
+                pose_asset_settings.local_action_str = local_action.name
+
     # Armature object properties
     armature_export_pose: EnumProperty(
         name="Export pose",
@@ -503,14 +533,10 @@ class ArmatureSettings(PropertyGroup):
             ),
         ],
         default="CURRENT",
+        update=export_pose_update,
     )
+    export_pose_asset_settings: PointerProperty(type=ArmaturePoseAssetSettings)
     armature_export_pose_library_marker: StringProperty(name="Pose", description="Pose Library Marker (deprecated)")
-
-    # Set via an operator instead of being set by users directly
-    armature_export_pose_local_asset_action: PointerProperty(
-        type=Action,
-        options={'HIDDEN'},
-    )
 
     # Change all the armature modifiers on meshes using this armature to the following setting for Preserve volume
     # modifier-controlled/yes/no
@@ -547,7 +573,6 @@ class ShapeKeySettings(PropertyGroup):
     # TODO: BoolProperty to remove shape keys that do next to nothing
     #       and FloatProperty to specify how much movement is still considered nothing (only show when the bool is True)
     #       Would need to figure something out so that we don't remove the common vrc.sil shape key though.
-
 
 
 class KeepUVMapList(CollectionPropBase[PropertyGroup]):
@@ -904,6 +929,7 @@ class WmMeshToggles(PropertyGroup):
 
 class WmArmatureToggles(PropertyGroup):
     pose: BoolProperty()
+    pose_asset_picker: BoolProperty()
 
 
 class WmObjectToggles(PropertyGroup):
