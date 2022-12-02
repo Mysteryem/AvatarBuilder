@@ -564,6 +564,17 @@ class ArmatureSettings(PropertyGroup):
                     " results than when exporting in an A-pose."
     )
 
+    def reset_before_applying_enabled(self):
+        export_pose = self.armature_export_pose
+        return export_pose == 'CUSTOM_ASSET_LIBRARY' or export_pose == 'CUSTOM_POSE_LIBRARY'
+
+    # Option to reset pose of all bones before applying the (Legacy) Pose Library pose
+    reset_pose_before_applying: BoolProperty(
+        name="Reset pose first",
+        description="Reset the pose of all bones before applying the new pose",
+        default=True,
+    )
+
 
 class ShapeKeySettings(PropertyGroup):
     shape_keys_main_op: EnumProperty(

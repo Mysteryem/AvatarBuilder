@@ -21,6 +21,7 @@ from bpy.types import (
     ShapeKey,
     ViewLayer,
     BlendData,
+    PoseBone,
 )
 
 from .extensions import (
@@ -234,6 +235,23 @@ def set_build_name_for_existing_object_about_to_be_renamed(name: str):
         for object_build_settings in existing_object_settings:
             if not object_build_settings.general_settings.target_object_name:
                 object_build_settings.general_settings.target_object_name = name
+
+
+_ZERO_ROTATION_QUATERNION = np.array([1, 0, 0, 0], dtype=np.single)
+
+
+def reset_pose_bones(bones: PropCollection[PoseBone], update_tag=True):
+    num_bones = len(bones)
+    # 3 components: X, Y, Z, set each bone to (0,0,0)
+    bones.foreach_set('location', np.zeros(num_bones * 3, dtype=np.single))
+    # 3 components: X, Y, Z, set each bone to (1,1,1)
+    bones.foreach_set('scale', np.ones(num_bones * 3, dtype=np.single))
+    # 4 components: W, X, Y, Z, set each bone to (1, 0, 0, 0)
+    bones.foreach_set('rotation_quaternion', np.tile(_ZERO_ROTATION_QUATERNION, num_bones))
+    if update_tag:
+        # Mark that the owning ID of the PoseBones bpy_prop_collection (should always be an Object), needs to update its
+        # display data following our changes to the pose bones
+        bones.id_data.update_tag()
 
 
 @dataclass
@@ -884,6 +902,8 @@ class BuildAvatarOp(OperatorBase):
         #                   location=True, rotation=True, scale=True)
 
     def build_armature(self, obj: Object, armature: Armature, settings: ArmatureSettings, copy_objects: Iterable[Object]):
+        if settings.reset_before_applying_enabled() and settings.reset_pose_before_applying:
+            reset_pose_bones(obj.pose.bones)
         export_pose = settings.armature_export_pose
         if export_pose == "REST":
             armature.pose_position = 'REST'

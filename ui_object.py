@@ -252,6 +252,9 @@ class ObjectPanelBase(Panel):
             export_pose_col = box.column()
             export_pose_col.prop(settings, 'armature_export_pose')
 
+            if settings.reset_before_applying_enabled():
+                export_pose_col.prop(settings, 'reset_pose_before_applying')
+
             armature_pose_custom_col = export_pose_col.column()
             if export_pose == 'CUSTOM_POSE_LIBRARY':
                 if LEGACY_POSE_LIBRARY_AVAILABLE:
