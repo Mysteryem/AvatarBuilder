@@ -1,133 +1,105 @@
-from typing import Optional
-import functools
-import re
+from typing import cast
+import numpy as np
 
-from bpy.types import WindowManager, FCurve, Keyframe, Operator, Object, Action, PoseBone
+from bpy.types import WindowManager, FCurve, Operator, Object, Action, TimelineMarker, WorkSpace, Armature
 
 """The Pose Library Addon is the in-development replacement for the deprecated, Legacy Pose Library system. This module
 also has some code for working with the Legacy Pose Library"""
 
 
 def is_pose_library_enabled() -> bool:
-    return hasattr(WindowManager, 'pose_assets')
+    # The new Pose Library addon adds these two properties when enabled
+    return hasattr(WindowManager, 'pose_assets') and hasattr(WorkSpace, 'active_pose_asset_index')
 
 
-def find_keyframe(fcurve: FCurve, frame: float) -> Optional[Keyframe]:
-    """Copied from scripts\\addons\\pose_library\\pose_creation.py"""
-    # Binary search adapted from https://pythonguides.com/python-binary-search/
-    keyframes = fcurve.keyframe_points
+def has_keyframe(fcurve: FCurve, frame_to_find: float) -> bool:
+    """Return True iff the FCurve has a key on the source frame.
+    Modified from PoseActionCreator._has_key_on_frame from scripts\\addons\\pose_library\\pose_creation.py"""
+    points = fcurve.keyframe_points
+    if not points:
+        return False
+    margin = 0.001
+    high = len(points) - 1
     low = 0
-    high = len(keyframes) - 1
-    mid = 0
-
-    # Accept any keyframe that's within 'epsilon' of the requested frame.
-    # This should account for rounding errors and the likes.
-    epsilon = 1e-4
-    frame_lowerbound = frame - epsilon
-    frame_upperbound = frame + epsilon
     while low <= high:
         mid = (high + low) // 2
-        keyframe = keyframes[mid]
-        if keyframe.co.x < frame_lowerbound:
+        diff = points[mid].co.x - frame_to_find
+        if abs(diff) < margin:
+            return True
+        if diff < 0:
+            # Frame to find is bigger than the current middle.
             low = mid + 1
-        elif keyframe.co.x > frame_upperbound:
+        else:
+            # Frame to find is smaller than the current middle
             high = mid - 1
-        else:
-            return keyframe
-    return None
+    return False
 
 
-_POSE_BONE_ARRAY_PROPERTIES = {prop.identifier: getattr(prop, 'is_array', False) for prop in PoseBone.bl_rna.properties}
-
-
-def apply_pose_from_action(obj: Object, action: Action, frame: Optional[int] = None):
-    # @functools.cache
-    # def is_indexed_property(pose_bone_prop_name: str):
-    #     prop = PoseBone.bl_rna.properties[pose_bone_prop_name]
-    #     return getattr(prop, 'is_array', False)
-
-    # @functools.cache
-    # def obj_resolve(data_path: str):
-    #     return obj.path_resolve(data_path)
+def apply_pose_from_pose_action(obj: Object, action: Action, evaluation_time: float = 0.0):
+    """Apply the pose of the Object from the specified Action to all bones.
+    For Pose Library Addon poses, evaluate at the default time of 0.
+    Forcefully affects all bones by deselecting all bones. Does not reselect them afterwards.
+    Takes into account whether each fcurve is muted, skipping it if so."""
+    armature: Armature = cast(Armature, obj.data)
+    # Pose.apply_pose_from_action only updates selected bones, or, if none are selected, updates all bones.
     #
-    # # Each path will be resolved as many times as there are indices for the property (3 for location/scale properties, 4
-    # # for rotation properties), so we can use a cache to only resolve once per property
-    # @functools.lru_cache(maxsize=4)
-    # def data_path_setter_resolve(data_path: str):
-    #     idx = data_path.rfind('.')
-    #     parent_path = data_path[:idx]
-    #     property_path = data_path[idx+1:]
-    #     parent = obj_resolve(parent_path)
-    #     prop = getattr(parent, property_path)
-    #     if hasattr(prop, '__setitem__'):
-    #         return prop.__setitem__
-    #     else:
-    #         return lambda _, value: setattr(parent, property_path, value)
+    # Deselect all bones so that every bone is affected.
+    #
+    # Note that while selecting all bones achieves the same effect, hidden pose bones are considered deselected, so it
+    # is simpler to deselect all bones, since we don't have to care about whether bones are hidden. Also note that
+    # while a PoseBone shares the same select state as its Bone, it has its own hide states separate from the Bone's
+    # hide state.
+    #
+    # This also means that an alternative to deselecting all bones would be hiding all PoseBones, but that could leave
+    # hidden bones selected, which could cause problems with addons that don't understand that if something is hidden it
+    # should be considered deselected (as described in Blender's API documentation).
+    bones = armature.bones
+    bones.foreach_set('select', np.zeros(len(bones), dtype=bool))
+    # Apply the pose to every bone now that they are all deselected
+    obj.pose.apply_pose_from_action(action, evaluation_time=evaluation_time)
 
-    # Note, only supports attributes that are immediate properties of PoseBone
-    bone_and_attribute_pattern = re.compile(r'pose.bones\["(.+)"]\.(\w+)')
-    pose_bones = obj.pose.bones
 
-    @functools.cache
-    def get_bone(bone_name: str):
-        return pose_bones.get(bone_name)
+def apply_pose_from_legacy_pose_action(obj: Object, action: Action, marker: TimelineMarker):
+    """Apply the pose of the Object at the TimelineMarker of the specified Legacy Pose Library Action.
+    This deselects all bones and does not reselect them afterwards."""
 
-    # Each path will be resolved as many times as there are indices for the property (3 for location/scale properties, 4
-    # for rotation properties), so we can use a cache to only resolve once per property
-    @functools.lru_cache(maxsize=4)
-    def data_path_setter_resolve(data_path: str):
-        match = bone_and_attribute_pattern.match(data_path)
-        if match is None:
-            return None, None
+    # Legacy Pose Library poses set properties based on the keyframes that exist at the specified frame.
+    # Pose.apply_pose_from_action masks which bones are affected based on the selection, but this is not specific enough
+    # for Legacy Pose Library Actions because each pose could contain only some properties of each bone. To create a
+    # more specific mask we can mute the properties that we don't want to affect (and then restore the mutes
+    # afterwards).
 
-        bone = get_bone(match.group(1))
-        if bone is None:
-            return None, None
+    # Note that if action is the .action attribute of the animation_data of an Object, this function will cause that
+    # Object to update its animation state! This is a side effect of changing .mute in FCurves.
+    # Generally speaking, a Legacy Pose Library shouldn't be assigned as an Object's animation_data's .action unless the
+    # user has assigned it directly from the Action Editor within the Dope Sheet Editor.
+    # Copy objects will always be unaffected because we clear animation_data in order to remove any drivers on copy
+    # objects.
 
-        bone_prop_name = match.group(2)
-        if bone_prop_name in _POSE_BONE_ARRAY_PROPERTIES:
-            is_array = _POSE_BONE_ARRAY_PROPERTIES[bone_prop_name]
-            if is_array:
-                return None, getattr(bone, bone_prop_name)
-            else:
-                return bone_prop_name, bone
-        else:
-            print(f"Unknown PoseBone property {bone_prop_name} in {action!r}")
-            return None, None
-
-    def apply_to_fcurve(fcurve: FCurve, value: float):
-        holder_attribute, prop_or_holder = data_path_setter_resolve(fcurve.data_path)
-        if prop_or_holder:
-            if holder_attribute:
-                # The property is not an array, so we access it via its name on the holder of the attribute
-                setattr(prop_or_holder, holder_attribute, value)
-            else:
-                # array_index indicates the index within the resolved path
-                prop_or_holder[fcurve.array_index] = value
-        else:
-            print(f"Could not apply pose for data_path '{fcurve.data_path}' in {action!r} on {obj!r}")
-
-    if frame is not None:
-        # Iterate through all the fcurves
+    # Each marker has an associated frame
+    frame = marker.frame
+    restore_mute_list: list[FCurve] = []
+    try:
         for c in action.fcurves:
-            # We can't evaluate the fcurve at the time of the frame because pose_markers don't have to affect all bones.
+            # We can't directly evaluate the fcurve at the time of the frame because pose_markers don't have to affect all
+            # bones.
             # The way this is represented in the fcurves is as keyframes. If we were to evaluate the fcurve at a time
-            # where a keyframe doesn't exist, we could cause unwanted changes to the pose, instead, we must iterate
-            # through the keyframes and find the keyframe at the time of the frame we want (if it exists)
+            # where a keyframe doesn't exist, we could cause unwanted changes to the pose because it would interpolate
+            # between the keyframe before and after the time we evaluated at.
             #
-            # Find the keyframe that is sufficiently close enough to the frame we want (frame time (co.x) is stored as a
-            # float, so there may be precision errors)
-            k = find_keyframe(c, frame)
-            if k:
-                # co is a Vector of (time, value)
-                co = k.co
-                if co.x == frame:
-                    apply_to_fcurve(c, co.y)
-    else:
-        # Iterate through all the fcurves
-        for c in action.fcurves:
-            # Pose Library Assets appear to evaluate at frame 0
-            apply_to_fcurve(c, c.evaluate(0))
+            # If there is not a keyframe at the specified frame, mute the fcurve so that it isn't used when applying the
+            # pose.
+            # We don't expect any FCurves to be muted already, but if there are, we'll skip them
+            if not c.mute and not has_keyframe(c, frame):
+                c.mute = True
+                # Add the fcurve to the list of fcurves to unmute
+                restore_mute_list.append(c)
+        # Apply the pose at the evaluated frame (automatically skipping any muted fcurves)
+        apply_pose_from_pose_action(obj, action, frame)
+    finally:
+        # Restore mutes that were changed
+        for c in restore_mute_list:
+            c.mute = False
 
 
 def apply_legacy_pose_marker(calling_op: Operator, obj: Object, marker_name: str):
@@ -151,4 +123,5 @@ def apply_legacy_pose_marker(calling_op: Operator, obj: Object, marker_name: str
                                        f" {obj!r}")
         return
 
-    apply_pose_from_action(obj, pose_lib, marker.frame)
+    # The Legacy Pose Library stores each pose in a specific keyframe, specified by the TimelineMarker
+    apply_pose_from_legacy_pose_action(obj, pose_lib, marker)

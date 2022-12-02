@@ -10,12 +10,8 @@ from bpy.types import (
     PropertyGroup,
     Menu,
     Scene,
-    Event,
     Action,
 )
-from bpy.props import IntProperty
-
-from os import path
 
 from . import shape_key_ops, ui_material_remap, utils, ui_uv_maps, ui_vertex_group_swaps
 from .registration import register_module_classes_factory
@@ -57,7 +53,6 @@ from .object_props_copy import (
 from .preferences import object_ui_sync_enabled
 from .version_compatibility import LEGACY_POSE_LIBRARY_AVAILABLE, ASSET_HANDLE_TYPE
 from .registration import OperatorBase
-from .util_generic_bpy_typing import PropCollectionIdProp
 from .integration_pose_library import is_pose_library_enabled
 
 
@@ -67,44 +62,58 @@ class PickPoseLibraryAsset(OperatorBase):
     bl_label = "Pick Pose Asset"
     bl_options = {'UNDO', 'REGISTER'}
 
-    @classmethod
-    def poll(cls, context: Context) -> bool:
-        return context.asset_file_handle is not None and context.asset_library_ref is not None
-
-    def execute(self, context: Context) -> set[str]:
+    @staticmethod
+    def get_obj(context: Context) -> Optional[Object]:
         space_data = context.space_data
         if isinstance(space_data, SpaceProperties):
             pin_id = space_data.pin_id
             if isinstance(pin_id, Object):
-                obj = pin_id
-            else:
-                obj = context.object
-        else:
-            obj = context.object
+                return pin_id
+        return context.object
 
-        if obj is None:
-            return {'CANCELLED'}
+    @classmethod
+    def poll(cls, context: Context) -> bool:
+        if not PickPoseLibraryAsset.get_obj(context):
+            return cls.poll_fail("No Object in current context")
+        if not context.asset_file_handle:
+            return cls.poll_fail("No asset file handle in context")
+        # asset_library_ref is only available in File and Screen Contexts
+        if not getattr(context, 'asset_library_ref', None):
+            return cls.poll_fail("No asset library ref in context")
 
+        return True
+
+    def execute(self, context: Context) -> set[str]:
+        # poll guarantees there is an Object
+        obj = PickPoseLibraryAsset.get_obj(context)
         armature_settings = ObjectPropertyGroup.get_group(obj).get_displayed_settings(context.scene).armature_settings
         pose_asset_settings = armature_settings.export_pose_asset_settings
 
+        # poll guarantees there is an asset_file_handle
         asset = context.asset_file_handle
-        if asset:
-            local_id = asset.local_id
-            if isinstance(local_id, Action):
-                pose_asset_settings.asset_is_local_action = True
-                pose_asset_settings.local_action = local_id
-            else:
-                asset_lib_path = ASSET_HANDLE_TYPE.get_full_library_path(asset, context.asset_library_ref)
-                if not asset_lib_path:
-                    self.report({'ERROR'}, f"Selected asset {asset.name} could not be located inside the asset library")
-                    return {'CANCELLED'}
-                if asset.id_type != 'ACTION':
-                    self.report({"ERROR"}, f"Selected asset {asset.name} is not an Action")
-                    return {'CANCELLED'}
-                pose_asset_settings.asset_is_local_action = False
-                pose_asset_settings.external_action_filepath = asset_lib_path
-                pose_asset_settings.external_action_name = asset.name
+        local_id = asset.local_id
+        if isinstance(local_id, Action):
+            pose_asset_settings.asset_is_local_action = True
+
+            pose_asset_settings.local_action = local_id
+        else:
+            if asset.id_type != 'ACTION':
+                # This shouldn't happen since we filter to only show actions in the template_asset_view.
+                # The Pose Library addon checks this, so maybe there is some merit in checking.
+                self.report({"ERROR"}, f"Selected asset {asset.name} is not an Action")
+                return {'CANCELLED'}
+
+            # poll guarantees there is an asset_library_ref
+            asset_lib_path = ASSET_HANDLE_TYPE.get_full_library_path(asset, context.asset_library_ref)
+
+            if not asset_lib_path:
+                self.report({'ERROR'}, f"Selected asset {asset.name} could not be located inside the asset library")
+                return {'CANCELLED'}
+
+            pose_asset_settings.asset_is_local_action = False
+
+            pose_asset_settings.external_action_filepath = asset_lib_path
+            pose_asset_settings.external_action_name = asset.name
         return {'FINISHED'}
 
 
@@ -233,8 +242,7 @@ class ObjectPanelBase(Panel):
                 sub.enabled = not scene_settings or scene_settings.reduce_to_two_meshes
                 sub.prop(settings.mesh_settings, 'ignore_reduce_to_two_meshes')
 
-    @staticmethod
-    def draw_armature_box(context: Context, properties_col: UILayout, settings: ArmatureSettings, obj: Object,
+    def draw_armature_box(self, context: Context, properties_col: UILayout, settings: ArmatureSettings, obj: Object,
                           ui_toggle_data: WmArmatureToggles, enabled: bool):
         box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'pose', enabled,
                                                  COPY_ARMATURE_POSE_SETTINGS, text="Pose", icon='ARMATURE_DATA')
@@ -276,6 +284,12 @@ class ObjectPanelBase(Panel):
                                                                           ui_toggle_data, 'pose_asset_picker',
                                                                           enabled, None, text="Asset Picker")
                     if asset_picker_box:
+                        if isinstance(self, ObjectPanel):
+                            # Selecting Assets is annoying because the preview and text can only be clicked on when the
+                            # template_asset_view is drawn in a Panel in the 3D View. This is presumably a Blender bug
+                            # (also occurs when trying to use template_asset_view in any kind of popup/popover)
+                            asset_picker_box.label(text="(Click below the name to pick)")
+                            asset_picker_box.label(text="(Asset Picker works better in 3D View)")
                         workspace = context.workspace
                         _activate_op_props, _drag_op_props = asset_picker_box.template_asset_view(
                             "em_avatar_builder_pose_assets",

@@ -481,7 +481,12 @@ def object_build_settings_update_name(self: 'ObjectBuildSettings', context: Cont
 
 class ArmaturePoseAssetSettings(PropertyGroup):
     asset_is_local_action: BoolProperty(default=True)
-    local_action: PointerProperty(type=Action, name="Action")
+
+    # noinspection PyMethodMayBeStatic
+    def is_asset_poll(self, obj: Action) -> bool:
+        return bool(obj.asset_data is not None)
+
+    local_action: PointerProperty(type=Action, name="Action", poll=is_asset_poll)
     local_action_str: StringProperty()
     external_action_filepath: StringProperty()
 
@@ -503,7 +508,10 @@ class ArmatureSettings(PropertyGroup):
         if self.armature_export_pose == 'CUSTOM_ASSET_LIBRARY':
             local_action_str = pose_asset_settings.local_action_str
             if local_action_str:
-                pose_asset_settings.local_action = bpy.data.actions.get(local_action_str)
+                action = bpy.data.actions.get(local_action_str)
+                if action and action.asset_data is None:
+                    action = None
+                pose_asset_settings.local_action = action
         else:
             local_action = pose_asset_settings.local_action
             if local_action:

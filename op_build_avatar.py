@@ -41,7 +41,7 @@ from .extensions import (
     MmdShapeMapping,
 )
 from .integration_gret import run_gret_shape_key_apply_modifiers
-from .integration_pose_library import apply_pose_from_action, apply_legacy_pose_marker
+from .integration_pose_library import apply_legacy_pose_marker, apply_pose_from_pose_action
 from .registration import register_module_classes_factory, OperatorBase
 from . import utils
 from .util_generic_bpy_typing import PropCollection
@@ -898,7 +898,7 @@ class BuildAvatarOp(OperatorBase):
                         action = asset_settings.local_action
                         if action:
                             # Poses from the Pose Library addon use frame 1 only
-                            apply_pose_from_action(obj, action)
+                            apply_pose_from_pose_action(obj, action)
                     else:
                         library_path = asset_settings.external_action_filepath
                         asset_name = asset_settings.external_action_name
@@ -910,8 +910,7 @@ class BuildAvatarOp(OperatorBase):
 
                                 action = data_to.actions[0]
                                 if action:
-                                    # Poses from the Pose Library addon use frame 1 only
-                                    apply_pose_from_action(obj, action)
+                                    apply_pose_from_pose_action(obj, action)
                                 else:
                                     self.report({'WARNING'}, f"Tried to apply Asset pose '{asset_name}' from"
                                                              f" '{library_path}' to {obj!r}, but the Asset could not be"
