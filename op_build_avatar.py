@@ -909,10 +909,18 @@ class BuildAvatarOp(OperatorBase):
 
         self.build_mesh_materials(obj, me, settings.material_settings)
 
+        # TODO: Do this when joining meshes iff the meshes don't have the same normals settings
+        #  use_auto_smooth, auto_smooth_angle, has_custom_normals (if use_auto_smooth is True, since custom normals are
+        #  ignored when use_auto_smooth is False)
         # This could be done just prior to joining meshes together, but I think it's ok to do here
         # There probably shouldn't be an option to turn this off
         # Set custom split normals (so that the current normals are kept when joining other meshes)
-        # TODO: We might need to do something when use_auto_smooth is False
+        # When use_auto_smooth is off, we need to clear sharp edges, because they will be included when calculating the
+        # split normals
+        if not me.use_auto_smooth:
+            # Clear all sharp edges
+            edges = me.edges
+            edges.foreach_set('use_edge_sharp', np.zeros(len(edges), dtype=bool))
         utils.op_override(bpy.ops.mesh.customdata_custom_splitnormals_add, {'mesh': me})
 
         # TODO: Add option to apply all transforms
