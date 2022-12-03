@@ -993,13 +993,14 @@ class BuildAvatarOp(OperatorBase):
         # utils.op_override(bpy.ops.object.transform_apply, {'selected_editable_objects': [obj]},
         #                   location=True, rotation=True, scale=True)
 
-    def validate_build(self, context: Context, active_scene_settings: SceneBuildSettings) -> ValidatedBuild:
+    def validate_build(self, context: Context, active_scene_settings: SceneBuildSettings) -> Optional[ValidatedBuild]:
         scene = context.scene
         view_layer = context.view_layer
 
         export_scene_name = active_scene_settings.name
         if not export_scene_name:
-            raise ValueError("Active build settings' name must not be empty")
+            self.report({'ERROR'}, "Active build settings' name must not be empty")
+            return None
         else:
             export_scene_name += " Export Scene"
 
@@ -1062,17 +1063,21 @@ class BuildAvatarOp(OperatorBase):
                 armatures = [helper.orig_object for helper in desired_name_armatures[name]]
                 conflict_lines.append(f"Name conflict '{name}':\n\tMeshes: {meshes}\n\tArmatures: {armatures}")
             conflicts_str = "\n".join(conflict_lines)
-            raise RuntimeError(f"Some meshes and armatures have the same build name, but only objects of the same type"
-                               f" can be combined together. Please change the build name for all objects in one"
-                               f" of the lists for each name conflict:\n{conflicts_str}")
+            self.report({'ERROR'}, f"Some meshes and armatures have the same build name, but only objects of the same"
+                                   f" type can be combined together. Please change the build name for all objects in"
+                                   f" one of the lists for each name conflict:\n{conflicts_str}")
+            return None
 
         shape_keys_mesh_name = active_scene_settings.shape_keys_mesh_name
         no_shape_keys_mesh_name = active_scene_settings.no_shape_keys_mesh_name
         if active_scene_settings.reduce_to_two_meshes:
             if not shape_keys_mesh_name:
-                raise ValueError("When reduce to two meshes is enabled, the shape keys mesh name must not be empty")
+                self.report({'ERROR'}, "When reduce to two meshes is enabled, the shape keys mesh name must not be"
+                                       " empty")
+                return None
             if not no_shape_keys_mesh_name:
-                raise ValueError("When reduce to two meshes is enabled, the no shape keys mesh must not be empty")
+                self.report({'ERROR'}, "When reduce to two meshes is enabled, the no shape keys mesh must not be empty")
+                return None
 
             # There may be no name conflicts with the objects being joined, but if we're reducing to two meshes, it's
             # possible that a mesh that ignores reduce_to_two_meshes has the same name as either the shapekey mesh
@@ -1085,11 +1090,12 @@ class BuildAvatarOp(OperatorBase):
                 if disallowed_name in desired_name_armatures:
                     armature_helpers = desired_name_armatures[disallowed_name]
                     armature_object_names = ", ".join(h.orig_object.name for h in armature_helpers)
-                    raise RuntimeError(f"Naming conflict. The armatures [{armature_object_names}] have the build name"
-                                       f" '{disallowed_name}', but it is reserved by one of the meshes used in the"
-                                       f" 'Reduce to two meshes' option."
-                                       f"\nEither change the build name of the armatures or change the mesh name used"
-                                       f" by the 'Reduce to two meshes' option.")
+                    self.report({'ERROR'}, f"Naming conflict. The armatures [{armature_object_names}] have the build"
+                                           f" name '{disallowed_name}', but it is reserved by one of the meshes used in"
+                                           f" the 'Reduce to two meshes' option."
+                                           f"\nEither change the build name of the armatures or change the mesh name"
+                                           f" used by the 'Reduce to two meshes' option.")
+                    return None
                 # Meshes will be joined into one of the two meshes, unless they have the option enabled that makes them
                 # ignore the reduce operation. We only need to check meshes that ignore that reduce operation.
                 # Note that when meshes are joined by name, if any of them ignore the reduce operation, the joined mesh
@@ -1101,12 +1107,13 @@ class BuildAvatarOp(OperatorBase):
                     ignoring_mesh_helpers = [h.orig_object.name for h in mesh_helpers if h.settings.mesh_settings.ignore_reduce_to_two_meshes]
                     if ignoring_mesh_helpers:
                         ignoring_mesh_object_names = ", ".join(ignoring_mesh_helpers)
-                        raise RuntimeError(f"Naming conflict. The meshes [{ignoring_mesh_object_names}] are ignoring"
-                                           f" the 'Reduce to two meshes' option, but have the build name"
-                                           f" '{disallowed_name}'. '{disallowed_name}' is reserved by one of the"
-                                           f" meshes used in the 'Reduce to two meshes' option."
-                                           f"\nEither change the build name of the meshes or change the mesh name used"
-                                           f" by the 'Reduce to two meshes' option.")
+                        self.report({'ERROR'}, f"Naming conflict. The meshes [{ignoring_mesh_object_names}] are"
+                                               f" ignoring the 'Reduce to two meshes' option, but have the build name"
+                                               f" '{disallowed_name}'. '{disallowed_name}' is reserved by one of the"
+                                               f" meshes used in the 'Reduce to two meshes' option."
+                                               f"\nEither change the build name of the meshes or change the mesh name"
+                                               f" used by the 'Reduce to two meshes' option.")
+                        return None
 
         return ValidatedBuild(
             export_scene_name=export_scene_name,
@@ -1482,10 +1489,9 @@ class BuildAvatarOp(OperatorBase):
         scene_property_group = ScenePropertyGroup.get_group(context.scene)
         active_scene_settings = scene_property_group.active
 
-        try:
-            validated_build = self.validate_build(context, active_scene_settings)
-        except (ValueError, RuntimeError) as err:
-            self.report({'ERROR'}, str(err))
+        validated_build = self.validate_build(context, active_scene_settings)
+        if validated_build is None:
+            # errors should have already been reported
             return {'FINISHED'}
 
         # Creation and modification can now commence as all initial checks have passed
