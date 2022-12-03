@@ -25,6 +25,7 @@ from .extensions import (
     ScenePropertyGroup,
     ShapeKeySettings,
     UVSettings,
+    VertexColorSettings,
     VertexGroupSettings,
     WindowManagerPropertyGroup,
     WmObjectToggles,
@@ -51,7 +52,7 @@ from .object_props_copy import (
     COPY_ALL_ARMATURE_SETTINGS,
 )
 from .preferences import object_ui_sync_enabled
-from .version_compatibility import LEGACY_POSE_LIBRARY_AVAILABLE, ASSET_HANDLE_TYPE
+from .version_compatibility import LEGACY_POSE_LIBRARY_AVAILABLE, ASSET_HANDLE_TYPE, get_vertex_colors
 from .registration import OperatorBase
 from .integration_pose_library import is_pose_library_enabled
 
@@ -332,6 +333,15 @@ class ObjectPanelBase(Panel):
             box.prop(settings, 'remove_non_deform_vertex_groups')
 
     @staticmethod
+    def draw_vertex_colors_box(properties_col: UILayout, settings: VertexColorSettings, ui_toggle_data: WmMeshToggles,
+                               enabled: bool):
+        box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'vertex_colors', enabled,
+                                                 COPY_MESH_VERTEX_GROUPS_SETTINGS, text="Vertex Colors",
+                                                 icon='GROUP_VCOL')
+        if box:
+            box.prop(settings, 'remove_vertex_colors')
+
+    @staticmethod
     def draw_shape_keys_box(properties_col: UILayout, settings: ShapeKeySettings, me: Mesh,
                             ui_toggle_data: WmMeshToggles, enabled: bool):
         box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'shape_keys', enabled,
@@ -434,22 +444,32 @@ class ObjectPanelBase(Panel):
     def draw_mesh_boxes(self, properties_col: UILayout, settings: MeshSettings, obj: Object,
                         ui_toggle_data: WmMeshToggles, enabled: bool):
         me = cast(Mesh, obj.data)
-        if obj.vertex_groups:
-            self.draw_vertex_groups_box(properties_col, settings.vertex_group_settings, ui_toggle_data, enabled)
+
+        # Draw each section in the order that they get applied in build_mesh in op_build_avatar
+
         # Only draw the shape keys box if there is more than one shape key. When there's one shape key, it will be the
         # reference key, the 'Basis'.
         # Note that non-relative shape keys are not supported at this time
         # TODO: Find out if (and if so, how) Blender's FBX exporter supports non-relative shape keys
         if me.shape_keys and len(me.shape_keys.key_blocks) > 1:
             self.draw_shape_keys_box(properties_col, settings.shape_key_settings, me, ui_toggle_data, enabled)
+
         # We don't touch armature modifiers, so only include the modifiers box when there's at least one non-armature
         # modifier
         # Additionally, modifiers which are disabled in the viewport get removed, so only count modifiers that are
         # enabled
         if any(mod.type != 'ARMATURE' and mod.show_viewport for mod in obj.modifiers):
             self.draw_mesh_modifiers_box(properties_col, settings.modifier_settings, ui_toggle_data, enabled)
+
         if me.uv_layers:
             self.draw_uv_layers_box(properties_col, settings.uv_settings, me, ui_toggle_data, enabled)
+
+        if obj.vertex_groups:
+            self.draw_vertex_groups_box(properties_col, settings.vertex_group_settings, ui_toggle_data, enabled)
+
+        if get_vertex_colors(me):
+            self.draw_vertex_colors_box(properties_col, settings.vertex_color_settings, ui_toggle_data, enabled)
+
         if me.materials:
             self.draw_materials_box(properties_col, settings.material_settings, obj, ui_toggle_data, enabled)
 

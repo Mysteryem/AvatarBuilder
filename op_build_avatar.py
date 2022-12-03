@@ -46,7 +46,7 @@ from .integration_pose_library import apply_legacy_pose_marker, apply_pose_from_
 from .registration import register_module_classes_factory, OperatorBase
 from . import utils
 from .util_generic_bpy_typing import PropCollection
-from .version_compatibility import LEGACY_POSE_LIBRARY_AVAILABLE, ASSET_BROWSER_AVAILABLE
+from .version_compatibility import LEGACY_POSE_LIBRARY_AVAILABLE, ASSET_BROWSER_AVAILABLE, get_vertex_colors
 
 
 def merge_shapes_into_first(mesh_obj: Object, shapes_to_merge: list[tuple[ShapeKey, list[ShapeKey]]]):
@@ -798,9 +798,27 @@ class BuildAvatarOp(OperatorBase):
 
     def build_mesh_vertex_colors(self, me: Mesh, settings: VertexColorSettings):
         if settings.remove_vertex_colors:
-            # TODO: Support for newer vertex colors via mesh attributes or whatever they're called
-            for vc in me.vertex_colors:
-                me.vertex_colors.remove(vc)
+            # Version compatible removal of all vertex colors.
+            # On Blender 3.2 and newer, removes all Mesh.color_attributes.
+            # On older versions, removes all Mesh.vertex_colors, which on Blender 3.0 and newer is the same as removing
+            # Byte Color + Face Corner attributes. On older versions of Blender, vertex colors are their own separate
+            # thing, since the Attribute system doesn't exist.
+            #
+            # Currently, the FBX exporter only exports via the deprecate Mesh.vertex_colors, which gives access to
+            # attributes that store Byte Color data on Face Corners, in the future, other color attributes are likely to
+            # be supported.
+            # https://developer.blender.org/D15942 is looking promising, so we'll remove all color attributes.
+            #
+            # Removing a color attribute shuffles around the references to other color attributes (and probably all
+            # attributes in general). Removing the attributes in reverse order seems to avoid issues, but I'm not keen
+            # on relying on it, so we'll get the color_attributes in reverse index order instead, since it's much safer.
+            #
+            # The same issues with removing color attributes applies to the legacy vertex colors (at least on 2.93 and
+            # newer)
+            collection = get_vertex_colors(me)
+            if collection is not None:
+                for idx in reversed(range(len(collection))):
+                    collection.remove(collection[idx])
 
     def build_mesh_materials(self, obj: Object, me: Mesh, settings: MaterialSettings):
         assert obj.data == me

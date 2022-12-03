@@ -649,7 +649,7 @@ class VertexGroupSettings(PropertyGroup):
 class VertexColorSettings(PropertyGroup):
     remove_vertex_colors: BoolProperty(
         name="Remove vertex colors",
-        default=True,
+        default=False,
         description="Remove all vertex colors"
     )
 
