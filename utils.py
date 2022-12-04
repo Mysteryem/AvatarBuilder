@@ -66,9 +66,12 @@ _OP_RETURN = set[Literal['RUNNING_MODAL', 'CANCELLED', 'FINISHED', 'PASS_THROUGH
 
 
 class _OperatorProtocol(Protocol):
-    """Protocol matching the signature of __call__ of operators from bpy.ops"""
-    # todo: Add some other functions such as poll
+    """Protocol matching the operators returned bpy.ops.<module>"""
+    # todo: Add some other functions such as poll or import bpy.ops._BPyOpsSubModOp directly
     def __call__(self, *args, **kwargs) -> _OP_RETURN:
+        ...
+
+    def get_rna_type(self):
         ...
 
 
@@ -299,3 +302,13 @@ def get_deform_bone_names(obj: Object) -> set[str]:
                     if bone.use_deform:
                         deform_bone_names.add(bone.name)
     return deform_bone_names
+
+
+def operator_exists(registered_op: _OperatorProtocol):
+    """Check if an operator returned by bpy.ops.<module>.<op> actually exists.
+    This is much faster than checking if a bpy.ops.<module> exists by checking the size of dir(bpy.ops.<module>)"""
+    try:
+        registered_op.get_rna_type()
+        return True
+    except KeyError:
+        return False

@@ -9,6 +9,7 @@ from bpy.props import StringProperty, BoolProperty
 import addon_utils
 
 from .registration import register_module_classes_factory, OperatorBase
+from .utils import operator_exists
 
 """This module packages up the cats translation functions into a function and callable operator"""
 
@@ -159,10 +160,17 @@ def _cats_setup(calling_operator: Optional[Operator]):
         return
 
 
+# The operators received from bpy.ops.<module> are Python classes that simply store a _module and _func that match
+# bpy.ops._module._func. Attempting to call/poll/introspect performs a lookup based on the _module and _func.
+# See <install dir>\<version>\scripts\modules\bpy\ops.py in your Blender distribution for details
+# noinspection PyUnresolvedReferences
+_cats_exists_check_ops = [bpy.ops.cats_translate.all, bpy.ops.cats_translate.objects, bpy.ops.cats_translate.shapekeys]
+
+
 def cats_exists() -> bool:
     """A quick check for if the Cats addon is loaded, intended for use in poll functions"""
     # Check a few in-case one gets removed in the future
-    return hasattr(bpy.ops, 'cats_common') or hasattr(bpy.ops, 'cats_manual') or hasattr(bpy.ops, 'cats_updater')
+    return any(map(operator_exists, _cats_exists_check_ops))
 
 
 @overload

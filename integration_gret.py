@@ -6,13 +6,16 @@ from typing import Union, Literal
 from . import utils
 
 
+# noinspection PyUnresolvedReferences
+_apply_modifiers_op = bpy.ops.gret.shape_key_apply_modifiers
+
+
 def check_gret_shape_key_apply_modifiers() -> Union[str, Literal[False], None]:
     """When valid, returns a truthy string that also indicates version.
      When not detected, returns None.
      When detected, but the version could not be determined, returns False."""
-    if hasattr(bpy.ops, 'gret') and hasattr(bpy.ops.gret, 'shape_key_apply_modifiers'):
-        operator = bpy.ops.gret.shape_key_apply_modifiers
-        for prop in operator.get_rna_type().properties:
+    if utils.operator_exists(_apply_modifiers_op):
+        for prop in _apply_modifiers_op.get_rna_type().properties:
             identifier = prop.identifier
             if identifier == 'modifier_mask' or identifier == 'keep_modifiers':
                 return identifier
@@ -37,7 +40,7 @@ def _run_gret_shape_key_apply_modifiers_keep_modifiers(obj: Object, modifier_nam
                 mod.show_viewport = False
         # noinspection PyUnresolvedReferences
         # Apply all non-disabled modifiers
-        return utils.op_override(bpy.ops.gret.shape_key_apply_modifiers, {'object': obj})
+        return utils.op_override(_apply_modifiers_op, {'object': obj})
     finally:
         # Restore modifiers that were temporarily disabled
         modifiers = obj.modifiers
@@ -59,8 +62,6 @@ def _run_gret_shape_key_apply_modifiers_modifier_mask(obj: Object, modifier_name
     all the modifiers in modifier_names_to_apply have been applied."""
     max_modifiers_per_call = 32
     full_mask = []
-    # noinspection PyUnresolvedReferences
-    gret_op = bpy.ops.gret.shape_key_apply_modifiers
     context_override = {'object': obj}
 
     # Create the mask and find the index of the last modifier that needs to be applied
@@ -79,7 +80,7 @@ def _run_gret_shape_key_apply_modifiers_modifier_mask(obj: Object, modifier_name
         # The last modifier that needs to be applied is within the first 32 modifiers, we can simply call the
         # operator once with a mask up to the last modifier that needs to be applied
         mask_up_to_and_including_last = full_mask[:last_apply_index + 1]
-        return utils.op_override(gret_op, context_override, modifier_mask=mask_up_to_and_including_last)
+        return utils.op_override(_apply_modifiers_op, context_override, modifier_mask=mask_up_to_and_including_last)
     else:
         # The last modifier to apply is after the first 32 modifiers, so we need to apply the operator multiple
         # times until all the modifiers, that we want to apply, have been applied.
@@ -100,7 +101,7 @@ def _run_gret_shape_key_apply_modifiers_modifier_mask(obj: Object, modifier_name
         while True:
             mask_this_call = full_mask[:max_modifiers_per_call]
             if any(mask_this_call):
-                utils.op_override(gret_op, context_override, modifier_mask=mask_this_call)
+                utils.op_override(_apply_modifiers_op, context_override, modifier_mask=mask_this_call)
 
                 # Remove the indices for all modifiers we've applied, in reverse so that the indices of the
                 # other elements we're going to pop don't change when we pop an index
