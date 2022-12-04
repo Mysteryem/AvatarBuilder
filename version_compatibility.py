@@ -11,7 +11,7 @@ LEGACY_POSE_LIBRARY_AVAILABLE = True
 3.3. Most of the functionality was supposed to be removed in 3.1 and then the Python
 interface removed in 3.2, but I guess most of this never happened."""
 
-ASSET_BROWSER_AVAILABLE = version >= (3, 0)
+ASSET_BROWSER_AVAILABLE = hasattr(bpy.types, 'AssetHandle') and version >= (3, 0)
 """The asset browser was added in Blender 3.0"""
 if ASSET_BROWSER_AVAILABLE:
     # noinspection PyUnresolvedReferences
@@ -21,9 +21,9 @@ else:
     ASSET_HANDLE_TYPE = bpy.types.PropertyGroup
 
 
-COLOR_ATTRIBUTES_AVAILABLE = version >= (3, 2)
+MESH_HAS_COLOR_ATTRIBUTES = hasattr(Mesh, 'color_attributes') and version >= (3, 2)
 """Mesh.color_attributes was added in Blender 3.2"""
-if COLOR_ATTRIBUTES_AVAILABLE:
+if MESH_HAS_COLOR_ATTRIBUTES:
     VERTEX_COLORS_PROP_TYPE = bpy.types.AttributeGroup
     VERTEX_COLORS_ELEMENT_TYPE = bpy.types.Attribute
 else:
@@ -35,8 +35,8 @@ VERTEX_COLORS_TYPE = Union[VERTEX_COLORS_PROP_TYPE, PropCollection[VERTEX_COLORS
 
 def get_vertex_colors(me: Mesh) -> Optional[VERTEX_COLORS_TYPE]:
     """Version compatible accessor for vertex colors. On versions of Blender with Mesh.color_attributes, we get that
-    instead of the deprecated Mesh.vertex_colors"""
-    if COLOR_ATTRIBUTES_AVAILABLE:
+    instead of the deprecated Mesh.vertex_colors. Technically color_attributes could be 'face colors'"""
+    if MESH_HAS_COLOR_ATTRIBUTES:
         return me.color_attributes
     else:
         return me.vertex_colors

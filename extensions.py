@@ -23,6 +23,7 @@ from .registration import register_module_classes_factory, _PROP_PREFIX, IdPrope
 from .preferences import object_ui_sync_enabled
 from . import utils
 from .util_generic_bpy_typing import PropCollectionIdProp
+from .version_compatibility import MESH_HAS_COLOR_ATTRIBUTES
 
 
 def update_name_ensure_unique(element_updating: PropertyGroup, collection_prop: PropCollectionIdProp,
@@ -648,9 +649,14 @@ class VertexGroupSettings(PropertyGroup):
 
 class VertexColorSettings(PropertyGroup):
     remove_vertex_colors: BoolProperty(
-        name="Remove vertex colors",
+        name="Remove color attributes" if MESH_HAS_COLOR_ATTRIBUTES else "Remove vertex colors",
         default=False,
-        description="Remove all vertex colors"
+        description=(
+            "Remove all color attributes (vertex colors (Face Corner + Byte Color) and other color attributes that may"
+            " be exported as vertex colors)"
+            if MESH_HAS_COLOR_ATTRIBUTES
+            else "Remove all vertex colors"
+        )
     )
 
 

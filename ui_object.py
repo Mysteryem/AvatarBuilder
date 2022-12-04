@@ -52,7 +52,12 @@ from .object_props_copy import (
     COPY_ALL_ARMATURE_SETTINGS,
 )
 from .preferences import object_ui_sync_enabled
-from .version_compatibility import LEGACY_POSE_LIBRARY_AVAILABLE, ASSET_HANDLE_TYPE, get_vertex_colors
+from .version_compatibility import (
+    LEGACY_POSE_LIBRARY_AVAILABLE,
+    ASSET_HANDLE_TYPE,
+    get_vertex_colors,
+    MESH_HAS_COLOR_ATTRIBUTES,
+)
 from .registration import OperatorBase
 from .integration_pose_library import is_pose_library_enabled
 
@@ -335,8 +340,9 @@ class ObjectPanelBase(Panel):
     @staticmethod
     def draw_vertex_colors_box(properties_col: UILayout, settings: VertexColorSettings, ui_toggle_data: WmMeshToggles,
                                enabled: bool):
+        text = "Color Attributes" if MESH_HAS_COLOR_ATTRIBUTES else "Vertex Colors"
         box = ObjectPanel.draw_expandable_header(properties_col, ui_toggle_data, 'vertex_colors', enabled,
-                                                 COPY_MESH_VERTEX_GROUPS_SETTINGS, text="Vertex Colors",
+                                                 COPY_MESH_VERTEX_GROUPS_SETTINGS, text=text,
                                                  icon='GROUP_VCOL')
         if box:
             box.prop(settings, 'remove_vertex_colors')
