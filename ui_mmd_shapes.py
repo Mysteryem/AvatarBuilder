@@ -13,6 +13,7 @@ from .context_collection_ops import (
     ContextCollectionOperatorBase,
     PropCollectionType,
 )
+from .version_compatibility import OPERATORS_HAVE_POLL_MESSAGES
 
 
 class ShowMappingComment(OperatorBase):
@@ -510,14 +511,14 @@ class MmdShapeMappingsPanel(Panel):
         vertical_buttons_col.separator()
         vertical_buttons_col.operator(ExportShapeSettings.bl_idname, text="", icon="EXPORT")
 
-        if not integration_cats.cats_exists():
-            col.label(text="Cats addon not found")
-            col.label(text="Translating is disabled")
-        elif not integration_cats.CatsTranslate.poll(context):
-            col.label(text="Unsupported Cats version")
-            col.label(text="Translating is disabled")
-        else:
-            col.operator(CatsTranslateAll.bl_idname, icon="WORLD")
+        col.operator(CatsTranslateAll.bl_idname, icon="WORLD")
+        if not OPERATORS_HAVE_POLL_MESSAGES:
+            if not integration_cats.cats_exists():
+                col.label(text="Cats addon not found")
+                col.label(text="Translating is disabled")
+            elif not integration_cats.CatsTranslate.poll(context):
+                col.label(text="Unsupported Cats version")
+                col.label(text="Translating is disabled")
 
 
 del _op_builder

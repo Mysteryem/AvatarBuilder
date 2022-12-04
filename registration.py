@@ -6,9 +6,11 @@ import bpy
 from bpy.types import Panel, Operator, UIList, Menu, ID, Bone, PoseBone, PropertyGroup, UILayout, AddonPreferences
 from bpy.props import PointerProperty, CollectionProperty, IntProperty, EnumProperty
 
+from .version_compatibility import OPERATORS_HAVE_POLL_MESSAGES
+
 
 class OperatorBase(Operator):
-    if bpy.app.version < (3, 0):
+    if not OPERATORS_HAVE_POLL_MESSAGES:
         # Support for older versions that don't have poll_message_set
         @classmethod
         def poll_message_set(cls, message, *args):

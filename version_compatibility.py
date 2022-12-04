@@ -1,6 +1,6 @@
 import bpy
 from bpy.app import version
-from bpy.types import Mesh
+from bpy.types import Mesh, Operator
 
 from typing import Union, Optional
 
@@ -42,3 +42,9 @@ def get_vertex_colors(me: Mesh) -> Optional[VERTEX_COLORS_TYPE]:
         return me.vertex_colors
 
 
+OPERATORS_HAVE_POLL_MESSAGES = hasattr(Operator, 'poll_message_set') and version >= (3, 0)
+"""poll_message_set allows operators to set messages in their poll methods. These messages are shown when mousing over
+operators shown in UI when the operator is disabled due to the poll method returning False.
+
+On older Blender versions without this method, we may want to display messages in the UI directly in order to explain
+why an operator is disabled"""
