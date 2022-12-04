@@ -846,12 +846,12 @@ class BuildAvatarOp(OperatorBase):
 
                 first_vg = vertex_groups.get(first)
                 if not first_vg:
-                    # self.report({'WARNING'}, f"Could not find '{first}' in the vertex groups of {obj!r}")
+                    self.report({'WARNING'}, f"Could not find '{first}' in the vertex groups of {obj!r}")
                     continue
 
                 second_vg = vertex_groups.get(second)
                 if not second_vg:
-                    # self.report({'WARNING'}, f"Could not find '{second}' in the vertex groups of {obj!r}")
+                    self.report({'WARNING'}, f"Could not find '{second}' in the vertex groups of {obj!r}")
                     continue
 
                 # Currently, if a vertex group called Group already exists, attempting to rename another vertex group to
@@ -921,9 +921,7 @@ class BuildAvatarOp(OperatorBase):
                     materials.clear()
                     materials.append(material)
             else:
-                # TODO: Refactor these functions into methods of the operator so they can report warnings/errors
-                # self.report({'WARNING'}, f"Invalid material slot index '{slot_index}' for {repr(obj)}")
-                pass
+                self.report({'WARNING'}, f"Invalid material slot index '{slot_index}' for {repr(obj)}")
         elif main_op == 'REMAP_SINGLE':
             material = settings.remap_single_material
             if material:
