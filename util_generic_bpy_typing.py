@@ -28,21 +28,22 @@ else:
     #
     # Could create a subclass of the dummied class (and override __class_getitem__), but I'm not sure if it's a good
     # idea to be creating subclasses
-    class _GenericDummy:
-        def __init__(self, dummied_type: type): self._dummied_type = dummied_type
-        def __getitem__(self, _item): return self._dummied_type
-        # To allow for isinstance and issubclass checks:
-        # def __instancecheck__(self, instance): return self._dummied_type.__instancecheck__(instance)
-        # def __subclasscheck__(self, subclass): return self._dummied_type.__subclasscheck__(subclass)
-        # To allow for comparison:
-        # def __eq__(self, other): return self._dummied_type == other
-        # To allow for getting attributes (other than '_dummied_type'):
-        # def __getattr__(self, item): return getattr(self._dummied_type, item)
+    def _make_dummy(t: type):
+        class _GenericDummy:
+            def __class_getitem__(cls, item): return t
+            # To allow for isinstance and issubclass checks:
+            # def __instancecheck__(self, instance): return t.__instancecheck__(instance)
+            # def __subclasscheck__(self, subclass): return t.__subclasscheck__(subclass)
+            # To allow for comparison:
+            # def __eq__(self, other): return t == other
+            # To allow for getting attributes:
+            # def __getattr__(self, item): return getattr(t, item)
+        return _GenericDummy
 
-    Prop = _GenericDummy(bpy_prop)
-    PropCollection = _GenericDummy(bpy_prop_collection)
-    PropArray = _GenericDummy(bpy_prop_array)
-    PropCollectionIdProp = _GenericDummy(utils.PropCollectionType)
+    Prop = _make_dummy(bpy_prop)
+    PropCollection = _make_dummy(bpy_prop_collection)
+    PropArray = _make_dummy(bpy_prop_array)
+    PropCollectionIdProp = _make_dummy(utils.PropCollectionType)
 
 __all__ = [
     'Prop',
