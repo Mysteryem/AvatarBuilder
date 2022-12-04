@@ -334,6 +334,81 @@ class ValidatedBuild:
         return self.orig_object_to_helper.values()
 
 
+_DATA_LOOKUP: dict[type, Callable[[], PropCollection]] = {
+    # References to the collections in bpy.data can become invalidated when doing certain operations, such as undo/redo,
+    # so we don't store them directly and instead store lambdas to get them
+    Mesh: (lambda: bpy.data.meshes),
+    Armature: (lambda: bpy.data.armatures),
+}
+
+
+def join_objects(object_type: Literal[Mesh, Armature], sorted_object_helpers: list[ObjectHelper], export_scene: Scene
+                 ) -> ObjectHelper:
+    collection = _DATA_LOOKUP[object_type]()
+
+    objects = [helper.copy_object for helper in sorted_object_helpers]
+    combined_object_helper = sorted_object_helpers[0]
+
+    if len(objects) > 1:
+        combined_object = combined_object_helper.copy_object
+
+        # The data of the objects that join the combined object get left behind, we'll delete them and do so
+        # safely in-case Blender decides to delete them in the future
+        data_names_to_remove = [o.data.name for o in objects[1:]]
+
+        if object_type == Mesh:
+            # If any of the objects being joined were set to ignore, the combined mesh will be too
+            ignore_reduce_to_two = any(
+                h.settings.mesh_settings.ignore_reduce_to_two_meshes for h in sorted_object_helpers)
+            combined_object_helper.joined_settings_ignore_reduce_to_two_meshes = ignore_reduce_to_two
+
+            # TODO: Clean up all these comprehensions
+            # TODO: Are there other things that we should ensure are set a specific way on the combined mesh?
+            joined_mesh_autosmooth = any(cast(Mesh, o.data).use_auto_smooth for o in objects)
+
+            # Set mesh autosmooth if any of the joined meshes used it
+            combined_object.data.use_auto_smooth = joined_mesh_autosmooth
+
+        # Join the objects
+        context_override = {
+            'selected_editable_objects': objects,
+            'active_object': combined_object,
+            'scene': export_scene
+        }
+        utils.op_override(bpy.ops.object.join, context_override)
+
+        # Delete the data of the objects other than the final combined object
+        for name in data_names_to_remove:
+            data_by_name = collection.get(name)
+            if data_by_name:
+                collection.remove(data_by_name)
+
+    return combined_object_helper
+
+
+def join_objects_with_rename(combined_name: str, object_type: Literal[Mesh, Armature],
+                             sorted_object_helpers: list[ObjectHelper], export_scene: Scene) -> ObjectHelper:
+    combined_object_helper = join_objects(object_type, sorted_object_helpers, export_scene)
+
+    # Since we're going to rename the joined copy objects, if an object with the corresponding name already
+    # exists, and it doesn't have a target_object_name set, we need to set it to its current name because
+    # its name is about to change
+    set_build_name_for_existing_object_about_to_be_renamed(combined_name)
+
+    # Rename the combined mesh
+    combined_object_helper.copy_object.name = combined_name
+
+    return combined_object_helper
+
+
+def join_objects_with_renames(join_dict: dict[str, list[ObjectHelper]], object_type: Literal[Mesh, Armature],
+                              export_scene: Scene) -> list[ObjectHelper]:
+    return [
+        join_objects_with_rename(name, object_type, object_helpers, export_scene)
+        for name, object_helpers in join_dict.items()
+    ]
+
+
 _SHAPE_MERGE_LIST = list[tuple[ShapeKey, list[ShapeKey]]]
 
 
@@ -1054,6 +1129,10 @@ class BuildAvatarOp(OperatorBase):
 
             name_dict[helper.desired_name].append(helper)
 
+        # Sort, in-place, each list of ObjectHelpers
+        for helper_list in itertools.chain(desired_name_meshes.values(), desired_name_armatures.values()):
+            helper_list.sort(key=ObjectHelper.to_join_sort_key)
+
         name_conflicts = set(desired_name_meshes.keys())
         name_conflicts.intersection_update(desired_name_armatures.keys())
         if name_conflicts:
@@ -1510,95 +1589,8 @@ class BuildAvatarOp(OperatorBase):
             self.build_object(helper, validated_build, export_scene, scene)
 
         # Join meshes and armatures by desired names and rename the combined objects to those desired names
-
-        # Mesh and armature objects will only ever be attempted to join objects of the same type due to our initial
-        # checks
-        meshes_after_joining: list[ObjectHelper] = []
-        armatures_after_joining: list[ObjectHelper] = []
-
-        @dataclass
-        class JoinGroup:
-            """Helper class"""
-            type: Literal['MESH', 'ARMATURE']
-            desired_names: dict[str, list[ObjectHelper]]
-            after_joining_list: list[ObjectHelper]
-            get_func: Callable[[str], Union[Armature, Mesh]]
-            remove_func: Callable[[Union[Armature, Mesh]], None]
-
-        meshes_tuple = JoinGroup(
-            'MESH',
-            validated_build.desired_name_meshes,
-            meshes_after_joining,
-            bpy.data.meshes.get,
-            bpy.data.meshes.remove,
-        )
-        armatures_tuple = JoinGroup(
-            'ARMATURE',
-            validated_build.desired_name_armatures,
-            armatures_after_joining,
-            bpy.data.armatures.get,
-            bpy.data.armatures.remove,
-        )
-
-        for join_group in (meshes_tuple, armatures_tuple):
-            object_type = join_group.type
-            join_dict = join_group.desired_names
-            after_joining_list = join_group.after_joining_list
-            get_func = join_group.get_func
-            remove_func = join_group.remove_func
-
-            names_to_remove: list[str] = []
-            for name, object_helpers in join_dict.items():
-                sorted_object_helpers = sorted(object_helpers, key=ObjectHelper.to_join_sort_key)
-                objects = [helper.copy_object for helper in sorted_object_helpers]
-                combined_object_helper = sorted_object_helpers[0]
-                combined_object = combined_object_helper.copy_object
-                context_override = {
-                    'selected_editable_objects': objects,
-                    'active_object': combined_object,
-                    'scene': export_scene
-                }
-                if len(sorted_object_helpers) > 1:
-                    # The data of the objects that join the combined object get left behind, we'll delete them and do so
-                    # safely in-case Blender decides to delete them in the future
-                    names_to_remove.extend(o.data.name for o in objects[1:])
-
-                    if object_type == 'MESH':
-                        # If any of the objects being joined were set to ignore, the combined mesh will be too
-                        ignore_reduce_to_two = any(
-                            h.settings.mesh_settings.ignore_reduce_to_two_meshes for h in sorted_object_helpers)
-                        combined_object_helper.joined_settings_ignore_reduce_to_two_meshes = ignore_reduce_to_two
-
-                        # TODO: Clean up all these comprehensions
-                        # TODO: Are there other things that we should ensure are set a specific way on the combined mesh?
-                        joined_mesh_autosmooth = any(cast(Mesh, o.data).use_auto_smooth for o in objects)
-
-                        # Set mesh autosmooth if any of the joined meshes used it
-                        combined_object.data.use_auto_smooth = joined_mesh_autosmooth
-
-                    # Join the objects
-                    utils.op_override(bpy.ops.object.join, context_override)
-
-                else:
-                    # There's only one object, there's nothing to join
-                    pass
-
-                # Append the ObjectHelper for the Object that remains after joining
-                after_joining_list.append(combined_object_helper)
-
-                # Since we're going to rename the joined copy objects, if an object with the corresponding name already
-                # exists, and it doesn't have a target_object_name set, we need to set it to its current name because
-                # its name is about to change
-                set_build_name_for_existing_object_about_to_be_renamed(name)
-
-                # Rename the combined mesh
-                combined_object.name = name
-
-            # Delete data of objects that have been joined into combined objects
-            for name in names_to_remove:
-                data_by_name = get_func(name)
-                if data_by_name:
-                    remove_func(data_by_name)
+        meshes_after_joining = join_objects_with_renames(validated_build.desired_name_meshes, Mesh, export_scene)
+        join_objects_with_renames(validated_build.desired_name_armatures, Armature, export_scene)
 
         # After performing deletions, these structures are no good anymore because some objects may be deleted
         del orig_object_to_helper
@@ -1607,12 +1599,13 @@ class BuildAvatarOp(OperatorBase):
         # The ignore_reduce_to_two_meshes setting will need to only be True if it was True for all the joined meshes
         if active_scene_settings.reduce_to_two_meshes:
             shape_key_helpers = []
-            shape_key_meshes_auto_smooth = False
             no_shape_key_helpers = []
-            no_shape_key_meshes_auto_smooth = False
 
             mesh_objs_after_joining = []
 
+            # Pre-sort all the ObjectHelpers, this way, when we create lists of shapekey and no-shapekey ObjectHelpers,
+            # they will already be sorted
+            meshes_after_joining.sort(key=ObjectHelper.to_join_sort_key)
             for helper in meshes_after_joining:
                 mesh_obj = helper.copy_object
                 # Individual mesh objects can exclude themselves from this operation
@@ -1627,57 +1620,20 @@ class BuildAvatarOp(OperatorBase):
                     mesh_data = cast(Mesh, mesh_obj.data)
                     if mesh_data.shape_keys:
                         shape_key_helpers.append(helper)
-                        shape_key_meshes_auto_smooth |= mesh_data.use_auto_smooth
                     else:
                         no_shape_key_helpers.append(helper)
-                        no_shape_key_meshes_auto_smooth |= mesh_data.use_auto_smooth
                 else:
+                    # The mesh in question ignores the 'reduce to two' option
                     mesh_objs_after_joining.append(mesh_obj)
 
-            shape_keys_tuple = (validated_build.shape_keys_mesh_name, shape_key_helpers, shape_key_meshes_auto_smooth)
-            no_shape_keys_tuple = (
-                validated_build.no_shape_keys_mesh_name, no_shape_key_helpers, no_shape_key_meshes_auto_smooth)
-
-            for name, mesh_helpers, auto_smooth in (shape_keys_tuple, no_shape_keys_tuple):
-                if mesh_helpers:
-                    sorted_mesh_helpers = sorted(mesh_helpers, key=ObjectHelper.to_join_sort_key)
-                    sorted_meshes = [h.copy_object for h in sorted_mesh_helpers]
-                    mesh_names_to_remove = [m.data.name for m in sorted_meshes[1:]]
-
-                    combined_object = sorted_meshes[0]
-                    mesh_data = cast(Mesh, combined_object.data)
-                    # Set mesh autosmooth if any of the joined meshes used it
-                    mesh_data.use_auto_smooth = auto_smooth
-
-                    context_override = {
-                        'selected_editable_objects': sorted_meshes,
-                        'active_object': combined_object,
-                        'scene': export_scene
-                    }
-
-                    # Join the objects
-                    utils.op_override(bpy.ops.object.join, context_override)
-
-                    # Since we're about to rename the combined object, if there is an existing object with that name,
-                    # the existing object will have its name changed. If that object were to not have its build_name
-                    # set, then it would be built into a differently named object the next time Build Avatar is called
-                    set_build_name_for_existing_object_about_to_be_renamed(name)
-
-                    # Rename the combined object
-                    combined_object.name = name
-
-                    mesh_objs_after_joining.append(combined_object)
-
-                    for to_remove_name in mesh_names_to_remove:
-                        to_remove = bpy.data.meshes.get(to_remove_name)
-                        if to_remove:
-                            bpy.data.meshes.remove(to_remove)
+            shape_keys_combined = join_objects_with_rename(validated_build.shape_keys_mesh_name, Mesh,
+                                                           shape_key_helpers, export_scene)
+            no_shape_keys_combined = join_objects_with_rename(validated_build.no_shape_keys_mesh_name, Mesh,
+                                                              no_shape_key_helpers, export_scene)
+            mesh_objs_after_joining.append(shape_keys_combined.copy_object)
+            mesh_objs_after_joining.append(no_shape_keys_combined.copy_object)
         else:
             mesh_objs_after_joining = [helper.copy_object for helper in meshes_after_joining]
-
-            # TODO: Join the meshes and rename the resulting mesh according to the scene settings.
-            #  If an object already exists with the target name, set that object's
-            #  existing_object_settings_for_scene.target_object_name to the target name if it hasn't been set to something
 
         # Remap shape keys to MMD shape key names if enabled
         self.mmd_remap(scene_property_group, active_scene_settings.mmd_settings, mesh_objs_after_joining)
