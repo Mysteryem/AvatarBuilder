@@ -14,12 +14,18 @@ from bpy.types import (
     Object,
     ArmatureModifier,
     Armature,
+    UILayout,
 )
 
 from types import MethodDescriptorType
-from typing import Any, Protocol, Literal, Optional, Union, TypeVar, Sized, Reversible, Iterable
+from typing import Any, Protocol, Literal, Optional, Union, TypeVar, Sized, Reversible, Iterable, SupportsFloat
+
 from contextlib import contextmanager
 import re
+from textwrap import TextWrapper
+
+
+_Numeric = Union[float, int]
 
 
 # bpy_prop_collection_idprop isn't currently exposed in bpy.types, so it can't actually be imported. It's presence here
@@ -312,3 +318,53 @@ def operator_exists(registered_op: _OperatorProtocol):
         return True
     except KeyError:
         return False
+
+
+def _guess_width_from_context(context: Context, margin: Optional[_Numeric] = None):
+    if margin is None:
+        # This is just a guess since there's usually a few pixels of margin on either side. This usually changes with
+        # UI zoom, so it must be applied to region_width
+        margin = 14
+    region = context.region
+    space = context.space_data
+    region_width = region.width
+    # View3D right shelf seems to start region.width at 20. No idea if this applies to any other UI regions, this is
+    # just the only region being used at the moment
+    if space.type == 'VIEW_3D' and region.type == 'UI':
+        region_width -= 20
+    region_width -= margin
+    v2d = region.view2d
+    # view_width decreases as UI scale increases, so this seems to account for UI zoom making text bigger
+    view_width = abs(v2d.region_to_view(0, 0)[0] - v2d.region_to_view(region_width, 0)[0])
+    return view_width
+
+
+# Given two examples of text, a rough recorded average was about 5.13 pixels per character
+_AVERAGE_PIXELS_PER_CHARACTER = 6
+
+
+# placeholder is used when a line is too long. An ellipsis looks almost identical to how Blender cuts off text that is
+# too long.
+_TEXT_WRAPPER = TextWrapper(break_long_words=False, placeholder='…')
+
+
+def ui_multiline_label(ui: UILayout, context_or_region_width: Union[Context, _Numeric], text: str,
+                       max_lines: Optional[int] = None):
+    if isinstance(context_or_region_width, Context):
+        ui_width = _guess_width_from_context(context_or_region_width)
+    else:
+        ui_width = context_or_region_width
+    characters_wide = ui_width // _AVERAGE_PIXELS_PER_CHARACTER
+    if characters_wide > 0:
+        if max_lines is None:
+            # Automatic max_lines calculation. Set maximum number of lines to half the number of words
+            words = text.split()
+            # The divisor might need to be adjusted, 2 is also a reasonable value.
+            max_lines = len(words) // 3
+        # Always allow for at least 1 line
+        max_lines = max(1, max_lines)
+        _TEXT_WRAPPER.width = int(characters_wide)
+        _TEXT_WRAPPER.max_lines = max_lines
+        lines = _TEXT_WRAPPER.wrap(text)
+        for line in lines:
+            ui.label(text=line)

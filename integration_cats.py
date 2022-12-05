@@ -12,7 +12,7 @@ from bpy.props import StringProperty, BoolProperty
 import addon_utils
 
 from .registration import register_module_classes_factory, OperatorBase
-from .utils import operator_exists
+from .utils import operator_exists, ui_multiline_label
 
 """This module packages up the cats translation functions into a function and callable operator"""
 
@@ -327,7 +327,7 @@ class DevelopmentVersionInstructions(Panel):
         op.url = "https://github.com/absolute-quantum/cats-blender-plugin/archive/refs/heads/development.zip"
 
 
-def draw_cats_download(layout: UILayout):
+def draw_cats_download(context: Context, layout: UILayout):
     col = layout.column()
     op = col.operator('wm.url_open', text="Get Cats Blender Plugin", icon='URL')
     op.url = "https://github.com/absolute-quantum/cats-blender-plugin"
@@ -351,8 +351,8 @@ def draw_cats_download(layout: UILayout):
 
     sub = col.column(align=True)
     sub.scale_y = 0.7
-    sub.label(text=main_message)
-    sub.label(text="If there's no newer Cats version, use the development version")
+    ui_multiline_label(sub, context, main_message)
+    ui_multiline_label(sub, context, "If there's no newer Cats version, use the development version")
     col.popover(panel=DevelopmentVersionInstructions.bl_idname)
 
 

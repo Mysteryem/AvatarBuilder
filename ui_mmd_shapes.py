@@ -517,12 +517,12 @@ class MmdShapeMappingsPanel(Panel):
             if not OPERATORS_HAVE_POLL_MESSAGES:
                 col.label(text="Cats addon not found")
                 col.label(text="Translating is disabled")
-            draw_cats_download(col)
+            draw_cats_download(context, col)
         elif not integration_cats.CatsTranslate.poll(context):
             if not OPERATORS_HAVE_POLL_MESSAGES:
                 col.label(text="Unsupported Cats version")
                 col.label(text="Translating is disabled")
-            draw_cats_download(col)
+            draw_cats_download(context, col)
 
 
 del _op_builder
