@@ -4,7 +4,7 @@ from .registration import register_submodule_factory
 bl_info = {
     "name": "Avatar Builder",
     "author": "Mysteryem",
-    "version": (0, 0, 1),
+    "version": (0, 1, 0),
     "blender": (2, 93, 7),
     "location": "3D View and Object Properties",
     "tracker_url": "https://github.com/Mysteryem/Miscellaneous/issues",
