@@ -2,9 +2,12 @@ from typing import cast, Optional, Protocol, Union, overload, Callable, Any
 from types import ModuleType
 import inspect
 import importlib
+import platform
+import sys
+import os
 
 import bpy
-from bpy.types import Operator, Context, OperatorProperties
+from bpy.types import Operator, Context, OperatorProperties, UILayout, Panel
 from bpy.props import StringProperty, BoolProperty
 import addon_utils
 
@@ -12,6 +15,22 @@ from .registration import register_module_classes_factory, OperatorBase
 from .utils import operator_exists
 
 """This module packages up the cats translation functions into a function and callable operator"""
+
+_IS_LINUX = platform.system() == 'Linux'
+
+# Not sure if this works for every OS
+_PYTHON_IS_BUNDLED = sys.executable.startswith(os.path.dirname(bpy.app.binary_path))
+
+# Python 3.10 no longer allows lossy implicit conversions from float to int, which Cats 0.19.0 was using.
+_CATS_0_19_0_SUPPORTS_CURRENT_PYTHON = sys.version_info < (3, 10)
+
+if platform.system() != 'Linux':
+    # Windows (and possibly other OS) have issues with Cats 0.19.0 on Blender 3.0 and newer as it has internal changes
+    # that cause Vertex Group pointers to change when applying Vertex Weight Mix modifiers. Cats 0.19.0 tries to use
+    # the resulting stale references after applying the modifiers which can lead to buggy behaviour.
+    _CATS_0_19_0_SUPPORTS_CURRENT_BLENDER = (bpy.app.version < (3, 0))
+else:
+    _CATS_0_19_0_SUPPORTS_CURRENT_BLENDER = True
 
 # Used to find the main module of Cats, must match the 'name' in Cats' bl_info in its package's __init__.py
 _CATS_ADDON_NAME = "Cats Blender Plugin"
@@ -279,6 +298,62 @@ class CatsTranslate(OperatorBase):
                 return {'CANCELLED'}
             else:
                 return set_string_result
+
+
+class DevelopmentVersionInstructions(Panel):
+    bl_idname = "cats_dev_instructions"
+    bl_label = "Cats Development Version"
+    bl_space_type = "VIEW_3D"
+    bl_region_type = "UI"
+    bl_category = "Avatar Builder"
+    # It's only used as a popover UI element
+    bl_options = {'INSTANCED'}
+    # I don't know if there's a way to make automatically expanding popover panels, the panel itself expands if the UI
+    # its popped out of is wider than the bl_ui_units_x, but the contents of the panel doesn't expand with it.
+    bl_ui_units_x = 12
+
+    def draw(self, context: Context):
+        col = self.layout.column()
+        col.label(text="Download instructions:")
+        sub = col.column(align=True)
+        sub.scale_y = 0.7
+        sub.label(text="Click \"Download ZIP\" from the green \"Code\"")
+        sub.label(text="dropdown of the development branch:")
+        op = col.operator('wm.url_open', text="Cats Development branch", icon='URL')
+        op.url = "https://github.com/absolute-quantum/cats-blender-plugin/tree/development"
+        col.separator()
+        col.label(text="Or download ZIP directly:")
+        op = col.operator('wm.url_open', text="Direct ZIP download", icon='URL')
+        op.url = "https://github.com/absolute-quantum/cats-blender-plugin/archive/refs/heads/development.zip"
+
+
+def draw_cats_download(layout: UILayout):
+    col = layout.column()
+    op = col.operator('wm.url_open', text="Get Cats Blender Plugin", icon='URL')
+    op.url = "https://github.com/absolute-quantum/cats-blender-plugin"
+
+    if not _CATS_0_19_0_SUPPORTS_CURRENT_BLENDER:
+        main_message = "Cats 0.19.0 does not support Blender 3.0 and newer"
+    elif not _CATS_0_19_0_SUPPORTS_CURRENT_PYTHON:
+        # This won't happen often, it should only happen for Linux users on Blender 3.0.
+        # Though, it can happen if users are not using the bundled Python that comes with Blender and are instead
+        # using an incorrect Python version (Major and Minor version must match the version Blender comes with)
+        if _PYTHON_IS_BUNDLED:
+            # Python 3.10 was first bundled with Blender 3.1, so the user's Blender version must be at least 3.1.
+            # Since bundled Python is being used, tell the user it's their Blender version which is the issue.
+            main_message = "Cats 0.19.0 does not support Blender 3.1 and newer"
+        else:
+            # Since bundled Python isn't being used, tell the user it's their Python version which is the issue.
+            main_message = "Cats 0.19.0 does not support Python 3.10 and newer"
+    else:
+        # Cats 0.19.0 is supported by the current Blender/Python/OS, there's nothing else to do
+        return
+
+    sub = col.column(align=True)
+    sub.scale_y = 0.7
+    sub.label(text=main_message)
+    sub.label(text="If there's no newer Cats version, use the development version")
+    col.popover(panel=DevelopmentVersionInstructions.bl_idname)
 
 
 register_module_classes_factory(__name__, globals())
