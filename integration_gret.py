@@ -1,5 +1,5 @@
 import bpy
-from bpy.types import Object
+from bpy.types import Object, UILayout
 
 from typing import Union, Literal
 
@@ -139,3 +139,9 @@ def run_gret_shape_key_apply_modifiers(obj: Object, modifier_names_to_apply: set
         _run_gret_shape_key_apply_modifiers_modifier_mask(obj, modifier_names_to_apply)
     else:
         raise RuntimeError("Gret addon not found or version incompatible")
+
+
+def draw_gret_download(layout: UILayout):
+    col = layout.column()
+    op = col.operator('wm.url_open', text="Get Gret Addon", icon='URL')
+    op.url = "https://github.com/greisane/gret"

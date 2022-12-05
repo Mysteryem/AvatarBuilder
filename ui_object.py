@@ -32,7 +32,7 @@ from .extensions import (
     WmArmatureToggles,
     WmMeshToggles,
 )
-from .integration_gret import check_gret_shape_key_apply_modifiers
+from .integration_gret import check_gret_shape_key_apply_modifiers, draw_gret_download
 from .context_collection_ops import (
     CollectionAddBase,
     CollectionDuplicateBase,
@@ -373,9 +373,13 @@ class ObjectPanelBase(Panel):
 
                 if not gret_available:
                     if gret_available is None:
-                        box.label("Gret addon operator not found")
+                        box.label(text="Gret addon operator not found")
+                        # Don't want the .alert to be inherited, so create a sub ui element with .alert turned off
+                        sub = box.column()
+                        sub.alert = False
+                        draw_gret_download(sub)
                     else:
-                        box.label("Unsupported version of Gret")
+                        box.label(text="Unsupported version of Gret")
                 box.alert = False
             else:
                 box.prop(settings, 'apply_non_armature_modifiers')
