@@ -9,7 +9,7 @@ from bpy.types import (
     SpaceProperties,
     Event,
 )
-from bpy.props import EnumProperty, IntProperty
+from bpy.props import EnumProperty, IntProperty, CollectionProperty
 
 from typing import Optional, Union, cast
 from sys import intern
@@ -98,6 +98,58 @@ class KeepUVMapSearch(OperatorBase):
     def invoke(self, context: Context, event: Event) -> set[str]:
         context.window_manager.invoke_search_popup(self)
         return {'FINISHED'}
+
+
+# This almost lets us do a search operator like invoke_search_popup, but with a CollectionProperty. Unfortunately, it
+# requires one extra mouse click and doesn't automatically close the popup when selecting a choice from the prop_search.
+# There is also the limitation that prop_search doesn't have an icon_value parameter, only an icon parameter.
+class KeepUVMapSearch2(OperatorBase):
+    """Pick UV Map2"""
+    bl_idname = 'keep_uv_map_search2'
+    bl_label = "Pick UV Map"
+    bl_options = {'INTERNAL'}
+
+    index: IntProperty(min=0, options={'HIDDEN'})
+    available_maps_col: CollectionProperty(type=PropertyGroup, options={'HIDDEN'})
+
+    def execute(self, context: Context) -> set[str]:
+        # The operator doesn't actually do anything, it just sets its available_maps_col property and then displays
+        # some UI
+        return {'CANCELLED'}
+
+    def draw(self, context: Context):
+        layout = self.layout
+
+        obj = context.object
+        settings = ObjectPropertyGroup.get_group(obj).get_displayed_settings(context.scene)
+        collection = settings.mesh_settings.uv_settings.keep_uv_map_list.collection
+        index = self.index
+        if index < len(collection):
+            layout.prop_search(collection[index], 'name', self, 'available_maps_col', icon='GROUP_UVS', text="")
+
+    def invoke(self, context: Context, event: Event) -> set[str]:
+        col = self.available_maps_col
+        col.clear()
+
+        obj = context.object
+        me = obj.data
+        if isinstance(me, Mesh):
+
+            settings = ObjectPropertyGroup.get_group(obj).get_displayed_settings(context.scene)
+            collection = settings.mesh_settings.uv_settings.keep_uv_map_list.collection
+            used_uv_maps = {e.name for e in collection}
+
+            # Don't include the current row
+            current_row_index = self.index
+            if 0 <= current_row_index < len(collection):
+                used_uv_maps.remove(collection[self.index].name)
+
+            for idx, uv_layer in enumerate(me.uv_layers):
+                uv_layer_name = uv_layer.name
+                if uv_layer_name not in used_uv_maps:
+                    col.add().name = uv_layer_name
+
+        return context.window_manager.invoke_popup(self)
 
 
 class KeepUVMapUIList(UIList):
