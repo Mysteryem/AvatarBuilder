@@ -57,6 +57,7 @@ from .version_compatibility import (
     ASSET_HANDLE_TYPE,
     get_vertex_colors,
     MESH_HAS_COLOR_ATTRIBUTES,
+    ASSET_BROWSER_AVAILABLE,
 )
 from .registration import OperatorBase
 from .integration_pose_library import is_pose_library_enabled
@@ -66,7 +67,7 @@ class PickPoseLibraryAsset(OperatorBase):
     """Pick an Action Asset"""
     bl_idname = "pick_pose_asset"
     bl_label = "Pick Pose Asset"
-    bl_options = {'UNDO', 'REGISTER'}
+    bl_options = {'UNDO', 'REGISTER', 'INTERNAL'}
 
     @staticmethod
     def get_obj(context: Context) -> Optional[Object]:
@@ -752,4 +753,8 @@ class ObjectBuildSettingsAddMenu(Menu):
 
 
 del _op_builder
+
+if not ASSET_BROWSER_AVAILABLE:
+    del PickPoseLibraryAsset
+
 register_module_classes_factory(__name__, globals())
