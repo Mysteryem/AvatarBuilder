@@ -1489,7 +1489,7 @@ class BuildAvatarOp(OperatorBase):
                 # Look for a recursive parent that does have a copy object and reparent to that
                 recursive_parent = orig_parent.parent
                 while recursive_parent and recursive_parent not in orig_object_to_helper:
-                    orig_parent = orig_parent.parent
+                    recursive_parent = recursive_parent.parent
                 if recursive_parent:
                     # Re-parent to the found recursive parent
                     orig_recursive_parent_copy = orig_object_to_helper[recursive_parent].copy_object
