@@ -22,6 +22,7 @@ from bpy.types import (
     ViewLayer,
     BlendData,
     PoseBone,
+    Operator,
 )
 
 from .extensions import (
@@ -342,8 +343,95 @@ _DATA_LOOKUP: dict[type, Callable[[], PropCollection]] = {
 }
 
 
-def join_objects(object_type: Literal[Mesh, Armature], sorted_object_helpers: list[ObjectHelper], export_scene: Scene
-                 ) -> ObjectHelper:
+def _prepare_custom_normals_for_joining(combined_obj: Object, joining_obj: Object,
+                                        calling_op: Optional[Operator] = None):
+    if combined_obj.type != 'MESH' or joining_obj.type != 'MESH':
+        # This shouldn't happen because we're checking that we're joining meshes before calling this function
+        raise ValueError("combined_obj and joining_obj must both be mesh Objects (Object.type == 'MESH'")
+    joining_mesh = cast(Mesh, joining_obj.data)
+    if not joining_mesh.has_custom_normals:
+        # Nothing to do because the joining_mesh does not have custom normals
+        return
+    # Joining object will become the scale of combined_scale when it joins
+    combined_scale = combined_obj.scale
+    joining_scale = joining_obj.scale
+    if combined_scale == joining_scale:
+        # Nothing to do because the scale of both objects is the same
+        return
+
+    # TODO: Loses precision when the combined mesh has one axis very small (this might just be a limitation of single
+    #  precision floats being used to store normals)
+    scale_multiplier = np.array(combined_scale, dtype=np.single) / np.array(joining_scale, dtype=np.single)
+    if not np.all(np.isfinite(scale_multiplier)):
+        # Can't proceed, division by zero has occurred
+        # Technically, we could probably adjust only the axes that do not have a scale of zero
+        # For now, we won't raise
+        message = (
+            f"Can't join {joining_obj!r} into {combined_obj!r} and maintain custom normals due to {joining_obj!r}"
+            f" having a scale of 0 on at least one axis (scale is {joining_obj.scale})!"
+        )
+        if calling_op is not None:
+            calling_op.report({'WARNING'}, message)
+        else:
+            print(message)
+        return
+    # While we actually divided the components of combined_scale by the components of joining_scale, since division is
+    # just multiplication by the reciprocal, the sign of the result from multiplying the components instead will be the
+    # same as dividing.
+    # There is a special case when one of the components of combined_scale is zero, since the product will then be zero.
+    # Currently, this is allowed, though is unlikely to happen due to how little use there is for mesh objects that have
+    # been scaled to zero on at least one axis. Additionally, the normals of such an object are likely to be a mess
+    # anyway.
+    negative_scale_product = np.prod(scale_multiplier) < 0
+    if negative_scale_product:
+        # FIXME: Doesn't work when the product of the components of the combined and joining object scales is negative.
+        #  Not sure what to do here.
+        #  Note that faces will need to be flipped somewhere along this process to counteract them being flipped due to
+        #   the join operator.
+        #  It might be that because the flipping reverses polygon vertex order (does it?), we would also have to reverse
+        #   the order of the split normals for each polygon too?
+        #  Or maybe flipping polygons results in some other changes to loops?
+        #  Note: See how flipping individual polygons flips the split normals for that polygon, do we therefore have to
+        #   flip our custom normals about the plane of the normal of the polygon? It looks like it's just a negation
+        #   though?
+        message = (
+            f"Can't join {joining_obj!r} into {combined_obj!r} and maintain custom normals due to product of their"
+            f" components being negative!"
+        )
+        if calling_op is not None:
+            calling_op.report({'WARNING'}, message)
+        else:
+            print(message)
+        return
+    #
+    # Calculate split normals so we can read them from loops
+    joining_mesh.calc_normals_split()
+    #
+    num_loops = len(joining_mesh.loops)
+    current_split_normals = np.empty(num_loops * 3, dtype=np.single)
+    joining_mesh.loops.foreach_get('normal', current_split_normals)
+    # Change viewed shape so each index corresponds to a vector
+    current_split_normals.shape = (num_loops, 3)
+
+    # Multiply
+    current_split_normals *= np.abs(scale_multiplier)
+
+    # Now normalize the resulting vectors:
+    # When the divisor is zero, it means the vector was (0,0,0), in which case, we do nothing,
+    # otherwise, we divide the original vector
+    # normalized(v) = v/|v| = v/magnitude(v)
+    # 2-norm gets us euclidean distance, a.k.a. magnitude
+    magnitude_per_v = np.linalg.norm(current_split_normals, axis=1, keepdims=True)
+    # np.where tends to be faster than indexing to get only the subset that is normalizable and then updating that
+    # subset
+    #  normalizable = magnitude_per_v != 0
+    #  current_split_normals[normalizable] = current_split_normals[normalizable] / magnitude_per_v
+    normalized = np.where(magnitude_per_v == 0, current_split_normals, current_split_normals / magnitude_per_v)
+    joining_mesh.normals_split_custom_set(normalized)
+
+
+def join_objects(object_type: Literal[Mesh, Armature], sorted_object_helpers: list[ObjectHelper], export_scene: Scene,
+                 calling_op: Optional[Operator] = None) -> ObjectHelper:
     collection = _DATA_LOOKUP[object_type]()
 
     objects = [helper.copy_object for helper in sorted_object_helpers]
@@ -369,6 +457,14 @@ def join_objects(object_type: Literal[Mesh, Armature], sorted_object_helpers: li
             # Set mesh autosmooth if any of the joined meshes used it
             combined_object.data.use_auto_smooth = joined_mesh_autosmooth
 
+            # TODO: Add an option in an 'advanced settings' section of the SceneBuildSettings that allows this feature
+            #  to be turned off, since it's technically different behaviour to Blender by default.
+            # If the scale differs between an object being joined and the combined object, if the object being joined
+            # has custom normals, Blender won't adjust them for the new scale. Fortunately, in most cases, we can adjust
+            # them ourselves.
+            for obj in objects[1:]:
+                _prepare_custom_normals_for_joining(combined_object, obj, calling_op)
+
         # Join the objects
         context_override = {
             'selected_editable_objects': objects,
@@ -387,8 +483,9 @@ def join_objects(object_type: Literal[Mesh, Armature], sorted_object_helpers: li
 
 
 def join_objects_with_rename(combined_name: str, object_type: Literal[Mesh, Armature],
-                             sorted_object_helpers: list[ObjectHelper], export_scene: Scene) -> ObjectHelper:
-    combined_object_helper = join_objects(object_type, sorted_object_helpers, export_scene)
+                             sorted_object_helpers: list[ObjectHelper], export_scene: Scene,
+                             calling_op: Optional[Operator] = None) -> ObjectHelper:
+    combined_object_helper = join_objects(object_type, sorted_object_helpers, export_scene, calling_op)
 
     # Since we're going to rename the joined copy objects, if an object with the corresponding name already
     # exists, and it doesn't have a target_object_name set, we need to set it to its current name because
@@ -402,9 +499,9 @@ def join_objects_with_rename(combined_name: str, object_type: Literal[Mesh, Arma
 
 
 def join_objects_with_renames(join_dict: dict[str, list[ObjectHelper]], object_type: Literal[Mesh, Armature],
-                              export_scene: Scene) -> list[ObjectHelper]:
+                              export_scene: Scene, calling_op: Optional[Operator] = None) -> list[ObjectHelper]:
     return [
-        join_objects_with_rename(name, object_type, object_helpers, export_scene)
+        join_objects_with_rename(name, object_type, object_helpers, export_scene, calling_op)
         for name, object_helpers in join_dict.items()
     ]
 
@@ -1587,8 +1684,8 @@ class BuildAvatarOp(OperatorBase):
             self.build_object(helper, validated_build, export_scene, scene)
 
         # Join meshes and armatures by desired names and rename the combined objects to those desired names
-        meshes_after_joining = join_objects_with_renames(validated_build.desired_name_meshes, Mesh, export_scene)
-        join_objects_with_renames(validated_build.desired_name_armatures, Armature, export_scene)
+        meshes_after_joining = join_objects_with_renames(validated_build.desired_name_meshes, Mesh, export_scene, self)
+        join_objects_with_renames(validated_build.desired_name_armatures, Armature, export_scene, self)
 
         # After performing deletions, these structures are no good anymore because some objects may be deleted
         del orig_object_to_helper
@@ -1625,9 +1722,9 @@ class BuildAvatarOp(OperatorBase):
                     mesh_objs_after_joining.append(mesh_obj)
 
             shape_keys_combined = join_objects_with_rename(validated_build.shape_keys_mesh_name, Mesh,
-                                                           shape_key_helpers, export_scene)
+                                                           shape_key_helpers, export_scene, self)
             no_shape_keys_combined = join_objects_with_rename(validated_build.no_shape_keys_mesh_name, Mesh,
-                                                              no_shape_key_helpers, export_scene)
+                                                              no_shape_key_helpers, export_scene, self)
             mesh_objs_after_joining.append(shape_keys_combined.copy_object)
             mesh_objs_after_joining.append(no_shape_keys_combined.copy_object)
         else:
