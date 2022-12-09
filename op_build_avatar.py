@@ -432,6 +432,8 @@ def _prepare_custom_normals_for_joining(combined_obj: Object, joining_obj: Objec
 
 def join_objects(object_type: Literal[Mesh, Armature], sorted_object_helpers: list[ObjectHelper], export_scene: Scene,
                  calling_op: Optional[Operator] = None) -> ObjectHelper:
+    if not sorted_object_helpers:
+        raise ValueError("At least one ObjectHelper must be provided")
     collection = _DATA_LOOKUP[object_type]()
 
     objects = [helper.copy_object for helper in sorted_object_helpers]
@@ -1721,12 +1723,14 @@ class BuildAvatarOp(OperatorBase):
                     # The mesh in question ignores the 'reduce to two' option
                     mesh_objs_after_joining.append(mesh_obj)
 
-            shape_keys_combined = join_objects_with_rename(validated_build.shape_keys_mesh_name, Mesh,
-                                                           shape_key_helpers, export_scene, self)
-            no_shape_keys_combined = join_objects_with_rename(validated_build.no_shape_keys_mesh_name, Mesh,
-                                                              no_shape_key_helpers, export_scene, self)
-            mesh_objs_after_joining.append(shape_keys_combined.copy_object)
-            mesh_objs_after_joining.append(no_shape_keys_combined.copy_object)
+            if shape_key_helpers:
+                shape_keys_combined = join_objects_with_rename(validated_build.shape_keys_mesh_name, Mesh,
+                                                               shape_key_helpers, export_scene, self)
+                mesh_objs_after_joining.append(shape_keys_combined.copy_object)
+            if no_shape_key_helpers:
+                no_shape_keys_combined = join_objects_with_rename(validated_build.no_shape_keys_mesh_name, Mesh,
+                                                                  no_shape_key_helpers, export_scene, self)
+                mesh_objs_after_joining.append(no_shape_keys_combined.copy_object)
         else:
             mesh_objs_after_joining = [helper.copy_object for helper in meshes_after_joining]
 
