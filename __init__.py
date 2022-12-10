@@ -3,11 +3,13 @@ import pkgutil
 from .registration import register_submodule_factory
 bl_info = {
     "name": "Avatar Builder",
+    "description": "Combine objects to make ready-to-export models",
     "author": "Mysteryem",
     "version": (0, 1, 0),
     "blender": (2, 93, 7),
     "location": "3D View and Object Properties",
-    "tracker_url": "https://github.com/Mysteryem/Miscellaneous/issues",
+    "doc_url": "https://github.com/Mysteryem/AvatarBuilder",
+    "tracker_url": "https://github.com/Mysteryem/AvatarBuilder/issues",
     "category": "3D View",
 }
 
