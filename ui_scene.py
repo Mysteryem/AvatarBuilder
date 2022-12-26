@@ -62,7 +62,7 @@ class ScenePanel(Panel):
         group = ScenePropertyGroup.get_group(context.scene)
         col = layout.column()
         if group.is_export_scene:
-            col.label(text=f"{context.scene.name} Export Scene")
+            col.label(text=context.scene.name)
             col.operator(DeleteExportScene.bl_idname, icon='TRASH')
         else:
             col.label(text="Scene Settings Groups")
@@ -343,6 +343,7 @@ class SceneBuildSettingsPurge(OperatorBase):
 
 
 class DeleteExportScene(OperatorBase):
+    """Delete the current Export Scene, all Objects in it and their data"""
     bl_idname = "delete_export_scene"
     bl_label = "Delete Export Scene"
     bl_options = {'REGISTER', 'UNDO'}

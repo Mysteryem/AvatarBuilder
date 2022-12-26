@@ -871,11 +871,17 @@ class BuildAvatarOp(OperatorBase):
             #     self.report({'WARNING'}, warning)
 
     def build_mesh_modifiers(self, original_scene: Scene, obj: Object, me: Mesh, settings: ModifierSettings):
+        # TODO: This setting is not currently shown in the UI, it should probably be replaced with a setting on the
+        #  scene, or the UI in ui_object.py would need to be changed to display the Modifiers Box when there are any
+        #  non-armature modifiers
         # Optionally remove disabled modifiers
         if settings.remove_disabled_modifiers:
             modifiers = obj.modifiers
             mod: Modifier
-            for mod in obj.modifiers:
+            # While it seems to work when iterating normally, iterating in reverse is generally safer, since removing
+            # elements from the end is less likely to affect the pointers of elements that have yet to be iterated.
+            # To be really safe, we would have to iterate each index in reverse.
+            for mod in reversed(obj.modifiers):
                 if not mod.show_viewport:
                     modifiers.remove(mod)
 
@@ -886,7 +892,6 @@ class BuildAvatarOp(OperatorBase):
         shape_keys = me.shape_keys
         apply_modifiers = settings.apply_non_armature_modifiers
         if apply_modifiers != 'NONE' and not (apply_modifiers == 'APPLY_IF_NO_SHAPES' and shape_keys):
-            # Note: deprecated in newer blender
             context_override = {'object': obj}
 
             # All

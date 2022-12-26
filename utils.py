@@ -357,7 +357,7 @@ def ui_multiline_label(ui: UILayout, context_or_region_width: Union[Context, _Nu
     characters_wide = ui_width // _AVERAGE_PIXELS_PER_CHARACTER
     if characters_wide > 0:
         if max_lines is None:
-            # Automatic max_lines calculation. Set maximum number of lines to half the number of words
+            # Automatic max_lines calculation. Set maximum number of lines to a third of the number of words
             words = text.split()
             # The divisor might need to be adjusted, 2 is also a reasonable value.
             max_lines = len(words) // 3
