@@ -1,6 +1,8 @@
 from bpy.types import UIList, Context, UILayout
 
-from .extensions import ObjectPropertyGroup, VertexGroupSwap, VertexGroupSwapCollection
+from typing import Optional
+
+from .extensions import ObjectPropertyGroup, VertexGroupSwap, VertexGroupSwapCollection, VertexGroupSettings
 from .context_collection_ops import ContextCollectionOperatorBase
 from .utils import PropCollectionType
 from .registration import register_module_classes_factory
@@ -23,24 +25,30 @@ class VertexGroupSwapList(UIList):
 
 class VertexGroupSwapControlBase(ContextCollectionOperatorBase):
     @staticmethod
-    def get_vertex_group_settings(context: Context):
+    def get_vertex_group_settings(context: Context) -> Optional[VertexGroupSettings]:
         object_settings = ObjectPropertyGroup.get_group(context.object).get_displayed_settings(context.scene)
         if object_settings:
             return object_settings.mesh_settings.vertex_group_settings
         else:
-            raise RuntimeError("Context is incorrect, there is currently no displayed ObjectBuildSettings")
+            return None
 
     @classmethod
     def get_collection(cls, context: Context) -> PropCollectionType:
-        return VertexGroupSwapControlBase.get_vertex_group_settings(context).vertex_group_swaps.collection
+        vg_settings = VertexGroupSwapControlBase.get_vertex_group_settings(context)
+        return vg_settings.vertex_group_swaps.collection if vg_settings else None
 
     @classmethod
     def get_active_index(cls, context: Context) -> int:
-        return VertexGroupSwapControlBase.get_vertex_group_settings(context).vertex_group_swaps.active_index
+        vg_settings = VertexGroupSwapControlBase.get_vertex_group_settings(context)
+        return vg_settings.vertex_group_swaps.active_index if vg_settings else None
 
     @classmethod
     def set_active_index(cls, context: Context, value: int):
-        VertexGroupSwapControlBase.get_vertex_group_settings(context).vertex_group_swaps.active_index = value
+        vg_settings = VertexGroupSwapControlBase.get_vertex_group_settings(context)
+        if vg_settings:
+            vg_settings.vertex_group_swaps.active_index = value
+        else:
+            raise RuntimeError("Context is incorrect, there is currently no displayed ObjectBuildSettings")
 
 
 _op_builder = VertexGroupSwapControlBase.op_builder(
