@@ -23,10 +23,13 @@ def check_gret_shape_key_apply_modifiers() -> Union[str, Literal[False], None]:
     return None
 
 
-def _run_gret_shape_key_apply_modifiers_keep_modifiers(obj: Object, modifier_names_to_apply: set[str]):
+def _run_gret_shape_key_apply_modifiers_keep_modifiers(obj: Object, modifier_names_to_apply: set[str]) -> set[str]:
     """Older version of Gret applies all non-disabled modifiers.
     Temporarily enables modifiers in modifier_names_to_apply and disables other modifiers, runs the operator and then
     restore the modifiers that were temporarily disabled."""
+    if not modifier_names_to_apply:
+        # None to apply, so immediately return.
+        return {'FINISHED'}
     mods_to_enable = []
     try:
         for mod in obj.modifiers:
@@ -55,11 +58,14 @@ def _run_gret_shape_key_apply_modifiers_keep_modifiers(obj: Object, modifier_nam
                 expected_modifier_not_found.append(mod_name)
 
 
-def _run_gret_shape_key_apply_modifiers_modifier_mask(obj: Object, modifier_names_to_apply: set[str]):
+def _run_gret_shape_key_apply_modifiers_modifier_mask(obj: Object, modifier_names_to_apply: set[str]) -> set[str]:
     """Newer version of Gret. Only supports up to 32 modifiers (Blender limitation for BoolVectorProperty), uses a mask
     to decide which modifiers to apply.
     Figures out in advance if it's even possible to apply all the modifiers, then repeatedly calls the operator until
     all the modifiers in modifier_names_to_apply have been applied."""
+    if not modifier_names_to_apply:
+        # None to apply, so immediately return
+        return {'FINISHED'}
     max_modifiers_per_call = 32
     full_mask = []
     context_override = {'object': obj}
@@ -74,7 +80,8 @@ def _run_gret_shape_key_apply_modifiers_modifier_mask(obj: Object, modifier_name
             full_mask.append(False)
 
     if last_apply_index == -1:
-        # There are no modifiers to apply, so there is nothing to do
+        # There are no modifiers to apply (i.e., the passed in set of names didn't match any modifiers that exist), so
+        # there is nothing to do
         return {'FINISHED'}
     elif last_apply_index < max_modifiers_per_call:
         # The last modifier that needs to be applied is within the first 32 modifiers, we can simply call the
@@ -134,9 +141,9 @@ def _run_gret_shape_key_apply_modifiers_modifier_mask(obj: Object, modifier_name
 def run_gret_shape_key_apply_modifiers(obj: Object, modifier_names_to_apply: set[str]):
     gret_check = check_gret_shape_key_apply_modifiers()
     if gret_check == 'keep_modifiers':
-        _run_gret_shape_key_apply_modifiers_keep_modifiers(obj, modifier_names_to_apply)
+        return _run_gret_shape_key_apply_modifiers_keep_modifiers(obj, modifier_names_to_apply)
     elif gret_check == 'modifier_mask':
-        _run_gret_shape_key_apply_modifiers_modifier_mask(obj, modifier_names_to_apply)
+        return _run_gret_shape_key_apply_modifiers_modifier_mask(obj, modifier_names_to_apply)
     else:
         raise RuntimeError("Gret addon not found or version incompatible")
 
