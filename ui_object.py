@@ -61,6 +61,7 @@ from .version_compatibility import (
 )
 from .registration import OperatorBase
 from .integration_pose_library import is_pose_library_enabled
+from .utils import has_any_enabled_non_armature_modifiers
 
 
 class PickPoseLibraryAsset(OperatorBase):
@@ -469,7 +470,7 @@ class ObjectPanelBase(Panel):
         # modifier
         # Additionally, modifiers which are disabled in the viewport get removed, so only count modifiers that are
         # enabled
-        if any(mod.type != 'ARMATURE' and mod.show_viewport for mod in obj.modifiers):
+        if has_any_enabled_non_armature_modifiers(obj):
             self.draw_mesh_modifiers_box(properties_col, settings.modifier_settings, ui_toggle_data, enabled)
 
         if me.uv_layers:

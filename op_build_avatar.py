@@ -255,6 +255,17 @@ def reset_pose_bones(bones: PropCollection[PoseBone], update_tag=True):
         bones.id_data.update_tag()
 
 
+def do_build_modifiers(obj: Object):
+    do_remove_disabled = False
+    for mod in obj.modifiers:
+        if mod.type != 'ARMATURE':
+            if mod.show_viewport:
+                return True, True
+            else:
+                do_remove_disabled = True
+    return do_remove_disabled, False
+
+
 @dataclass
 class ObjectHelper:
     """Helper class"""
@@ -867,6 +878,9 @@ class BuildAvatarOp(OperatorBase):
             for mod in obj.modifiers:
                 if not mod.show_viewport:
                     modifiers.remove(mod)
+
+        if not utils.has_any_enabled_non_armature_modifiers(obj):
+            return
 
         # Apply modifiers
         shape_keys = me.shape_keys

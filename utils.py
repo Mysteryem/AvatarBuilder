@@ -368,3 +368,7 @@ def ui_multiline_label(ui: UILayout, context_or_region_width: Union[Context, _Nu
         lines = _TEXT_WRAPPER.wrap(text)
         for line in lines:
             ui.label(text=line)
+
+
+def has_any_enabled_non_armature_modifiers(obj: Object):
+    return any(mod.type != 'ARMATURE' and mod.show_viewport for mod in obj.modifiers)
