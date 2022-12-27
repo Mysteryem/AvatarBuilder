@@ -1,6 +1,7 @@
 from bpy.types import Context, Panel
 
 from .apply_mmd_mappings import ApplyMMDMappings
+from .scene_cleanup import PurgeUnusedObjects
 from ..registration import register_module_classes_factory
 
 
@@ -14,6 +15,7 @@ class ObjectToolsPanel(Panel):
     bl_space_type = 'VIEW_3D'
     bl_region_type = 'UI'
     bl_category = "Avatar Builder"
+    bl_options = {'DEFAULT_CLOSED'}
     # After MMD Mappings and before Object Settings
     bl_order = 4
 
@@ -24,6 +26,7 @@ class ObjectToolsPanel(Panel):
     def draw(self, context: Context):
         layout = self.layout
         layout.operator(ApplyMMDMappings.bl_idname, text="Apply MMD Mappings", icon="SHAPEKEY_DATA")
+        layout.operator(PurgeUnusedObjects.bl_idname, text="Purge Unused Objects", icon="ORPHAN_DATA")
 
 
 register_module_classes_factory(__name__, globals())

@@ -1,5 +1,5 @@
 import bpy
-from typing import Optional, Callable, Any
+from typing import Optional, Callable, Any, cast, Iterator, Union, overload, Literal
 from itertools import chain
 from dataclasses import dataclass
 from os import path
@@ -17,6 +17,7 @@ from bpy.types import (
     WindowManager,
     Collection,
     Action,
+    ViewLayer,
 )
 
 from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup, CollectionPropBase
@@ -293,6 +294,42 @@ class SceneBuildSettings(PropertyGroup):
 
     def set_name_no_propagate(self, new_name: str):
         change_name_no_propagate(self, 'name_prop', new_name)
+
+    _GEN_OBJECT = Iterator[Object]
+    _GEN_TUPLE = Iterator[tuple[Object, 'ObjectBuildSettings']]
+
+    @overload
+    def objects_gen(self, view_layer: ViewLayer, yield_settings: Literal[False] = False) -> _GEN_OBJECT: ...
+    @overload
+    def objects_gen(self, view_layer: ViewLayer, yield_settings: Literal[True]) -> _GEN_TUPLE: ...
+
+    def objects_gen(self, view_layer: ViewLayer, yield_settings: bool = False) -> Union[_GEN_OBJECT, _GEN_TUPLE]:
+        """Get a generator that iterates through objects that are part of the SceneBuildSettings"""
+        # The owning ID of this property group is the scene
+        scene = cast(Scene, self.id_data)
+
+        collection = self.limit_to_collection
+        if collection:
+            objects_gen = collection.all_objects
+        else:
+            objects_gen = scene.objects
+
+        allowed_types = ObjectPropertyGroup.ALLOWED_TYPES
+        objects_gen = (o for o in objects_gen if o.type in allowed_types)
+
+        if self.ignore_hidden_objects:
+            objects_gen = (o for o in objects_gen if o.visible_get(view_layer=view_layer))
+
+        self_name = self.name
+        for o in objects_gen:
+            object_settings = ObjectPropertyGroup.get_group(o).collection.get(self_name)
+            if object_settings and object_settings.include_in_build:
+                if yield_settings:
+                    yield o, object_settings
+                else:
+                    yield o
+
+
 
 
 def _draw_pattern_prop(layout: UILayout, _shape_keys: Key, item: "ShapeKeyOp", label: str):
@@ -972,9 +1009,14 @@ class WmSceneToggles(PropertyGroup):
     pass
 
 
+class WmToolsToggles(PropertyGroup):
+    objects_purge_settings: BoolProperty(name="Settings")
+
+
 class UiToggles(PropertyGroup):
     scene: PointerProperty(type=WmSceneToggles)
     object: PointerProperty(type=WmObjectToggles)
+    tools: PointerProperty(type=WmToolsToggles)
 
 
 class WindowManagerPropertyGroup(IdPropertyGroup, PropertyGroup):

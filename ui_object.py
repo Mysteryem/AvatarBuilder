@@ -62,6 +62,7 @@ from .version_compatibility import (
 from .registration import OperatorBase
 from .integration_pose_library import is_pose_library_enabled
 from .utils import has_any_enabled_non_armature_modifiers
+from .ui_common import draw_expandable_header
 
 
 class PickPoseLibraryAsset(OperatorBase):
@@ -185,32 +186,8 @@ class ObjectPanelBase(Panel):
                                enabled: bool, copy_type: Optional[CopyPropsItem], **header_args):
         """Draw an expandable header
         :return: a box UILayout when expanded, otherwise None"""
-        header_row = properties_col.row(align=True)
-        header_row.use_property_split = False
-        header_row.alert = not enabled
-        is_expanded = getattr(ui_toggle_data, ui_toggle_prop)
-        expand_icon = 'DISCLOSURE_TRI_DOWN' if is_expanded else 'DISCLOSURE_TRI_RIGHT'
-        # We draw everything in the header as the toggle property so that any of it can be clicked on to expand the
-        # contents.
-        # To debug the clickable regions of the header, set emboss to True in each .prop call.
-        header_row.prop(ui_toggle_data, ui_toggle_prop, text="", icon=expand_icon, emboss=False)
-
-        # If we left align the entire header row, it won't expand to fill the entire width, meaning the user
-        # can't click on anywhere in the header to expand it, so we create a sub_row that is left aligned and draw
-        # the header text there
-        sub_row = header_row.row(align=True)
-        sub_row.alignment = 'LEFT'
-        # Force emboss to be disabled
-        header_args['emboss'] = False
-        sub_row.prop(ui_toggle_data, ui_toggle_prop, **header_args)
-
-        # We then need a third element to expand and fill the rest of the header, ensuring that the entire header can be
-        # clicked on.
-        # Text needs to be non-empty to actually expand, this does cut the header text off slightly when the Panel is
-        # made very narrow, but this will have to do.
-        # toggle=1 will hide the tick box
-        header_row.prop(ui_toggle_data, ui_toggle_prop, text=" ", toggle=1, emboss=False)
-
+        is_expanded, header_row, _sub_row = draw_expandable_header(
+            properties_col, ui_toggle_data, ui_toggle_prop, not enabled, **header_args)
         # Draw menu button for copying properties to other groups or other selected objects
         if copy_type:
             # Sub row without align so that the button appears disconnected from the third element

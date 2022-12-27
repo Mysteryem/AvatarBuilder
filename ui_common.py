@@ -1,11 +1,41 @@
-from bpy.types import Context, SpaceProperties, Object, SpaceView3D
+from bpy.types import Context, SpaceProperties, Object, SpaceView3D, UILayout
 
-from .ui_object import ObjectPanelView3D
 from .extensions import ObjectPropertyGroup
+from .utils import PropertyHolderType
+
+
+# TODO: Can we set alert after drawing properties and sub layouts?
+def draw_expandable_header(layout: UILayout, ui_toggle_data: PropertyHolderType, ui_toggle_prop: str,
+                           alert: bool = False, **header_args):
+    header_row = layout.row(align=True)
+    header_row.use_property_split = False
+    header_row.alert = alert
+    is_expanded = getattr(ui_toggle_data, ui_toggle_prop)
+    expand_icon = 'DISCLOSURE_TRI_DOWN' if is_expanded else 'DISCLOSURE_TRI_RIGHT'
+    # We draw everything in the header as the toggle property so that any of it can be clicked on to expand the
+    # contents.
+    # To debug the clickable regions of the header, set emboss to True in each .prop call.
+    header_row.prop(ui_toggle_data, ui_toggle_prop, text="", icon=expand_icon, emboss=False)
+
+    # If we left align the entire header row, it won't expand to fill the entire width, meaning the user
+    # can't click on anywhere in the header to expand it, so we create a sub_row that is left aligned and draw
+    # the header text there
+    sub_row = header_row.row(align=True)
+    sub_row.alignment = 'LEFT'
+    # Force emboss to be disabled
+    header_args['emboss'] = False
+    sub_row.prop(ui_toggle_data, ui_toggle_prop, **header_args)
+
+    # We then need a third element to expand and fill the rest of the header, ensuring that the entire header can be
+    # clicked on.
+    # Text needs to be non-empty to actually expand, this does cut the header text off slightly when the Panel is
+    # made very narrow, but this will have to do.
+    # toggle=1 will hide the tick box
+    header_row.prop(ui_toggle_data, ui_toggle_prop, text=" ", toggle=1, emboss=False)
+    return is_expanded, header_row, sub_row
 
 
 def redraw_object_properties_panels(context: Context):
-    view3d_panel_drawn = ObjectPanelView3D.poll(context)
     # Iterate through all areas in the current screen
     for area in context.screen.areas:
         if area.type == 'PROPERTIES':
@@ -41,7 +71,7 @@ def redraw_object_properties_panels(context: Context):
                             # If we found the WINDOW region before the end, we can skip the other regions
                             # (HEADER and NAVIGATION_BAR)
                             break
-        elif view3d_panel_drawn and area.type == 'VIEW_3D':
+        elif area.type == 'VIEW_3D':
             ui_region_shown = False
             # I think there's only ever a single space in the 3D View, but we'll loop to be sure
             for space in area.spaces:

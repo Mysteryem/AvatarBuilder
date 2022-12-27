@@ -1184,7 +1184,6 @@ class BuildAvatarOp(OperatorBase):
         #                   location=True, rotation=True, scale=True)
 
     def validate_build(self, context: Context, active_scene_settings: SceneBuildSettings) -> Optional[ValidatedBuild]:
-        scene = context.scene
         view_layer = context.view_layer
 
         export_scene_name = active_scene_settings.name
@@ -1194,39 +1193,24 @@ class BuildAvatarOp(OperatorBase):
         else:
             export_scene_name += " Export Scene"
 
-        collection = active_scene_settings.limit_to_collection
-        if collection is not None:
-            objects_gen = collection.all_objects
-        else:
-            objects_gen = scene.objects
-
-        if active_scene_settings.ignore_hidden_objects:
-            objects_gen = (o for o in objects_gen if o.visible_get(view_layer=view_layer))
-
         object_to_helper: dict[Object, ObjectHelper] = {}
-
-        allowed_object_types = {'MESH', 'ARMATURE'}
-        for obj in objects_gen:
-            if obj.type in allowed_object_types:
-                group = ObjectPropertyGroup.get_group(obj)
-                object_settings = group.get_synced_settings(scene)
-                if object_settings and object_settings.include_in_build:
-                    # Ensure all objects (and their copies) will be in object mode. Since the operator's .poll fails if
-                    # context.mode != 'OBJECT', this will generally only happen if some script has changed the active object
-                    # without leaving the current sculpt/weight-paint or other mode that only allows one object at a time.
-                    if obj.mode != 'OBJECT':
-                        override = {'active_object': obj}
-                        utils.op_override(bpy.ops.object.mode_set, override, context, mode='OBJECT')
-                    desired_name = object_settings.general_settings.target_object_name
-                    if not desired_name:
-                        desired_name = obj.name
-                    helper = ObjectHelper(
-                        orig_object=obj,
-                        orig_object_name=obj.name,
-                        settings=object_settings,
-                        desired_name=desired_name,
-                    )
-                    object_to_helper[obj] = helper
+        for obj, object_settings in active_scene_settings.objects_gen(view_layer, yield_settings=True):
+            # Ensure all objects (and their copies) will be in object mode. Since the operator's .poll fails if
+            # context.mode != 'OBJECT', this will generally only happen if some script has changed the active object
+            # without leaving the current sculpt/weight-paint or other mode that only allows one object at a time.
+            if obj.mode != 'OBJECT':
+                override = {'active_object': obj}
+                utils.op_override(bpy.ops.object.mode_set, override, context, mode='OBJECT')
+            desired_name = object_settings.general_settings.target_object_name
+            if not desired_name:
+                desired_name = obj.name
+            helper = ObjectHelper(
+                orig_object=obj,
+                orig_object_name=obj.name,
+                settings=object_settings,
+                desired_name=desired_name,
+            )
+            object_to_helper[obj] = helper
 
         # Get desired object names and validate that there won't be any attempt to join Objects of different types
         desired_name_meshes: dict[str, list[ObjectHelper]] = defaultdict(list)
