@@ -262,11 +262,6 @@ def get_unique_name(base_name: str, existing_names_or_collection: Union[Iterable
         number_format = f'0{min_number_digits}d'
     else:
         number_format = 'd'
-    if strip_end_numbers:
-        match = re.fullmatch(r'(.*)' + re.escape(number_separator) + r'\d+', base_name)
-        if match:
-            # group(0) is the full match, group(1) is the first capture group
-            base_name = match.group(1)
     if isinstance(existing_names_or_collection, bpy_prop_collection):
         # Getting the nth element from an mth element collection appears to scale linearly with n, so checking if the
         # 500th element is in a 1000 element collection will be done in half the time of checking whether the 1000th
@@ -288,6 +283,11 @@ def get_unique_name(base_name: str, existing_names_or_collection: Union[Iterable
     else:
         existing_names_set = set(existing_names_or_collection)
 
+    if strip_end_numbers and base_name in existing_names_set:
+        match = re.fullmatch(r'(.*)' + re.escape(number_separator) + r'\d+', base_name)
+        if match:
+            # group(0) is the full match, group(1) is the first capture group
+            base_name = match.group(1)
     unique_name = base_name
     base_with_separator = base_name + number_separator
     idx = 0
