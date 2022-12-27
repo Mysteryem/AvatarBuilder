@@ -392,7 +392,17 @@ def register_submodule_factory(module_name, submodule_names):
 
     def _register():
         nonlocal module
-        module = __import__(name=module_name, fromlist=submodule_names)
+        try:
+            module = __import__(name=module_name, fromlist=submodule_names)
+        except Exception as e:
+            # Resilience against errors that occur on import. This is only really useful for development, since it will
+            # force the modules to be reloaded upon reloading the addon.
+            from sys import modules
+            for submodule_name in reversed(submodule_names):
+                full_module_name = module_name + '.' + submodule_name
+                if full_module_name in modules:
+                    del modules[full_module_name]
+            raise e
 
         # reverse-partition each "package.subpackage.submodule" name into {"submodule": "package.subpackage"}
         submodule_name_to_package_name: dict[str, str] = {p[2]: p[0] for p in map(reverse_partition, submodule_names)}
@@ -421,22 +431,63 @@ def register_submodule_factory(module_name, submodule_names):
 
         submodules_load_order[:] = [submodule_data.module for submodule_data in module_lookup.values()]
 
-        for submodule_data in submodules_register_order:
-            mod = submodule_data.module
-            if hasattr(mod, 'register'):
-                mod.register()
+        successful_registration = []
+        try:
+            for submodule_data in submodules_register_order:
+                mod = submodule_data.module
+                if hasattr(mod, 'register'):
+                    mod.register()
+                    successful_registration.append(mod)
+        except Exception as e:
+            # Resilience against errors when calling .register of modules
+            print("Error occurred during registration, attempting unregister and module unload")
+            # Attempt to unregister the module that failed to register
+            if hasattr(mod, 'unregister'):
+                # noinspection PyBroadException
+                try:
+                    mod.unregister()
+                except Exception:
+                    # Since register() failed part way through, we expect unregister() to fail part way through too
+                    pass
+            # Unregister modules that were successfully registered
+            for mod in successful_registration:
+                try:
+                    if hasattr(mod, 'unregister'):
+                        mod.unregister()
+                except Exception as unregister_exception:
+                    print(f"Ignoring exception when unregistering {mod.__name__}: {unregister_exception}")
+            from sys import modules
+            # Delete all the modules
+            for mod in reversed(submodules_load_order):
+                mod_name = mod.__name__
+                if mod_name in modules:
+                    del modules[mod_name]
+            raise e
 
     def _unregister():
         from sys import modules
+        exception = None
         for submodule_data in reversed(submodules_register_order):
             mod = submodule_data.module
-            if hasattr(mod, 'unregister'):
-                mod.unregister()
-            delattr(submodule_data.package, submodule_data.module_name_no_prefix)
+            try:
+                if hasattr(mod, 'unregister'):
+                    mod.unregister()
+            except Exception as e:
+                # Resilience against errors occurring during .unregister()
+                print(f"Exception occurred unregistering {mod.__name__}: {e}")
+                if exception is None:
+                    # Record that there was an exception, if there's more than one, we'll ignore all but rhe first
+                    exception = e
+            finally:
+                delattr(submodule_data.package, submodule_data.module_name_no_prefix)
         submodules_register_order.clear()
 
+        # Delete all the modules
         for mod in reversed(submodules_load_order):
             del modules[mod.__name__]
         submodules_load_order.clear()
+
+        if exception is not None:
+            raise exception
 
     return _register, _unregister
