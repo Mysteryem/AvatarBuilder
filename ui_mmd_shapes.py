@@ -15,6 +15,7 @@ from .context_collection_ops import (
 )
 from .version_compatibility import OPERATORS_HAVE_POLL_MESSAGES
 from .integration_cats import draw_cats_download
+from .tools.apply_mmd_mappings import ApplyMMDMappings
 
 
 class ShowMappingComment(OperatorBase):
@@ -279,6 +280,8 @@ class MmdShapesSpecialsMenu(Menu):
         layout.separator()
         layout.operator(MmdMappingMove.bl_idname, text="Move To Top", icon="TRIA_UP_BAR").type = 'TOP'
         layout.operator(MmdMappingMove.bl_idname, text="Move To Bottom", icon="TRIA_DOWN_BAR").type = 'BOTTOM'
+        layout.separator()
+        layout.operator(ApplyMMDMappings.bl_idname, text="Apply To Selected", icon="CHECKMARK")
 
 
 class MappingCsvLine(NamedTuple):
@@ -455,7 +458,7 @@ class MmdShapeMappingsPanel(Panel):
     bl_category = "Avatar Builder"
     # After main Scene Build Settings Panel by default
     bl_order = 1
-    # MMD Mappings are always needed, so default to being closed
+    # MMD Mappings aren't always needed, so default to being closed
     bl_options = {'DEFAULT_CLOSED'}
 
     @classmethod

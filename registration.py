@@ -1,5 +1,6 @@
 from collections import defaultdict
-from typing import TypeVar, Union, Generic, Optional, Any, Callable, overload, Literal
+from typing import TypeVar, Union, Generic, Optional, Any, Callable, overload, Literal, NamedTuple
+from types import ModuleType
 from sys import intern
 
 import bpy
@@ -344,8 +345,25 @@ def register_module_classes_factory(calling_module_name: str,
             calling_module_globals['unregister'] = _unregister
 
 
+def reverse_partition(s: str, delim: str = '.') -> tuple[str, str, str]:
+    """str.partition partitions from the first found delimiter, this function partitions from the last found delimiter
+    instead and when the delimiter is not found, the original string is returned as the last element instead of the
+    first element"""
+    index = s.rfind(delim)
+    if index == -1:
+        return '', '', s
+    else:
+        return s[:index], delim, s[index+1:]
+
+
+class _SubModuleData(NamedTuple):
+    module: ModuleType
+    module_name_no_prefix: str
+    package: ModuleType
+
+
 # Extension of bpy.utils.register_submodule_factory that will also register modules without register and unregister
-# functions
+# functions and
 def register_submodule_factory(module_name, submodule_names):
     """
     Utility function to create register and unregister functions
@@ -356,6 +374,7 @@ def register_submodule_factory(module_name, submodule_names):
 
        Modules are registered in the order given,
        unregistered in reverse order.
+       The load/unload order may differ from register/unregister if a module is set to be registered before its package.
 
     :arg module_name: The module name, typically ``__name__``.
     :type module_name: string
@@ -366,24 +385,58 @@ def register_submodule_factory(module_name, submodule_names):
     """
 
     module = None
-    submodules = []
+    # It's possible that a submodule may want to be registered before its package, in which case, we need to maintain
+    # two lists, since the package must be loaded first
+    submodules_load_order: list[ModuleType] = []
+    submodules_register_order: list[_SubModuleData] = []
 
     def _register():
         nonlocal module
         module = __import__(name=module_name, fromlist=submodule_names)
-        submodules[:] = [getattr(module, name) for name in submodule_names]
-        for mod in submodules:
+
+        # reverse-partition each "package.subpackage.submodule" name into {"submodule": "package.subpackage"}
+        submodule_name_to_package_name: dict[str, str] = {p[2]: p[0] for p in map(reverse_partition, submodule_names)}
+
+        # Submodules will be entered into this dict in the order they are required to be loaded (packages will always be
+        # loaded before their submodules)
+        module_lookup: dict[str, _SubModuleData] = {}
+
+        def get_submodule_data(module_name: str):
+            if module_name in module_lookup:
+                return module_lookup[module_name]
+            else:
+                package_name = submodule_name_to_package_name[module_name]
+                if package_name:
+                    package_data = get_submodule_data(package_name)
+                    package = package_data.module
+                else:
+                    # If the package_name is '', it indicates that the package is the main module
+                    package = module
+                submodule = getattr(package, module_name)
+                submodule_data = _SubModuleData(submodule, module_name, package)
+                module_lookup[module_name] = submodule_data
+                return submodule_data
+
+        submodules_register_order[:] = [get_submodule_data(name) for name in submodule_name_to_package_name.keys()]
+
+        submodules_load_order[:] = [submodule_data.module for submodule_data in module_lookup.values()]
+
+        for submodule_data in submodules_register_order:
+            mod = submodule_data.module
             if hasattr(mod, 'register'):
                 mod.register()
 
     def _unregister():
         from sys import modules
-        for mod in reversed(submodules):
+        for submodule_data in reversed(submodules_register_order):
+            mod = submodule_data.module
             if hasattr(mod, 'unregister'):
                 mod.unregister()
-            name = mod.__name__
-            delattr(module, name.partition(".")[2])
-            del modules[name]
-        submodules.clear()
+            delattr(submodule_data.package, submodule_data.module_name_no_prefix)
+        submodules_register_order.clear()
+
+        for mod in reversed(submodules_load_order):
+            del modules[mod.__name__]
+        submodules_load_order.clear()
 
     return _register, _unregister

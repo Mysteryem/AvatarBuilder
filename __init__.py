@@ -14,16 +14,26 @@ bl_info = {
 }
 
 
+# Register extensions first so that other modules can use types from it as pointer or collection properties
+_early_ordered_register = [
+    # Names to use are the full names without the main package prefix, e.g. "tools.ui_tools" instead of
+    # "avatar_builder.tools.ui_tools"
+    'extensions'
+]
+
+
 def _get_all_module_names():
     """Finds all modules"""
+    early_modules = set(_early_ordered_register)
     # Create a copy so that we don't modify the existing list
-    all_submodule_names = []
+    all_submodule_names = _early_ordered_register.copy()
     # Prefix seems to be required to import submodules of submodules (not that we have any yet)
     package_prefix = __name__ + "."
     prefix_length = len(package_prefix)
     for mod_info in pkgutil.walk_packages(path=__path__, prefix=package_prefix):
         no_prefix_name = mod_info.name[prefix_length:]
-        all_submodule_names.append(no_prefix_name)
+        if no_prefix_name not in early_modules:
+            all_submodule_names.append(no_prefix_name)
     return all_submodule_names
 
 
