@@ -49,21 +49,28 @@ def _mmd_remap_rename(operator: Operator, mesh_obj: Object, key_blocks: PropColl
         desired_names.append((shape, unique_desired_name))
 
     # Now go through the shape keys and rename them to their desired names
+    used_names = set(key_blocks.keys())
     for shape, unique_desired_name in desired_names:
-        if shape.name != unique_desired_name:
+        shape_name = shape.name
+        if shape_name != unique_desired_name:
             # Unlike most types in Blender, if you rename a ShapeKey to one that already exists, the shape
             # key that was renamed will be given a different, unique name, instead of the existing ShapeKey
             # being renamed.
             # For this reason, if we want to rename a ShapeKey to the same name as a ShapeKey that already
             # exists, the ShapeKey that already exists has to be renamed to something else first.
-            # TODO: Make this faster by keeping track of all current shape key names in a set and passing in
-            #  that set instead of key_blocks directly
-            temporary_new_name = utils.get_unique_name(unique_desired_name, key_blocks)
-            if temporary_new_name != unique_desired_name:
+            temporary_unique_name = utils.get_unique_name(unique_desired_name, used_names)
+            if temporary_unique_name != unique_desired_name:
                 # Since we guarantee beforehand that all the names will end up unique, this name typically
-                # won't end up used unless it just so happens to match the desired name.
-                key_blocks[unique_desired_name].name = temporary_new_name
-            shape.name = unique_desired_name
+                # won't end up used unless it just so happens to match the desired name of another shape key.
+                key_blocks[unique_desired_name].name = temporary_unique_name
+                shape.name = unique_desired_name
+                used_names.add(temporary_unique_name)
+            else:
+                shape.name = unique_desired_name
+                used_names.add(unique_desired_name)
+            # Neither temporary_unique_name nor unique_desired_name can be the same as shape_name so there's no risk of
+            # removing a name we just added
+            used_names.remove(shape_name)
 
 
 def _mmd_remap_add(operator: Operator, mesh_obj: Object, key_blocks: PropCollection[ShapeKey],
