@@ -1016,11 +1016,11 @@ class WmObjectToggles(PropertyGroup):
 
 class WmSceneToggles(PropertyGroup):
     # General stuff such as whether to ignore hidden objects
-    # general: BoolProperty()
-    # TODO: Might want to separate vrchat options, e.g., one section for performance stuff and another for mmd and other
+    general: BoolProperty(name="Settings")
+    fixes: BoolProperty(name="Fixes")
+    # Might want to separate vrchat options, e.g., one section for performance stuff and another for mmd and other
     # vrchat: BoolProperty()
     # unity: BoolProperty()
-    pass
 
 
 class WmToolsToggles(PropertyGroup):

@@ -14,7 +14,7 @@ from typing import cast
 from collections import defaultdict
 
 from .registration import register_module_classes_factory, OperatorBase
-from .extensions import ScenePropertyGroup, ObjectPropertyGroup, MmdShapeKeySettings, SceneBuildSettings
+from .extensions import ScenePropertyGroup, ObjectPropertyGroup, MmdShapeKeySettings, SceneBuildSettings, WindowManagerPropertyGroup
 from .op_build_avatar import BuildAvatarOp
 from .ui_object import ObjectBuildSettingsAdd
 from . import ui_common
@@ -96,34 +96,41 @@ class ScenePanel(Panel):
             col = layout.column()
             scene_settings = group.active
             if scene_settings:
-                box = col.box()
-                box_col = box.column()
-                box_col.prop(scene_settings, 'limit_to_collection')
-                box_col.prop(scene_settings, 'ignore_hidden_objects')
-                box_col.prop(scene_settings, 'reduce_to_two_meshes')
-                if scene_settings.reduce_to_two_meshes:
-                    sub = box_col.column()
-                    sub.use_property_split = True
-                    sub.alert = not scene_settings.shape_keys_mesh_name
-                    sub.prop(scene_settings, 'shape_keys_mesh_name', icon="MESH_DATA", text="Shape keys")
-                    sub.alert = not scene_settings.no_shape_keys_mesh_name
-                    sub.prop(scene_settings, 'no_shape_keys_mesh_name', icon="MESH_DATA", text="No shape keys")
-                    sub.alert = False
-                self.draw_mmd(box_col, scene_settings.mmd_settings)
+                scene_toggles = WindowManagerPropertyGroup.get_group(context.window_manager).ui_toggles.scene
 
-                box_col.prop(scene_settings, 'do_limit_total')
-                if scene_settings.do_limit_total:
-                    sub = box_col.column()
-                    sub.use_property_split = True
-                    sub.prop(scene_settings, 'limit_num_groups')
+                draw_general, _, _ = ui_common.draw_expandable_header(col, scene_toggles, 'general')
+                if draw_general:
+                    box = col.box()
+                    box_col = box.column()
+                    box_col.prop(scene_settings, 'limit_to_collection')
+                    box_col.prop(scene_settings, 'ignore_hidden_objects')
+                    box_col.prop(scene_settings, 'reduce_to_two_meshes')
+                    if scene_settings.reduce_to_two_meshes:
+                        sub = box_col.column()
+                        sub.use_property_split = True
+                        sub.alert = not scene_settings.shape_keys_mesh_name
+                        sub.prop(scene_settings, 'shape_keys_mesh_name', icon="MESH_DATA", text="Shape keys")
+                        sub.alert = not scene_settings.no_shape_keys_mesh_name
+                        sub.prop(scene_settings, 'no_shape_keys_mesh_name', icon="MESH_DATA", text="No shape keys")
+                        sub.alert = False
+                    self.draw_mmd(box_col, scene_settings.mmd_settings)
 
-                # TODO: Create expandable headers for general settings and fix settings
-                fix_settings = scene_settings.fix_settings
-                box_col.prop(fix_settings, 'sync_mesh_vertices_to_reference_key')
-                box_col.prop(fix_settings, 'remove_nan_uvs')
+                    box_col.prop(scene_settings, 'do_limit_total')
+                    if scene_settings.do_limit_total:
+                        sub = box_col.column()
+                        sub.use_property_split = True
+                        sub.prop(scene_settings, 'limit_num_groups')
+
+                draw_fixes, _, _ = ui_common.draw_expandable_header(col, scene_toggles, 'fixes')
+                if draw_fixes:
+                    box = col.box()
+                    box_col = box.column()
+                    fix_settings = scene_settings.fix_settings
+                    box_col.prop(fix_settings, 'sync_mesh_vertices_to_reference_key')
+                    box_col.prop(fix_settings, 'remove_nan_uvs')
 
                 # And finally the button for actually running Build Avatar
-                box_col.operator(BuildAvatarOp.bl_idname, icon='SHADERFX')
+                col.operator(BuildAvatarOp.bl_idname, icon='SHADERFX')
 
 
 class SceneBuildSettingsBase(ContextCollectionOperatorBase):
