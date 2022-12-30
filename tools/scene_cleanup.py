@@ -56,7 +56,7 @@ class ObjectsListElement(PropertyGroup):
     # The existing 'name' property is used to reference the object by name
     purge: BoolProperty(name="Purge", description="Purge this object")
     # Icon is figured out upon element creation so that we don't have to keep Object references or get Objects by name
-    # when drawing the list elements
+    # when drawing the list elements (unless the setting to ignore fake users is enabled)
     icon: StringProperty(options={'HIDDEN'}, default='QUESTION')
 
     def to_sort_key(self):
@@ -169,9 +169,25 @@ class PurgeUnusedObjects(OperatorBase):
         get=lambda self: -1,
     )
 
+    def all_selected_get(self):
+        # Skip the first element which should be the header
+        return all(item.purge for item in self.objects_list[1:])
+
+    def all_selected_set(self, value: bool):
+        for item in self.objects_list:
+            item.purge = value
+
+    all_selected: BoolProperty(
+        name="Select/Deselect All",
+        description="Select/Deselect All",
+        get=all_selected_get,
+        set=all_selected_set,
+    )
+
     def update_list(self, context: Context):
         objects_list = self.objects_list
-        old_list = {e.name: e.purge for e in objects_list}
+        # Skip the first element as it's a header
+        old_list = {e.name: e.purge for e in objects_list[1:]}
         objects_list.clear()
 
         object_subset = self.object_subset
@@ -293,7 +309,7 @@ class PurgeUnusedObjects(OperatorBase):
         layout = self.layout
         col = layout.column()
         # Can't make the UI have too many minimum rows, otherwise there could be problems if it doesn't fit on the
-        # user's screen any more
+        # user's screen anymore
         min_rows = min(30, max(3, len(self.objects_list)))
         col.template_list(
             UnusedObjectPurge.bl_idname, "",
@@ -302,7 +318,13 @@ class PurgeUnusedObjects(OperatorBase):
             sort_lock=True,
             rows=min_rows,
         )
+
         col.use_property_split = True
+
+        col.prop(self, 'all_selected', text="Deselect All" if self.all_selected else "Select All", expand=True)
+
+        col.separator()
+
         row = col.row(align=True)
         row.prop(self, 'object_subset', text=f"Subset of {context.scene.name} objects:")
 
@@ -339,7 +361,6 @@ class PurgeUnusedObjects(OperatorBase):
         return {'FINISHED'}
 
     def invoke(self, context: Context, event: Event) -> set[str]:
-        # TODO: Need some way to select/deselect all objects in the objects list
         self.update_list(context)
         # 350 is enough to fit our UI options and should be enough for most objects unless they have extraordinarily
         # long names
