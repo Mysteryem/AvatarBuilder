@@ -807,17 +807,23 @@ class BuildAvatarOp(OperatorBase):
                 # Nothing to do
                 pass
 
+            # Copy reference key co to the vertices to avoid desync between the vertices and reference key, this is
+            # especially important when exporting an FBX (it uses mesh vertices positions and not reference key
+            # positions) or when deleting all shape keys (the mesh will go back to the shape specified by the vertex
+            # positions).
+            # This can be a lot of data to copy for huge meshes, but it is reasonably fast since no iteration is
+            # required in either Python (due to the use of foreach_get/set) or C (due to the use of a buffer object with
+            # the same C type as the 'co' data).
+            reference_key_co = np.empty(3 * len(me.vertices), dtype=np.single)
+            shape_keys.reference_key.data.foreach_get('co', reference_key_co)
+            me.vertices.foreach_set('co', reference_key_co)
+
             # If there is only the reference shape key left, remove it
             # This will allow for most modifiers to be applied, compared to when there is just the reference key
             if main_op == 'DELETE_ALL' or len(key_blocks) == 1:
-                # Copy reference key co to the vertices to avoid desync between the vertices and reference key
-                reference_key_co = np.empty(3 * len(me.vertices), dtype=np.single)
-                shape_keys.reference_key.data.foreach_get('co', reference_key_co)
-                me.vertices.foreach_set('co', reference_key_co)
                 # Remove all shape keys
                 # Note that this will invalidate any existing references to me.shape_keys
                 obj.shape_key_clear()
-                del reference_key_co
 
     def build_mesh_uvs(self, me: Mesh, settings: UVSettings):
         uv_layers = me.uv_layers
