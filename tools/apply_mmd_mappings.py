@@ -230,8 +230,8 @@ def mmd_remap(operator: Operator, scene_property_group: ScenePropertyGroup, mmd_
 
 
 class ApplyMMDMappings(OperatorBase):
-    """Apply the current MMD Mappings to the selected meshes
-    "do_remap", "limit_to_body" and "name" of the mmd_shape_key_settings argument are ignored"""
+    """Apply the current MMD Mappings to the selected meshes. Use this if you want to use the MMD Mappings without using
+    the rest of Avatar Builder"""
     bl_label = "Apply MMD Mappings"
     bl_idname = 'apply_mmd_mappings'
     bl_options = {'REGISTER', 'UNDO'}
