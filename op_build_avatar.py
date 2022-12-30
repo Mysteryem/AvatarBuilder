@@ -825,7 +825,7 @@ class BuildAvatarOp(OperatorBase):
                 # Note that this will invalidate any existing references to me.shape_keys
                 obj.shape_key_clear()
 
-    def build_mesh_uvs(self, me: Mesh, settings: UVSettings):
+    def build_mesh_uvs(self, obj: Object, me: Mesh, settings: UVSettings):
         uv_layers = me.uv_layers
         # Remove all but the specified uv maps
         if uv_layers:
@@ -837,43 +837,40 @@ class BuildAvatarOp(OperatorBase):
             elif uv_maps_to_keep == 'SINGLE':
                 # Keep only the single specified uv map
                 single_uv_map = settings.keep_only_uv_map
-                # warning = None
-                # if single_uv_map:
-                #     if single_uv_map not in uv_layers:
-                #         warning = f"Could not find {single_uv_map} in uv maps of {helper.orig_object!r}"
-                # else:
-                #     warning = (f"The single UV Map to keep for {helper.orig_object!r} is empty."
-                #                f" All UV Maps have been removed.")
+                if single_uv_map:
+                    if single_uv_map not in uv_layers:
+                        self.report({'WARNING'}, f"Could not find {single_uv_map} in uv maps of {obj!r}")
+                else:
+                    self.report({'WARNING'}, f"The single UV Map to keep for {obj!r} is empty. All UV"
+                                             f" Maps have been removed.")
                 remove_all_uv_layers_except(me, single_uv_map)
             elif uv_maps_to_keep == 'LIST':
                 # Keep only the uv maps that have been specified in the list
                 keep_uv_map_list = settings.keep_uv_map_list
-                # if keep_uv_map_list:
-                #     not_found = []
-                #     found = []
-                #     for element in settings.keep_uv_map_list:
-                #         uv_map = element.name
-                #         if uv_map in uv_layers:
-                #             found.append(uv_map)
-                #         else:
-                #             not_found.append(uv_map)
-                #     if found:
-                #         if not_found:
-                #             warning = f"Could not find the UV maps {', '.join(not_found)} in {helper.orig_object!r}"
-                #     else:
-                #         warning = f"Could not find any of the UV maps to keep for {helper.orig_object!r}, all the UV maps" \
-                #                   f" of the built object {helper.copy_object!r} have been removed"
-                # else:
-                #     warning = f"The list of UV maps to keep for {helper.orig_object!r} is empty, all of its UV maps have" \
-                #               f" been removed"
+                if keep_uv_map_list:
+                    not_found = []
+                    found = []
+                    for element in settings.keep_uv_map_list:
+                        uv_map = element.name
+                        if uv_map in uv_layers:
+                            found.append(uv_map)
+                        else:
+                            not_found.append(uv_map)
+                    if found:
+                        if not_found:
+                            self.report({'WARNING'}, f"Could not find the UV maps {', '.join(not_found)} in {obj!r}")
+                    else:
+                        self.report({'WARNING'}, f"Could not find any of the UV maps to keep for {obj!r}, all the UV"
+                                                 f" maps of the built object {obj!r} have been removed")
+                else:
+                    self.report({'WARNING'}, f"The list of UV maps to keep for {obj!r} is empty, all of its UV maps have"
+                                             f" been removed")
                 remove_all_uv_layers_except(me, *(e.name for e in keep_uv_map_list))
             elif uv_maps_to_keep == 'NONE':
                 # Remove all uv maps. Not sure if this would ever be needed, but it's here in-case the user were to try to
                 # use the LIST mode to remove all uv maps. Since LIST mode doesn't allow removing all uv maps, this NONE
                 # option is provided separately
                 remove_all_uv_layers_except(me)
-            # if warning:
-            #     self.report({'WARNING'}, warning)
 
     def build_mesh_modifiers(self, original_scene: Scene, obj: Object, me: Mesh, settings: ModifierSettings):
         # TODO: This setting is not currently shown in the UI, it should probably be replaced with a setting on the
@@ -1096,7 +1093,7 @@ class BuildAvatarOp(OperatorBase):
 
         self.build_mesh_modifiers(original_scene, obj, me, settings.modifier_settings)
 
-        self.build_mesh_uvs(me, settings.uv_settings)
+        self.build_mesh_uvs(obj, me, settings.uv_settings)
 
         # Must be done after applying modifiers, as modifiers may use vertex groups to affect their behaviour
         self.build_mesh_vertex_groups(obj, settings.vertex_group_settings)
