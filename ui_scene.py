@@ -117,6 +117,11 @@ class ScenePanel(Panel):
                     sub.use_property_split = True
                     sub.prop(scene_settings, 'limit_num_groups')
 
+                # TODO: Create expandable headers for general settings and fix settings
+                fix_settings = scene_settings.fix_settings
+                box_col.prop(fix_settings, 'sync_mesh_vertices_to_reference_key')
+                box_col.prop(fix_settings, 'remove_nan_uvs')
+
                 # And finally the button for actually running Build Avatar
                 box_col.operator(BuildAvatarOp.bl_idname, icon='SHADERFX')
 

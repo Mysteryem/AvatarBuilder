@@ -39,6 +39,7 @@ from .extensions import (
     UVSettings,
     VertexColorSettings,
     VertexGroupSettings,
+    SceneFixSettings,
 )
 from .integration_gret import run_gret_shape_key_apply_modifiers
 from .integration_pose_library import apply_legacy_pose_marker, apply_pose_from_pose_action
@@ -781,7 +782,7 @@ class BuildAvatarOp(OperatorBase):
             elif op_type in ShapeKeyOp.MERGE_OPS_DICT:
                 self._shape_key_op_merge(obj, op, op_type, key_blocks, available_key_blocks)
 
-    def build_mesh_shape_keys(self, obj: Object, me: Mesh, settings: ShapeKeySettings):
+    def build_mesh_shape_keys(self, obj: Object, me: Mesh, settings: ShapeKeySettings, fixes: SceneFixSettings):
         """Note that this function may invalidate old references to Mesh.shape_keys as it may delete them entirely"""
         shape_keys = me.shape_keys
         if shape_keys:
@@ -807,16 +808,17 @@ class BuildAvatarOp(OperatorBase):
                 # Nothing to do
                 pass
 
-            # Copy reference key co to the vertices to avoid desync between the vertices and reference key, this is
-            # especially important when exporting an FBX (it uses mesh vertices positions and not reference key
-            # positions) or when deleting all shape keys (the mesh will go back to the shape specified by the vertex
-            # positions).
-            # This can be a lot of data to copy for huge meshes, but it is reasonably fast since no iteration is
-            # required in either Python (due to the use of foreach_get/set) or C (due to the use of a buffer object with
-            # the same C type as the 'co' data).
-            reference_key_co = np.empty(3 * len(me.vertices), dtype=np.single)
-            shape_keys.reference_key.data.foreach_get('co', reference_key_co)
-            me.vertices.foreach_set('co', reference_key_co)
+            if fixes.sync_mesh_vertices_to_reference_key:
+                # Copy reference key co to the vertices to avoid desync between the vertices and reference key, this is
+                # especially important when exporting an FBX (it uses mesh vertices positions and not reference key
+                # positions) or when deleting all shape keys (the mesh will go back to the shape specified by the vertex
+                # positions).
+                # This can be a lot of data to copy for huge meshes, but it is reasonably fast since no iteration is
+                # required in either Python (due to the use of foreach_get/set) or C (due to the use of a buffer object
+                # with the same C type as the 'co' data).
+                reference_key_co = np.empty(3 * len(me.vertices), dtype=np.single)
+                shape_keys.reference_key.data.foreach_get('co', reference_key_co)
+                me.vertices.foreach_set('co', reference_key_co)
 
             # If there is only the reference shape key left, remove it
             # This will allow for most modifiers to be applied, compared to when there is just the reference key
@@ -825,7 +827,7 @@ class BuildAvatarOp(OperatorBase):
                 # Note that this will invalidate any existing references to me.shape_keys
                 obj.shape_key_clear()
 
-    def build_mesh_uvs(self, obj: Object, me: Mesh, settings: UVSettings):
+    def build_mesh_uvs(self, obj: Object, me: Mesh, settings: UVSettings, fixes: SceneFixSettings):
         uv_layers = me.uv_layers
         # Remove all but the specified uv maps
         if uv_layers:
@@ -871,6 +873,17 @@ class BuildAvatarOp(OperatorBase):
                 # use the LIST mode to remove all uv maps. Since LIST mode doesn't allow removing all uv maps, this NONE
                 # option is provided separately
                 remove_all_uv_layers_except(me)
+
+            # NaN uvs cause Blender's FBX exporter to raise errors
+            if fixes.remove_nan_uvs:
+                # Twice the number of loops, since 'uv' is a 2 element Vector that gets flattened
+                uvs = np.empty(len(me.loops) * 2, dtype=np.single)
+                for uv_layer in me.uv_layers:
+                    data = uv_layer.data
+                    data.foreach_get('uv', uvs)
+                    # Replace NaN with 0.0
+                    uvs[np.isnan(uvs)] = 0.0
+                    data.foreach_set('uv', uvs)
 
     def build_mesh_modifiers(self, original_scene: Scene, obj: Object, me: Mesh, settings: ModifierSettings):
         # TODO: This setting is not currently shown in the UI, it should probably be replaced with a setting on the
@@ -1086,14 +1099,14 @@ class BuildAvatarOp(OperatorBase):
                 material_indices = unique_mat_indices[inverse]
                 me.polygons.foreach_set('material_index', material_indices)
 
-    def build_mesh(self, original_scene: Scene, obj: Object, me: Mesh, settings: MeshSettings):
+    def build_mesh(self, original_scene: Scene, obj: Object, me: Mesh, settings: MeshSettings, fixes: SceneFixSettings):
         # Shape keys before modifiers because this may result in all shape keys being removed, in which case, more types of
         # modifier can be applied
-        self.build_mesh_shape_keys(obj, me, settings.shape_key_settings)
+        self.build_mesh_shape_keys(obj, me, settings.shape_key_settings, fixes)
 
         self.build_mesh_modifiers(original_scene, obj, me, settings.modifier_settings)
 
-        self.build_mesh_uvs(obj, me, settings.uv_settings)
+        self.build_mesh_uvs(obj, me, settings.uv_settings, fixes)
 
         # Must be done after applying modifiers, as modifiers may use vertex groups to affect their behaviour
         self.build_mesh_vertex_groups(obj, settings.vertex_group_settings)
@@ -1412,7 +1425,7 @@ class BuildAvatarOp(OperatorBase):
             pass
 
     def build_object(self, helper: ObjectHelper, validated_build: ValidatedBuild, export_scene: Scene,
-                     original_scene: Scene):
+                     original_scene: Scene, fix_settings: SceneFixSettings):
         copy_obj = helper.copy_object
 
         orig_object_to_helper = validated_build.orig_object_to_helper
@@ -1436,7 +1449,7 @@ class BuildAvatarOp(OperatorBase):
         if isinstance(data, Armature):
             self.build_armature(copy_obj, data, object_settings.armature_settings, (h.copy_object for h in orig_object_to_helper.values()))
         elif isinstance(data, Mesh):
-            self.build_mesh(original_scene, copy_obj, data, object_settings.mesh_settings)
+            self.build_mesh(original_scene, copy_obj, data, object_settings.mesh_settings, fix_settings)
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -1473,7 +1486,7 @@ class BuildAvatarOp(OperatorBase):
         # Operations within this loop must not cause Object ID blocks to be recreated (otherwise the references we're
         # keeping to Objects will become invalid)
         for helper in orig_object_to_helper.values():
-            self.build_object(helper, validated_build, export_scene, scene)
+            self.build_object(helper, validated_build, export_scene, scene, active_scene_settings.fix_settings)
 
         # Join meshes and armatures by desired names and rename the combined objects to those desired names
         meshes_after_joining = join_objects_with_renames(validated_build.desired_name_meshes, Mesh, export_scene, self)

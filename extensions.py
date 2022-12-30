@@ -192,19 +192,33 @@ class MmdShapeKeySettings(PropertyGroup):
     )
 
 
+class SceneFixSettings(PropertyGroup):
+    """Options for running specific fixes when building. These should only be to fix issues with Blender, other Blender
+    addons or software frequently used in conjunction with Blender, such as Unity. If these settings are enabled by
+    default it is imperative that they add little performance impact"""
+    sync_mesh_vertices_to_reference_key: BoolProperty(
+        name="Fix Vertices and Shape Keys desync",
+        description="Some operations in Blender and addons can cause a mesh's vertices and reference ('Basis') shape"
+                    " key to become desynchronized, which causes issues when exporting as FBX, creating new shape keys"
+                    " or deleting all shape keys, because they use the mesh's vertices that could be desynced."
+                    "\nYou can manually resync vertices and the reference shape key by going into edit mode with the"
+                    " reference shape key active and then back out of edit mode",
+        default=True,
+    )
+    remove_nan_uvs: BoolProperty(
+        name="Remove NaN UVs",
+        description="NaN (Not a Number, the result of '0 divided by 0' or '0 raised to the power 0') in UVs will cause"
+                    " Blender's FBX exporter to error. This option will replace the NaN values with zeroes",
+        default=True,
+    )
+
+
 class SceneBuildSettings(PropertyGroup):
     # Shown in UI
     # Create export scene as f"Export {build_settings.name} scene"
     name_prop: StringProperty(default="BuildSettings", update=scene_build_settings_update_name)
 
-    # TODO: Property enabled by default to 're-sync vertices with basis shape keys' with description about how the two
-    #  can become desynced outside of edit mode and how the FBX exporter exports vertices and not the basis
-    #       Or add operator to re-sync vertices with basis shape keys for all objects in scene, maybe in an extra
-    #  'tools' panel for Avatar Builder
-    #       Or both: add a small button next to the property, that allows users to run the re-sync manually. The
-    #  operator should report the number of meshes it checked and how many had their sync fixed
-
-    # TODO: Also property/operator for checking NaNs in UV components?
+    fix_settings: PointerProperty(type=SceneFixSettings)
 
     def _collection_poll(self, collection: Collection) -> bool:
         """Only allow Collections that are used by the scene"""
