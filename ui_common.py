@@ -4,27 +4,36 @@ from .extensions import ObjectPropertyGroup
 from .utils import PropertyHolderType
 
 
-# TODO: Can we set alert after drawing properties and sub layouts?
 def draw_expandable_header(layout: UILayout, ui_toggle_data: PropertyHolderType, ui_toggle_prop: str,
                            alert: bool = False, **header_args):
     header_row = layout.row(align=True)
     header_row.use_property_split = False
+    # Alert has to be set before drawing sub elements
     header_row.alert = alert
     is_expanded = getattr(ui_toggle_data, ui_toggle_prop)
     expand_icon = 'DISCLOSURE_TRI_DOWN' if is_expanded else 'DISCLOSURE_TRI_RIGHT'
+
     # We draw everything in the header as the toggle property so that any of it can be clicked on to expand the
     # contents.
-    # To debug the clickable regions of the header, set emboss to True in each .prop call.
-    header_row.prop(ui_toggle_data, ui_toggle_prop, text="", icon=expand_icon, emboss=False)
+    # To debug the clickable regions of the header, set emboss to True in each .prop call and the header_args.
 
-    # If we left align the entire header row, it won't expand to fill the entire width, meaning the user
-    # can't click on anywhere in the header to expand it, so we create a sub_row that is left aligned and draw
-    # the header text there
-    sub_row = header_row.row(align=True)
-    sub_row.alignment = 'LEFT'
     # Force emboss to be disabled
     header_args['emboss'] = False
-    sub_row.prop(ui_toggle_data, ui_toggle_prop, **header_args)
+    if header_args.get('icon', 'NONE') != 'NONE':
+
+        # Since we have an extra icon to draw, we need to draw an extra prop for the 'expand_icon' only
+        header_row.prop(ui_toggle_data, ui_toggle_prop, text="", icon=expand_icon, emboss=False)
+
+        # If we left align the entire header row, it won't expand to fill the entire width, meaning the user
+        # can't click on anywhere in the header to expand it, so we create a sub_row that is left aligned and draw
+        # the header text there
+        sub_row = header_row.row(align=True)
+        sub_row.alignment = 'LEFT'
+        sub_row.prop(ui_toggle_data, ui_toggle_prop, **header_args)
+    else:
+        sub_row = header_row.row(align=True)
+        sub_row.alignment = 'LEFT'
+        sub_row.prop(ui_toggle_data, ui_toggle_prop, icon=expand_icon, **header_args)
 
     # We then need a third element to expand and fill the rest of the header, ensuring that the entire header can be
     # clicked on.
