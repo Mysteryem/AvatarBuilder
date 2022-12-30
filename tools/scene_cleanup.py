@@ -144,10 +144,10 @@ class UnusedObjectPurge(UIList):
 
 
 class PurgeUnusedObjects(OperatorBase):
-    """Open a dialog to delete Objects in the current scene that aren't used by other Objects or data, excluding scenes
-    and collections.
-    You may need to run this repeatedly to remove all unused Objects"""
-    bl_label = "Purge Unused Objects In Scene"
+    """Open a dialog to delete Objects in the current scene that are only used by scenes and collections and not by
+    other Objects or other data.
+    You may want to run this multiple times until no more objects are found"""
+    bl_label = "Purge Scene-Only Objects"
     bl_idname = "purge_unused"
     bl_options = {"UNDO"}
 
@@ -202,7 +202,9 @@ class PurgeUnusedObjects(OperatorBase):
         else:
             objects = []
 
-        exclude_types: set[str] = set()
+        # Collections are always ignored. Note that this doesn't include Scene Collections, since those are part of the
+        # scene and not separate Collection instances found in bpy.data.collections.
+        exclude_types: set[str] = {'COLLECTION'}
         exclude_ids: set[ID] = set()
 
         scene_option = self.scene_option
@@ -210,9 +212,6 @@ class PurgeUnusedObjects(OperatorBase):
             exclude_types.add('SCENE')
         elif scene_option == 'CONTEXT':
             exclude_ids.add(bpy.context.scene)
-
-        if self.ignore_collections:
-            exclude_types.add('COLLECTION')
 
         if not self.ignore_fake_users:
             objects = (obj for obj in objects if not obj.use_fake_user)
@@ -243,17 +242,6 @@ class PurgeUnusedObjects(OperatorBase):
             ("ALL", "All", "Ignore all scenes when counting users"),
         ),
         default="CONTEXT",
-        update=update_list,
-    )
-
-    # TODO: Remove this option? It doesn't seem very useful
-    # This has the same side-effect as ignoring scenes, but collections are significantly less likely to have properties
-    # that are set to Objects, to the point that it's probably not even worth mentioning as a side-effect.
-    ignore_collections: BoolProperty(
-        name="Ignore Collection Users",
-        description="Ignore Collections when counting users (note that a Scene's \"Scene Collection\" is part of the"
-                    " scene itself and is not considered a collection user)",
-        default=True,
         update=update_list,
     )
 
@@ -326,7 +314,6 @@ class PurgeUnusedObjects(OperatorBase):
             col.prop(self, 'purge_data')
             row = col.row(heading="Ignore Scene Users")
             row.prop(self, 'scene_option', expand=True)
-            col.prop(self, 'ignore_collections')
             col.prop(self, 'ignore_fake_users')
 
     def execute(self, context: Context) -> set[str]:

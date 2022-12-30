@@ -25,8 +25,8 @@ class ObjectToolsPanel(Panel):
 
     def draw(self, context: Context):
         layout = self.layout
-        layout.operator(ApplyMMDMappings.bl_idname, text="Apply MMD Mappings", icon="SHAPEKEY_DATA")
-        layout.operator(PurgeUnusedObjects.bl_idname, text="Purge Unused Objects", icon="ORPHAN_DATA")
+        layout.operator(ApplyMMDMappings.bl_idname, icon="SHAPEKEY_DATA")
+        layout.operator(PurgeUnusedObjects.bl_idname, icon="ORPHAN_DATA")
 
 
 register_module_classes_factory(__name__, globals())
