@@ -292,6 +292,9 @@ def register_module_classes_factory(calling_module_name: str,
                                     calling_module_globals: dict[str, Any],
                                     return_funcs: bool = False
                                     ) -> Optional[tuple[Callable[[], None], Callable[[], None]]]:
+    """Looks through calling_module_globals for classes whose __module__ matches the calling_module_name and either have
+    a bl_idname attribute or are a subclass of bpy.types.PropertyGroup and creates register and unregister functions for
+    the found classes. When return_funcs is False, the created functions are added directly to calling_module_globals"""
     print(f"Looking for classes to register in {calling_module_name}")
     classes: list[type] = []
     id_prop_groups: list[type[IdPropertyGroup]] = []
