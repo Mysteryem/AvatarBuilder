@@ -18,6 +18,7 @@ from bpy.types import (
     Collection,
     Action,
     ViewLayer,
+    Brush,
 )
 
 from .registration import register_module_classes_factory, _PROP_PREFIX, IdPropertyGroup, CollectionPropBase
@@ -950,6 +951,29 @@ class MmdShapeMappingGroup(CollectionPropBase[MmdShapeMapping]):
     )
 
 
+class SubdivideBoneGroup(PropertyGroup):
+    # noinspection PyMethodMayBeStatic
+    def brush_poll(self, object: Brush):
+        return object.use_paint_weight
+
+    brush: PointerProperty(
+        type=Brush,
+        name="Curve Mapping Brush",
+        description="Brush whose curve mapping to use",
+        poll=brush_poll,
+    )
+
+    @staticmethod
+    def create_brush() -> Brush:
+        b = bpy.data.brushes.new(name="Weight Curve", mode='WEIGHT_PAINT')
+        b.use_fake_user = True
+        return b
+
+
+class ToolsGroup(PropertyGroup):
+    subdivide_bone: PointerProperty(type=SubdivideBoneGroup)
+
+
 class ScenePropertyGroup(IdPropertyGroup, CollectionPropBase[SceneBuildSettings]):
     _registration_name = f'{_PROP_PREFIX}_scene_settings_group'
     _registration_type = Scene
@@ -968,6 +992,7 @@ class ScenePropertyGroup(IdPropertyGroup, CollectionPropBase[SceneBuildSettings]
     )
 
     mmd_shape_mapping_group: PointerProperty(type=MmdShapeMappingGroup)
+    tools: PointerProperty(type=ToolsGroup)
 
 
 class ObjectPropertyGroup(IdPropertyGroup, CollectionPropBase[ObjectBuildSettings]):

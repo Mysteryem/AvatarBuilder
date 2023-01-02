@@ -5,6 +5,7 @@ from typing import Callable
 from .apply_mmd_mappings import ApplyMMDMappings
 from .scene_cleanup import PurgeUnusedObjects
 from .bone_weight_merge import MergeBoneWeightsToParents, MergeBoneWeightsToActive
+from .weights.subdivide_bone import draw_subdivide_bone_ui
 from ..registration import register_module_classes_factory
 
 
@@ -34,10 +35,22 @@ class ToolsPanel(Panel):
         row.operator(MergeBoneWeightsToParents.bl_idname, text="to Parents")
         row.operator(MergeBoneWeightsToActive.bl_idname, text="to Active")
 
+        col.separator()
+
+        draw_subdivide_bone_ui(context, col)
+
+    def draw_weight_paint(self, context: Context):
+        # TODO: Add support to MergeBoneWeightsToParents for weight paint mode and then use the same function
+        layout = self.layout
+        col = layout.column(align=True)
+
+        draw_subdivide_bone_ui(context, col)
+
     _DRAW_FUNCS: dict[str, Callable[['ToolsPanel', Context], None]] = {
         'OBJECT': draw_object,
         'EDIT_ARMATURE': draw_edit_armature,
         'POSE': draw_edit_armature,
+        'PAINT_WEIGHT': draw_weight_paint,
     }
 
     @classmethod

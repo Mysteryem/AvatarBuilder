@@ -44,6 +44,7 @@ class MergeBoneWeights(OperatorBase):
 
     @classmethod
     def poll(cls, context: Context) -> bool:
+        # TODO: support weight paint mode with a context.pose_object
         if context.mode == 'EDIT_ARMATURE':
             return cls.poll_edit(context)
         elif context.mode == 'POSE':
