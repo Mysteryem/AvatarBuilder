@@ -407,11 +407,15 @@ def register_submodule_factory(module_name, submodule_names):
                     del modules[full_module_name]
             raise e
 
-        # reverse-partition each "package.subpackage.submodule" name into {"submodule": "package.subpackage"}
-        submodule_name_to_package_name: dict[str, str] = {p[2]: p[0] for p in map(reverse_partition, submodule_names)}
+        # Map each submodule name to its package name
+        # reverse-partition each "package.subpackage.module" submodule name to get
+        # {"package.subpackage.module": "package.subpackage"}
+        submodule_name_to_package_name: dict[str, str] = {s: reverse_partition(s)[0] for s in submodule_names}
 
-        # Submodules will be entered into this dict in the order they are required to be loaded (packages will always be
-        # loaded before their submodules)
+        # Submodules will be entered into this dict in the order they would get loaded based on their registration order
+        # (packages will always be before their submodules). This doesn't correspond to the actual load order of the
+        # submodules because submodules can load other submodules via imports, and walk_packages used in the main
+        # __init__.py imports (and thus loads) each package.
         module_lookup: dict[str, _SubModuleData] = {}
 
         def get_submodule_data(module_name: str):
@@ -425,16 +429,19 @@ def register_submodule_factory(module_name, submodule_names):
                 else:
                     # If the package_name is '', it indicates that the package is the main module
                     package = module
-                submodule = getattr(package, module_name)
-                submodule_data = _SubModuleData(submodule, module_name, package)
+                # given "package.subpackage.module", get "module"
+                module_name_no_prefix = reverse_partition(module_name)[2]
+                submodule = getattr(package, module_name_no_prefix)
+                submodule_data = _SubModuleData(submodule, module_name_no_prefix, package)
                 module_lookup[module_name] = submodule_data
                 return submodule_data
 
-        submodules_register_order[:] = [get_submodule_data(name) for name in submodule_name_to_package_name.keys()]
+        submodules_register_order[:] = (get_submodule_data(name) for name in submodule_name_to_package_name.keys())
 
-        submodules_load_order[:] = [submodule_data.module for submodule_data in module_lookup.values()]
+        submodules_load_order[:] = (submodule_data.module for submodule_data in module_lookup.values())
 
         successful_registration = []
+        mod = None
         try:
             for submodule_data in submodules_register_order:
                 mod = submodule_data.module
