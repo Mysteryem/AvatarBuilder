@@ -5,7 +5,7 @@ bl_info = {
     "name": "Avatar Builder",
     "description": "Combine objects to make ready-to-export models",
     "author": "Mysteryem",
-    "version": (0, 1, 0),
+    "version": (0, 2, 0),
     "blender": (2, 93, 7),
     "location": "3D View and Object Properties",
     "doc_url": "https://github.com/Mysteryem/AvatarBuilder",
@@ -27,7 +27,7 @@ def _get_all_module_names():
     early_modules = set(_early_ordered_register)
     # Create a copy so that we don't modify the existing list
     all_submodule_names = _early_ordered_register.copy()
-    # Prefix seems to be required to import submodules of submodules (not that we have any yet)
+    # Prefix is required to import submodules of submodules
     package_prefix = __name__ + "."
     prefix_length = len(package_prefix)
     for mod_info in pkgutil.walk_packages(path=__path__, prefix=package_prefix):
