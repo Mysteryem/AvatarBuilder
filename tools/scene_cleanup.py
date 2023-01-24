@@ -349,7 +349,7 @@ class PurgeUnusedObjects(OperatorBase):
                 data = obj.data
                 bpy.data.objects.remove(obj)
                 # If we're deleting data, only delete it if it's not in use by something else, e.g. another Object
-                if self.purge_data and data.users == 0:
+                if data and self.purge_data and data.users == 0:
                     remove_list = [data]
                     shape_keys = getattr(data, 'shapekeys', None)
                     # I can't imagine a case where shape_keys.users is more than 1, but maybe its possible somehow
