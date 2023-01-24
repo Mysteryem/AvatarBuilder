@@ -23,7 +23,9 @@ There are two main purposes to this addon:
 
 To update the addon, follow the same steps as installation, but either disable or remove the current version of the addon before replacing it with the new version.
 
-Alternatively, after following all the installation instructions, disable the addon and then re-enable it to cause it to reload with the new version. Though, if you update this way, make sure to close the Pose Library Asset Picker if the active object is an armature set to use a Pose Library Pose, close any UI popups from the addon and finish using any Operators from the addon, otherwise Blender might crash.
+Alternatively, after following all the installation instructions, disable the addon and then re-enable it to cause it to reload with the new version.
+
+When updating, make sure to close the Pose Library Asset Picker if the active object is an armature set to use a Pose Library Pose, close any UI popups from the addon and finish using any Operators from the addon, otherwise Blender might crash.
 
 ## Requirements
 
@@ -67,6 +69,12 @@ MMD Shape Mappings are set per scene and can be transferred between .blend files
 
 Sets of preset mappings based primarily on the available shape keys in the [TDA Miku Append v1.10](https://bowlroll.net/file/4576), [Mirai Akari](https://3d.nicovideo.jp/works/td31639) and [Shishiro Botan](https://3d.nicovideo.jp/works/td78506) models are supplied. The 'Shape Key' provided by each mapping from these presets is only a suggestion of what the shape key could be called on your mesh, you can clear the 'Shape Key' column from the mappings by clicking on `Clear All Shape Keys` in the drop down menu.
 
+### Standalone Usage
+
+MMD Shape Mappings can be applied to selected meshes without using the `Build Avatar` functionality by clicking on `Apply MMD Mappings` from the `Tools` panel when in Object mode.
+
+![image](https://user-images.githubusercontent.com/495015/214204627-e75f4304-a7e7-4aa7-9885-06f722c89f1c.png)
+
 ### Comments
 
 Comments can be added to a mapping by clicking `Set Comment` (also works to edit existing comments). If a mapping already has a comment, you can hover over the in-line 'i' icon to view the comment, or click the 'i' icon to edit the comment.
@@ -90,6 +98,53 @@ Additionally, `Add From Search Mesh` and `Add MMD From Search Mesh` in the drop 
 If a Shape Key doesn't exist on the Search Mesh, it will be displayed in red.
 
 ![image](https://user-images.githubusercontent.com/495015/206766103-cc0648bf-091d-4cd3-8182-1676eab2f86c.png)
+
+## Tools
+
+A few standalone tools are provided in the `Tools` panel of the `Avatar Builder` tab. The panel's contents and visibility will change according to your current mode.
+
+### Purge Scene-Only Objects
+
+Available in Object mode.
+
+Opens a dialog for deleting objects in the current scene that aren't used by any other objects or data (other than collections and scenes). The default settings check only objects that aren't part of any Build, but it can be useful to check only objects that are selected/unselected or hidden/visible.
+
+![image](https://user-images.githubusercontent.com/495015/214206023-08ace2cc-575a-433a-ae6a-b4fcba774335.png)
+
+### Apply MMD Mappings
+
+Available in Object mode.
+
+Applies the current MMD Shape Mappings to the selected meshes.
+
+See the MMD Shape Mapping section for details.
+
+### Merge Weights
+
+Available in Pose mode and Weight Paint mode.
+
+![image](https://user-images.githubusercontent.com/495015/214208030-9b7b0f2c-48c1-4e9d-9e58-426bf59df452.png)
+
+Delete the selected bones and merge their weights into their respective parents or delete the selected bones other than the active bone and merge their weights into the active bone.
+
+This is very similar to the same tool available in Cats, except it finds the affect meshes like Blender, which are all meshes that have the armature in an armature modifier. It also works with multi-editing (more than one armature in Pose mode at a time).
+
+### Subdivide Weights
+
+Available in Pose mode and Weight Paint mode.
+
+Subdivide the selected bones and their weights across the length of the subdivided bone.
+
+This is very similar to first subdividing a bone in Edit mode and then swapping to Weight Paint mode and drawing with the Gradient tool across two bones at a time.
+The actual Gradient tool ignores locked vertex groups, which makes it very difficult to use it manually across only two bones at a time. The Subdivide Weights tool automates this process on all affected meshes.
+
+When it draws the gradients, it will use the falloff of the specified Weight Paint Brush, defaulting to Smooth falloff if no Brush is specified. If using a custom falloff curve, it is recommended to ensure the curve starts at 1.0 and finishes at 0.0.
+
+![image](https://user-images.githubusercontent.com/495015/214208106-5c7a9c6c-4dfc-4b50-9d6c-a7d6aab22d70.png) ![image](https://user-images.githubusercontent.com/495015/214208155-5dd088c9-56c9-4e1a-a0d6-7162161b24c8.png)
+
+Like with the Subdivide operator found in Edit mode, that only subdivides bones and not weights, you can change the number of cuts through the Redo Toolbar Panel that appears in the bottom left of the 3D view.
+
+![image](https://user-images.githubusercontent.com/495015/214208310-a3f432c8-e463-4349-be3f-c3642d9a47f2.png)
 
 ## Limitations
 
