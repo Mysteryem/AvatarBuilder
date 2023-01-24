@@ -1,26 +1,16 @@
 import bpy
-from bpy.types import Context, Armature, ArmatureModifier, VertexWeightMixModifier
+from bpy.types import Context, Armature, VertexWeightMixModifier
 
 from typing import Optional, cast
 from abc import abstractmethod
 
-from ..registration import OperatorBase, register_module_classes_factory
-from ..utils import op_override
+from ...registration import OperatorBase, register_module_classes_factory
+from ...utils import op_override
+from . import mesh_gen
 
 
-def mesh_gen(armature: Armature):
-    """Generator for all mesh objects that have armature in an ArmatureModifier"""
-    for o in bpy.data.objects:
-        if o.type != 'MESH':
-            continue
-        for mod in o.modifiers:
-            # Blender doesn't seem to care if the armature modifier isn't actually set to use vertex groups (this is
-            # based on renaming a bone and seeing what meshes Blender renames the vertex groups of to match)
-            if isinstance(mod, ArmatureModifier):
-                obj = mod.object
-                if obj and obj.data == armature:
-                    yield o
-                    break
+"""Pretty much the same as Cats' 'Merge Weights' operators, but affects all meshes that have the bone's armature in an
+armature modifier, whereas Cats' works with only the meshes parented to the armature. Also supports multi-editing."""
 
 
 _MERGE_DICTS = dict[Armature, dict[str, Optional[str]]]

@@ -4,7 +4,7 @@ from typing import Callable
 
 from .apply_mmd_mappings import ApplyMMDMappings
 from .scene_cleanup import PurgeUnusedObjects
-from .bone_weight_merge import MergeBoneWeightsToParents, MergeBoneWeightsToActive
+from .weights.bone_weight_merge import MergeBoneWeightsToParents, MergeBoneWeightsToActive
 from .weights.subdivide_bone import draw_subdivide_bone_ui
 from ..registration import register_module_classes_factory
 
