@@ -27,7 +27,7 @@ class ToolsPanel(Panel):
         layout.operator(ApplyMMDMappings.bl_idname, icon="SHAPEKEY_DATA")
         layout.operator(PurgeUnusedObjects.bl_idname, icon="ORPHAN_DATA")
 
-    def draw_edit_armature(self, context: Context):
+    def draw_pose(self, context: Context):
         layout = self.layout
         col = layout.column(align=True)
         col.label(text="Merge Weights", icon="BONE_DATA")
@@ -48,8 +48,7 @@ class ToolsPanel(Panel):
 
     _DRAW_FUNCS: dict[str, Callable[['ToolsPanel', Context], None]] = {
         'OBJECT': draw_object,
-        'EDIT_ARMATURE': draw_edit_armature,
-        'POSE': draw_edit_armature,
+        'POSE': draw_pose,
         'PAINT_WEIGHT': draw_weight_paint,
     }
 
