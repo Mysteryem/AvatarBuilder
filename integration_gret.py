@@ -43,7 +43,7 @@ def _run_gret_shape_key_apply_modifiers_keep_modifiers(obj: Object, modifier_nam
                 mod.show_viewport = False
         # noinspection PyUnresolvedReferences
         # Apply all non-disabled modifiers
-        return utils.op_override(_apply_modifiers_op, {'object': obj})
+        return utils.op_override(_apply_modifiers_op, {'object': obj}, keep_modifiers=True)
     finally:
         # Restore modifiers that were temporarily disabled
         modifiers = obj.modifiers
