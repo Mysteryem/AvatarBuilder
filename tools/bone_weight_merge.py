@@ -43,14 +43,24 @@ class MergeBoneWeights(OperatorBase):
         return True
 
     @classmethod
+    def poll_paint_weight(cls, context: Context) -> bool:
+        if not context.pose_object:
+            return cls.poll_fail("No armature opened alongside mesh")
+        if not context.selected_pose_bones:
+            return cls.poll_fail("No bones selected")
+        return True
+
+    @classmethod
     def poll(cls, context: Context) -> bool:
-        # TODO: support weight paint mode with a context.pose_object
         if context.mode == 'EDIT_ARMATURE':
             return cls.poll_edit(context)
         elif context.mode == 'POSE':
             return cls.poll_pose(context)
+        elif context.mode == 'PAINT_WEIGHT':
+            return cls.poll_paint_weight(context)
         else:
-            return cls.poll_fail("Must be in pose mode or edit mode with an armature")
+            return cls.poll_fail("Must be in pose mode, edit mode with an armature or weight paint mode with an"
+                                 " armature")
 
     # Technically, the abstractmethod decorator won't do anything since the metaclass isn't ABCMeta. Unfortunately, it
     # can't be ABCMeta, since bpy.types.Operator already has its own metaclass and I don't know how to resolve the
@@ -73,7 +83,11 @@ class MergeBoneWeights(OperatorBase):
 
         # Need to be in edit mode to remove bones
         starting_mode = context.mode
+        starting_object = context.active_object
         if starting_mode != 'EDIT_ARMATURE':
+            if starting_mode == 'PAINT_WEIGHT':
+                # The mesh is the active object when in weight paint mode
+                context.view_layer.objects.active = context.pose_object
             bpy.ops.object.mode_set(mode='EDIT')
 
         for armature, bone_merges in merge_dicts.items():
@@ -166,9 +180,16 @@ class MergeBoneWeights(OperatorBase):
                                      f" more than one armature simultaneously, the results may not be as expected")
 
         # Restoring the mode back to EDIT mode is no good since it messes up undo/redo, but we can restore the mode back
-        # to POSE mode ok
+        # to POSE mode or PAINT_WEIGHT ok
         if starting_mode == 'POSE':
             bpy.ops.object.mode_set(mode='POSE')
+        elif starting_mode == 'PAINT_WEIGHT':
+            # The armature will be the currently active object, which will have been in POSE mode, so return it to POSE
+            # mode first.
+            bpy.ops.object.mode_set(mode='POSE')
+            # The mesh object will still be in PAINT_WEIGHT mode, so all we have to do is set it as the active object
+            # again
+            context.view_layer.objects.active = starting_object
 
         return {'FINISHED'}
 
@@ -220,7 +241,7 @@ class MergeBoneWeightsToActive(MergeBoneWeights):
                     bone != active_bone and bone.id_data == armature
                 }
             }
-        elif mode == 'POSE':
+        elif mode == 'POSE' or mode == 'PAINT_WEIGHT':
             active_bone = context.active_pose_bone
             active_bone_name = active_bone.name
             return {
@@ -254,6 +275,22 @@ class MergeBoneWeightsToActive(MergeBoneWeights):
     @classmethod
     def poll_pose(cls, context: Context) -> bool:
         if not super().poll_pose(context):
+            return False
+        active_bone = context.active_pose_bone
+        if not active_bone:
+            # Probably won't see this unless there's no bones to begin with, since there's almost always an active bone
+            # even if it's not selected
+            return cls.poll_fail("No active bone selected")
+        if not active_bone.bone.select:
+            # The user can't tell which bone is the active one if it's not selected
+            return cls.poll_fail("Active bone is not selected")
+        if len(context.selected_pose_bones_from_active_object) < 2:
+            return cls.poll_fail("No bones to merge selected")
+        return True
+
+    @classmethod
+    def poll_paint_weight(cls, context: Context) -> bool:
+        if not super().poll_paint_weight(context):
             return False
         active_bone = context.active_pose_bone
         if not active_bone:

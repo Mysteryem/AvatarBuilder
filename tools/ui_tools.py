@@ -27,7 +27,7 @@ class ToolsPanel(Panel):
         layout.operator(ApplyMMDMappings.bl_idname, icon="SHAPEKEY_DATA")
         layout.operator(PurgeUnusedObjects.bl_idname, icon="ORPHAN_DATA")
 
-    def draw_pose(self, context: Context):
+    def draw_pose_or_weight_paint(self, context: Context):
         layout = self.layout
         col = layout.column(align=True)
         col.label(text="Merge Weights", icon="BONE_DATA")
@@ -39,17 +39,10 @@ class ToolsPanel(Panel):
 
         draw_subdivide_bone_ui(context, col)
 
-    def draw_weight_paint(self, context: Context):
-        # TODO: Add support to MergeBoneWeightsToParents for weight paint mode and then use the same function
-        layout = self.layout
-        col = layout.column(align=True)
-
-        draw_subdivide_bone_ui(context, col)
-
     _DRAW_FUNCS: dict[str, Callable[['ToolsPanel', Context], None]] = {
         'OBJECT': draw_object,
-        'POSE': draw_pose,
-        'PAINT_WEIGHT': draw_weight_paint,
+        'POSE': draw_pose_or_weight_paint,
+        'PAINT_WEIGHT': draw_pose_or_weight_paint,
     }
 
     @classmethod
