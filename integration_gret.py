@@ -66,9 +66,12 @@ def _run_gret_shape_key_apply_modifiers_modifier_mask(obj: Object, modifier_name
     if not modifier_names_to_apply:
         # None to apply, so immediately return
         return {'FINISHED'}
-    max_modifiers_per_call = 32
+    # Expected to be 32, since that's the max length a BoolVectorProperty can be
+    max_modifiers_per_call = _apply_modifiers_op.get_rna_type().properties['modifier_mask'].array_length
     full_mask = []
-    context_override = {'object': obj}
+    # gret uses .object in its invoke, draw and poll functions, but .active_object in its execute function, so we need
+    # to override both
+    context_override = {'object': obj, 'active_object': obj}
 
     # Create the mask and find the index of the last modifier that needs to be applied
     last_apply_index = -1
@@ -85,8 +88,10 @@ def _run_gret_shape_key_apply_modifiers_modifier_mask(obj: Object, modifier_name
         return {'FINISHED'}
     elif last_apply_index < max_modifiers_per_call:
         # The last modifier that needs to be applied is within the first 32 modifiers, we can simply call the
-        # operator once with a mask up to the last modifier that needs to be applied
-        mask_up_to_and_including_last = full_mask[:last_apply_index + 1]
+        # operator once
+        mask_up_to_and_including_last = full_mask[:max_modifiers_per_call]
+        # The mask must always be the full length, so append False until it is the full length
+        mask_up_to_and_including_last += [False] * (max_modifiers_per_call - len(mask_up_to_and_including_last))
         return utils.op_override(_apply_modifiers_op, context_override, modifier_mask=mask_up_to_and_including_last)
     else:
         # The last modifier to apply is after the first 32 modifiers, so we need to apply the operator multiple
@@ -108,7 +113,9 @@ def _run_gret_shape_key_apply_modifiers_modifier_mask(obj: Object, modifier_name
         while True:
             mask_this_call = full_mask[:max_modifiers_per_call]
             if any(mask_this_call):
-                utils.op_override(_apply_modifiers_op, context_override, modifier_mask=mask_this_call)
+                # Mask must always be the full size
+                mask_this_call_full_size = mask_this_call + [False] * (max_modifiers_per_call - len(mask_this_call))
+                utils.op_override(_apply_modifiers_op, context_override, modifier_mask=mask_this_call_full_size)
 
                 # Remove the indices for all modifiers we've applied, in reverse so that the indices of the
                 # other elements we're going to pop don't change when we pop an index
