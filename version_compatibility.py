@@ -48,3 +48,14 @@ operators shown in UI when the operator is disabled due to the poll method retur
 
 On older Blender versions without this method, we may want to display messages in the UI directly in order to explain
 why an operator is disabled"""
+
+MESH_HAS_USE_AUTO_SMOOTH = "use_auto_smooth" in Mesh.bl_rna.properties or version < (4, 1)
+"""
+Blender 4.1 removed auto smooth, effectively making all meshes auto smooth with an angle of 180 degrees by default.
+"""
+
+MESH_HAS_CALC_NORMALS_SPLIT = "calc_normals_split" in Mesh.bl_rna.functions or version < (4, 1)
+"""
+Blender 4.1 removed `calc_normals_split` and provides access to split/corner normals at any time through
+`Mesh.corner_normals`.
+"""

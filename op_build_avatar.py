@@ -47,7 +47,13 @@ from .integration_pose_library import apply_legacy_pose_marker, apply_pose_from_
 from .registration import register_module_classes_factory, OperatorBase
 from . import utils
 from .util_generic_bpy_typing import PropCollection
-from .version_compatibility import LEGACY_POSE_LIBRARY_AVAILABLE, ASSET_BROWSER_AVAILABLE, get_vertex_colors
+from .version_compatibility import (
+    LEGACY_POSE_LIBRARY_AVAILABLE,
+    ASSET_BROWSER_AVAILABLE,
+    get_vertex_colors,
+    MESH_HAS_USE_AUTO_SMOOTH,
+    MESH_HAS_CALC_NORMALS_SPLIT,
+)
 from .tools.apply_mmd_mappings import mmd_remap
 
 
@@ -427,12 +433,19 @@ def _prepare_custom_normals_for_joining(combined_obj: Object, joining_obj: Objec
             print(message)
         return
     #
-    # Calculate split normals so we can read them from loops
-    joining_mesh.calc_normals_split()
+    if MESH_HAS_CALC_NORMALS_SPLIT:
+        # Calculate split normals so we can read them from loops
+        joining_mesh.calc_normals_split()
+
+        normals_collection = joining_mesh.loops
+        normals_attribute = "normal"
+    else:
+        normals_collection = joining_mesh.corner_normals
+        normals_attribute = "vector"
     #
-    num_loops = len(joining_mesh.loops)
+    num_loops = len(normals_collection)
     current_split_normals = np.empty(num_loops * 3, dtype=np.single)
-    joining_mesh.loops.foreach_get('normal', current_split_normals)
+    normals_collection.foreach_get(normals_attribute, current_split_normals)
     # Change viewed shape so each index corresponds to a vector
     current_split_normals.shape = (num_loops, 3)
 
@@ -476,11 +489,12 @@ def join_objects(object_type: Literal[Mesh, Armature], sorted_object_helpers: li
             combined_object_helper.joined_settings_ignore_reduce_to_two_meshes = ignore_reduce_to_two
 
             # TODO: Clean up all these comprehensions
-            # TODO: Are there other things that we should ensure are set a specific way on the combined mesh?
-            joined_mesh_autosmooth = any(cast(Mesh, o.data).use_auto_smooth for o in objects)
+            if MESH_HAS_USE_AUTO_SMOOTH:
+                # TODO: Are there other things that we should ensure are set a specific way on the combined mesh?
+                joined_mesh_autosmooth = any(cast(Mesh, o.data).use_auto_smooth for o in objects)
 
-            # Set mesh autosmooth if any of the joined meshes used it
-            combined_object.data.use_auto_smooth = joined_mesh_autosmooth
+                # Set mesh autosmooth if any of the joined meshes used it
+                combined_object.data.use_auto_smooth = joined_mesh_autosmooth
 
             # TODO: Add an option in an 'advanced settings' section of the SceneBuildSettings that allows this feature
             #  to be turned off, since it's technically different behaviour to Blender by default.
@@ -1135,11 +1149,12 @@ class BuildAvatarOp(OperatorBase):
         # Set custom split normals (so that the current normals are kept when joining other meshes)
         # When use_auto_smooth is off, we need to clear sharp edges, because they will be included when calculating the
         # split normals
-        if not me.use_auto_smooth:
-            # Clear all sharp edges
-            edges = me.edges
-            edges.foreach_set('use_edge_sharp', np.zeros(len(edges), dtype=bool))
-        utils.op_override(bpy.ops.mesh.customdata_custom_splitnormals_add, {'mesh': me})
+        if MESH_HAS_USE_AUTO_SMOOTH:
+            if not me.use_auto_smooth:
+                # Clear all sharp edges
+                edges = me.edges
+                edges.foreach_set('use_edge_sharp', np.zeros(len(edges), dtype=bool))
+            utils.op_override(bpy.ops.mesh.customdata_custom_splitnormals_add, {'mesh': me})
 
         # TODO: Add option to apply all transforms
         # utils.op_override(bpy.ops.object.transform_apply, {'selected_editable_objects': [obj]},
