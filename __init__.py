@@ -5,7 +5,7 @@ bl_info = {
     "name": "Avatar Builder",
     "description": "Combine objects to make ready-to-export models",
     "author": "Mysteryem",
-    "version": (0, 2, 1),
+    "version": (0, 3, 0),
     "blender": (2, 93, 7),
     "location": "3D View and Object Properties",
     "doc_url": "https://github.com/Mysteryem/AvatarBuilder",

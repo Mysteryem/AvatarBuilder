@@ -572,6 +572,8 @@ class ObjectPanelBase(Panel):
             elif obj.type == 'MESH':
                 mesh_settings = active_object_settings.mesh_settings
                 self.draw_mesh_boxes(properties_col, mesh_settings, obj, toggles.mesh, settings_enabled)
+            elif obj.type in ObjectPropertyGroup.ALLOWED_TYPES:
+                properties_col.label(text="Will be converted a mesh, applying all modifiers")
 
             # Display a button to remove the settings from Avatar Builder when scene sync is enabled
             if is_synced:

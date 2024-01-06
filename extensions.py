@@ -1001,7 +1001,9 @@ class ObjectPropertyGroup(IdPropertyGroup, CollectionPropBase[ObjectBuildSetting
 
     # Technically, we can't limit which Object types receive the PropertyGroup, but operators and other code can check
     # against the allowed types and skip Objects that don't have a correct type
-    ALLOWED_TYPES = {'ARMATURE', 'MESH'}
+    CONVERT_TO_MESH_TYPES = {'META', 'SURFACE', 'CURVE', 'FONT'}
+    GEOMETRY_TYPES = CONVERT_TO_MESH_TYPES | {'MESH'}
+    ALLOWED_TYPES = GEOMETRY_TYPES | {'ARMATURE'}
 
     collection: CollectionProperty(type=ObjectBuildSettings)
 

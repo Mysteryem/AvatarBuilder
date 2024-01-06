@@ -11,6 +11,7 @@ from bpy.types import (
     Armature,
     ArmatureModifier,
     Context,
+    Depsgraph,
     Key,
     Material,
     Mesh,
@@ -283,12 +284,14 @@ class ObjectHelper:
         #
         # orig_object_name should be unique per helper and have been set directly from an Object's .name, which is
         # guaranteed to be unique, so the by including it in the sort key tuple, the entire tuple should therefore be unique
-        orig_data = self.orig_object.data
-        if isinstance(orig_data, Mesh):
+        orig_object = self.orig_object
+        orig_data = orig_object.data
+        if orig_object.type in ObjectPropertyGroup.GEOMETRY_TYPES:
             # By including the number of shape keys in the sort key, the user can prepare one mesh with all shape keys in
             # the desired order, then, when being joined with other meshes, they will all be joined into that one mesh with
             # all the shape keys, maintaining the user's desired shape key order.
-            shape_keys = orig_data.shape_keys
+            # Geometry types other than meshes are converted directly to meshes, applying any shape keys they had.
+            shape_keys = orig_data.shape_keys if orig_object.type == 'MESH' else None
             if shape_keys:
                 # We negate the number of shape keys because we want the meshes with the most shape keys to be sorted first
                 shape_key_ordering = -len(shape_keys.key_blocks)
@@ -301,24 +304,33 @@ class ObjectHelper:
             # ordering.
             return self.settings.general_settings.join_order, self.orig_object_name
 
-    def init_copy(self, export_scene: Scene):
+    def init_copy(self, export_scene: Scene, depsgraph: Depsgraph):
         """Create and initialise the copy object"""
         obj = self.orig_object
-        # Copy object
-        copy_obj = obj.copy()
+
+        if obj.type in {'META', 'SURFACE', 'CURVE', 'FONT'}:
+            # Convert non-mesh geometry to mesh. This applies all modifiers and removes shape keys.
+            copy_data = bpy.data.meshes.new_from_object(obj.evaluated_get(depsgraph),
+                                                        preserve_all_data_layers=True,
+                                                        depsgraph=depsgraph)
+            copy_obj = bpy.data.objects.new(obj.name, copy_data)
+        else:
+            # Copy object
+            copy_obj = obj.copy()
+
+            # Copy data (also will make single user any linked data)
+            copy_data = obj.data.copy()
+            copy_obj.data = copy_data
+
+            # Remove drivers from copy
+            copy_obj.animation_data_clear()
+            copy_data.animation_data_clear()
+            if copy_obj.type == 'MESH':
+                shape_keys = cast(Mesh, copy_data).shape_keys
+                if shape_keys:
+                    shape_keys.animation_data_clear()
+
         self.copy_object = copy_obj
-
-        # Copy data (also will make single user any linked data)
-        copy_data = obj.data.copy()
-        copy_obj.data = copy_data
-
-        # Remove drivers from copy
-        copy_obj.animation_data_clear()
-        copy_data.animation_data_clear()
-        if isinstance(copy_data, Mesh):
-            shape_keys = copy_data.shape_keys
-            if shape_keys:
-                shape_keys.animation_data_clear()
 
         # TODO: Do we need to make the copy objects visible at all, or will they automatically not be hidden in the
         #  export scene's view_layer?
@@ -1233,14 +1245,12 @@ class BuildAvatarOp(OperatorBase):
         desired_name_armatures: dict[str, list[ObjectHelper]] = defaultdict(list)
         for helper in object_to_helper.values():
             obj = helper.orig_object
-            data = obj.data
-            if isinstance(data, Mesh):
+            if obj.type in ObjectPropertyGroup.GEOMETRY_TYPES:
                 name_dict = desired_name_meshes
-            elif isinstance(data, Armature):
+            elif obj.type == 'ARMATURE':
                 name_dict = desired_name_armatures
             else:
-                raise RuntimeError(f"Unexpected data type '{type(data)}' for object '{repr(obj)}' with type"
-                                   f" '{obj.type}'")
+                raise RuntimeError(f"Unexpected Object type '{obj.type}' for Object {obj!r}")
 
             name_dict[helper.desired_name].append(helper)
 
@@ -1370,6 +1380,7 @@ class BuildAvatarOp(OperatorBase):
         #  the meshes parented.
 
         # TODO: Maybe we should give an option to re-parent to first armature?
+        # TODO: Support parenting to a Bone because non-mesh geometry types cannot have vertex groups.
         # Swap parents to copy object parent
         orig_parent = copy_obj.parent
         if orig_parent:
@@ -1446,10 +1457,14 @@ class BuildAvatarOp(OperatorBase):
         # Run build based on Object data type
         object_settings = helper.settings
         data = copy_obj.data
-        if isinstance(data, Armature):
-            self.build_armature(copy_obj, data, object_settings.armature_settings, (h.copy_object for h in orig_object_to_helper.values()))
-        elif isinstance(data, Mesh):
-            self.build_mesh(original_scene, copy_obj, data, object_settings.mesh_settings, fix_settings)
+        if copy_obj.type == 'ARMATURE':
+            self.build_armature(copy_obj, cast(Armature, data), object_settings.armature_settings, (h.copy_object for h in orig_object_to_helper.values()))
+        elif copy_obj.type == 'MESH':
+            if helper.orig_object.type == 'MESH':
+                self.build_mesh(original_scene, copy_obj, cast(Mesh, data), object_settings.mesh_settings, fix_settings)
+            else:
+                # There are no options available for non-mesh geometry types currently.
+                pass
 
     @classmethod
     def poll(cls, context) -> bool:
@@ -1480,8 +1495,9 @@ class BuildAvatarOp(OperatorBase):
 
         # Initialise the copy Object (Object that will be built, since we don't modify existing Objects) for each Helper
         orig_object_to_helper = validated_build.orig_object_to_helper
+        depsgraph = context.evaluated_depsgraph_get()
         for helper in orig_object_to_helper.values():
-            helper.init_copy(export_scene)
+            helper.init_copy(export_scene, depsgraph)
 
         # Operations within this loop must not cause Object ID blocks to be recreated (otherwise the references we're
         # keeping to Objects will become invalid)
