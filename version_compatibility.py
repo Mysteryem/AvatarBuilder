@@ -21,7 +21,7 @@ else:
     ASSET_HANDLE_TYPE = bpy.types.PropertyGroup
 
 
-MESH_HAS_COLOR_ATTRIBUTES = hasattr(Mesh, 'color_attributes') and version >= (3, 2)
+MESH_HAS_COLOR_ATTRIBUTES = 'color_attributes' in Mesh.bl_rna.properties and version >= (3, 2)
 """Mesh.color_attributes was added in Blender 3.2"""
 if MESH_HAS_COLOR_ATTRIBUTES:
     VERTEX_COLORS_PROP_TYPE = bpy.types.AttributeGroup
