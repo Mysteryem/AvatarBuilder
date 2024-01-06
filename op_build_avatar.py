@@ -5,6 +5,7 @@ from collections import defaultdict
 from dataclasses import dataclass
 import itertools
 import functools
+import struct
 
 import bpy
 from bpy.types import (
@@ -458,12 +459,20 @@ def _prepare_custom_normals_for_joining(combined_obj: Object, joining_obj: Objec
     # normalized(v) = v/|v| = v/magnitude(v)
     # 2-norm gets us euclidean distance, a.k.a. magnitude
     magnitude_per_v = np.linalg.norm(current_split_normals, axis=1, keepdims=True)
-    # np.where tends to be faster than indexing to get only the subset that is normalizable and then updating that
-    # subset
+    # In-place divide by magnitude wherever magnitude != 0.
+    # Faster than:
+    #  np.where(magnitude_per_v == 0, current_split_normals, current_split_normals / magnitude_per_v)
+    # Which is faster than:
     #  normalizable = magnitude_per_v != 0
-    #  current_split_normals[normalizable] = current_split_normals[normalizable] / magnitude_per_v
-    normalized = np.where(magnitude_per_v == 0, current_split_normals, current_split_normals / magnitude_per_v)
-    joining_mesh.normals_split_custom_set(normalized)
+    #  current_split_normals[normalizable] = current_split_normals[normalizable] / magnitude_per_v[normalizable]
+    normalized = np.true_divide(current_split_normals,
+                                magnitude_per_v,
+                                out=current_split_normals,
+                                where=magnitude_per_v != 0)
+    # Performance workaround for Blender's lack of buffer support and for NumPy's slow sequence access.
+    # Unpack the buffer into a `tuple[tuple[float, float, float], ...]`.
+    nested_tuple_normals = tuple(struct.iter_unpack(f"3{np.sctype2char(normalized.dtype)}", normalized.ravel()))
+    joining_mesh.normals_split_custom_set(nested_tuple_normals)
 
 
 def join_objects(object_type: Literal[Mesh, Armature], sorted_object_helpers: list[ObjectHelper], export_scene: Scene,
